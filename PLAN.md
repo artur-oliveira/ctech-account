@@ -57,21 +57,23 @@
 
 ---
 
-## Sprint 2 — MFA Completo + PassKeys
+## Sprint 2 — MFA Completo + PassKeys ✓
 
-- [ ] `internal/domain/mfa/passkey/` — WebAuthn credential model + repository
+- [x] `internal/domain/mfa/passkey/` — WebAuthn credential model + repository + service
 - [x] `internal/handler/mfa.go` — TOTP setup/confirm/remove endpoints
 - [x] `GET /v1/account/mfa/totp/setup` — generate QR code URI
 - [x] `POST /v1/account/mfa/totp/confirm` — verify + activate + generate backup codes
 - [x] `DELETE /v1/account/mfa/totp`
 - [x] `POST /v1/account/mfa/totp/backup-codes` — regenerate (invalidates old)
-- [ ] `POST /v1/account/mfa/passkeys/register/begin` — WebAuthn challenge
-- [ ] `POST /v1/account/mfa/passkeys/register/complete`
-- [ ] `GET /v1/account/mfa/passkeys`
-- [ ] `DELETE /v1/account/mfa/passkeys/:id`
+- [x] `POST /v1/account/mfa/passkeys/register/begin` — WebAuthn challenge (go-webauthn v0.17.4)
+- [x] `POST /v1/account/mfa/passkeys/register/complete`
+- [x] `GET /v1/account/mfa/passkeys`
+- [x] `DELETE /v1/account/mfa/passkeys/:id`
 - [x] MFA gate in `POST /v1/auth/login` — issues `mfa_token` (Valkey, 5 min TTL) if TOTP enabled
 - [x] `POST /v1/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
-- [ ] PassKey authentication in `GET /v1/authorize` flow
+- [x] `POST /v1/auth/passkeys/authenticate/begin` — discoverable login challenge
+- [x] `POST /v1/auth/passkeys/authenticate/complete` — validates assertion → creates session
+- [ ] PassKey authentication in `GET /v1/authorize` flow (OAuth PKCE — deferred to Sprint 3)
 
 ---
 

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -22,6 +23,11 @@ type Config struct {
 	AllowedOrigins []string
 	Port           string
 	InternalToken  string
+	// WebAuthn Relying on Party settings.
+	// RPID is the registerable domain (e.g. "arturocarvalho.com"). Passkeys registered here
+	// can be used on any subdomain of RPID. Defaults to the host portion of BaseURL.
+	RPID      string
+	RPOrigins []string
 }
 
 func Load() (*Config, error) {
@@ -49,6 +55,20 @@ func Load() (*Config, error) {
 		tablePrefix = os.Getenv("ENVIRONMENT") + "_"
 	}
 
+	baseURL := getEnv("BASE_URL", "http://localhost:8000")
+
+	rpid := os.Getenv("WEBAUTHN_RPID")
+	if rpid == "" {
+		if parsed, err := url.Parse(baseURL); err == nil {
+			rpid = parsed.Hostname()
+		}
+	}
+
+	rpOrigins := []string{baseURL}
+	for _, o := range origins {
+		rpOrigins = append(rpOrigins, o)
+	}
+
 	return &Config{
 		Environment:    getEnv("ENVIRONMENT", "dev"),
 		TablePrefix:    tablePrefix,
@@ -56,10 +76,12 @@ func Load() (*Config, error) {
 		ValkeyURL:      os.Getenv("VALKEY_URL"),
 		RSAPrivateKey:  privateKey,
 		PublicKeyKID:   kid,
-		BaseURL:        getEnv("BASE_URL", "http://localhost:8000"),
+		BaseURL:        baseURL,
 		AllowedOrigins: origins,
 		Port:           port,
 		InternalToken:  os.Getenv("INTERNAL_TOKEN"),
+		RPID:           rpid,
+		RPOrigins:      rpOrigins,
 	}, nil
 }
 

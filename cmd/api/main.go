@@ -16,6 +16,7 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	"github.com/artur-oliveira/ctech-account/internal/database"
 	apikeyDomain "github.com/artur-oliveira/ctech-account/internal/domain/apikey"
+	passKeyDomain "github.com/artur-oliveira/ctech-account/internal/domain/mfa/passkey"
 	totpDomain "github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	oauthclientDomain "github.com/artur-oliveira/ctech-account/internal/domain/oauth/client"
 	authcodeDomain "github.com/artur-oliveira/ctech-account/internal/domain/oauth/code"
@@ -23,6 +24,7 @@ import (
 	userDomain "github.com/artur-oliveira/ctech-account/internal/domain/user"
 	"github.com/artur-oliveira/ctech-account/internal/handler"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -61,11 +63,25 @@ func main() {
 	authCodeRepo := authcodeDomain.NewRepository(valkeyClient)
 	apiKeyRepo := apikeyDomain.NewRepository(db)
 
+	// WebAuthn Relying Party
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          cfg.RPID,
+		RPDisplayName: "arturocarvalho.com",
+		RPOrigins:     cfg.RPOrigins,
+	})
+	if err != nil {
+		log.Fatalf("initializing WebAuthn: %v", err)
+	}
+
+	// Repositories
+	passkeyRepo := passKeyDomain.NewRepository(db)
+
 	// Services
 	userSvc := userDomain.NewService(userRepo)
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	totpSvc := totpDomain.NewService(db)
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
+	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, valkeyClient)
 
 	// Handlers
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
@@ -77,6 +93,7 @@ func main() {
 	profileH := handler.NewProfileHandler(userSvc)
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc)
 	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg)
+	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "ctech-account",
@@ -173,6 +190,7 @@ func main() {
 	authH.Register(v1)
 	authorizeH.Register(v1)
 	tokenH.Register(v1)
+	passkeyH.RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), userinfoH.UserInfo)
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
@@ -180,6 +198,7 @@ func main() {
 	sessionsH.Register(account)
 	apiKeysH.Register(account)
 	mfaH.Register(account)
+	passkeyH.RegisterManagement(account)
 
 	port := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("ctech-account starting on %s (env=%s)", port, cfg.Environment)

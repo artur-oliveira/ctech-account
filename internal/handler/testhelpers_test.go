@@ -20,11 +20,13 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	apikeyDomain "github.com/artur-oliveira/ctech-account/internal/domain/apikey"
+	passKeyDomain "github.com/artur-oliveira/ctech-account/internal/domain/mfa/passkey"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	sessionDomain "github.com/artur-oliveira/ctech-account/internal/domain/session"
 	userDomain "github.com/artur-oliveira/ctech-account/internal/domain/user"
 	"github.com/artur-oliveira/ctech-account/internal/handler"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 )
@@ -76,6 +78,8 @@ func newTestApp(t *testing.T) *testApp {
 		Port:          "8000",
 		RSAPrivateKey: privateKey,
 		PublicKeyKID:  "test-kid",
+		RPID:          "localhost",
+		RPOrigins:     []string{"http://localhost"},
 	}
 
 	jwtSvc, err := crypto.NewJWTService(cfg)
@@ -89,10 +93,22 @@ func newTestApp(t *testing.T) *testApp {
 	userRepo := newMemUserRepo()
 	sessionRepo := newMemSessionRepo()
 	apikeyRepo := newMemAPIKeyRepo()
+	passkeyRepo := newMemPasskeyRepo()
 
 	userSvc := userDomain.NewService(userRepo)
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	apiKeySvc := apikeyDomain.NewService(apikeyRepo)
+
+	// WebAuthn instance for tests — uses localhost as RPID/origin.
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          cfg.RPID,
+		RPDisplayName: "ctech-account test",
+		RPOrigins:     cfg.RPOrigins,
+	})
+	if err != nil {
+		t.Fatalf("creating webauthn: %v", err)
+	}
+	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, disabledCache)
 
 	noop := &noopTOTPService{}
 
@@ -108,6 +124,7 @@ func newTestApp(t *testing.T) *testApp {
 
 	v1 := app.Group("/v1")
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache).Register(v1)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
@@ -115,6 +132,7 @@ func newTestApp(t *testing.T) *testApp {
 	handler.NewSessionsHandler(sessionSvc).Register(account)
 	handler.NewAPIKeysHandler(apiKeySvc).Register(account)
 	handler.NewMFAHandler(noop, userSvc, cfg).Register(account)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterManagement(account)
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
 
@@ -349,5 +367,58 @@ func (m *memAPIKeyRepo) Delete(_ context.Context, userID, keyID string) error {
 	}
 	delete(m.byHash, k.KeyHash)
 	delete(m.keys, key)
+	return nil
+}
+
+type memPasskeyRepo struct {
+	creds map[string]*passKeyDomain.Credential // pk|sk → credential
+}
+
+func newMemPasskeyRepo() *memPasskeyRepo {
+	return &memPasskeyRepo{creds: make(map[string]*passKeyDomain.Credential)}
+}
+
+func (m *memPasskeyRepo) Create(_ context.Context, c *passKeyDomain.Credential) error {
+	m.creds[c.PK+"|"+c.SK] = c
+	return nil
+}
+
+func (m *memPasskeyRepo) GetByCredentialID(_ context.Context, userID string, credentialID []byte) (*passKeyDomain.Credential, error) {
+	sk := passKeyDomain.BuildSK(credentialID)
+	k := passKeyDomain.BuildPK(userID) + "|" + sk
+	c, ok := m.creds[k]
+	if !ok {
+		return nil, passKeyDomain.ErrNotFound
+	}
+	return c, nil
+}
+
+func (m *memPasskeyRepo) ListByUserID(_ context.Context, userID string) ([]*passKeyDomain.Credential, error) {
+	pk := passKeyDomain.BuildPK(userID)
+	var result []*passKeyDomain.Credential
+	for k, c := range m.creds {
+		if strings.HasPrefix(k, pk+"|") {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
+
+func (m *memPasskeyRepo) UpdateLastUsed(_ context.Context, userID, credentialSK, lastUsedAt string) error {
+	k := passKeyDomain.BuildPK(userID) + "|" + credentialSK
+	c, ok := m.creds[k]
+	if !ok {
+		return passKeyDomain.ErrNotFound
+	}
+	c.LastUsedAt = lastUsedAt
+	return nil
+}
+
+func (m *memPasskeyRepo) Delete(_ context.Context, userID, credentialSK string) error {
+	k := passKeyDomain.BuildPK(userID) + "|" + credentialSK
+	if _, ok := m.creds[k]; !ok {
+		return passKeyDomain.ErrNotFound
+	}
+	delete(m.creds, k)
 	return nil
 }
