@@ -110,7 +110,7 @@ updated_at    STRING
 # 4. Envia email: "Atualizamos nossa autenticação"
 ```
 
-**Endpoint interno no ctech-account** (`POST /internal/v1/users/migrate`):
+**Endpoint interno no ctech-account** (`POST /internal/v1.0/users/migrate`):
 - Autenticado via shared secret (header `X-Internal-Token`)
 - Aceita `{email, password_hash, first_name, last_name}`
 - Cria user com `email_verified=true` (já eram verificados no py-dfe)
@@ -122,7 +122,7 @@ updated_at    STRING
 - A troca de PK acontece na Fase 4.
 
 **Checklist:**
-- [ ] Implementar endpoint `/internal/v1/users/migrate` no ctech-account
+- [ ] Implementar endpoint `/internal/v1.0/users/migrate` no ctech-account
 - [ ] Implementar e testar script de migração em dev
 - [ ] Rodar em staging com todos os usuários de staging
 - [ ] Confirmar que todos os usuários têm `ctech_user_id` preenchido
@@ -147,13 +147,13 @@ updated_at    STRING
       code_challenge: await generateCodeChallenge(),
       code_challenge_method: 'S256',
     });
-    window.location.href = `https://accounts.arturocarvalho.com/v1/authorize?${params}`;
+    window.location.href = `https://accounts.arturocarvalho.com/v1.0/authorize?${params}`;
   }
   ```
-- Implementar `/callback` page: troca `code` → tokens via `POST /v1/token`
+- Implementar `/callback` page: troca `code` → tokens via `POST /v1.0/token`
 - `access_token` em memória (não localStorage)
 - `refresh_token` chega via httpOnly cookie setado pelo ctech-account
-- Silent refresh: antes de request com token expirado → POST ao ctech `/v1/token?grant_type=refresh_token`
+- Silent refresh: antes de request com token expirado → POST ao ctech `/v1.0/token?grant_type=refresh_token`
 
 **py-dfe-api (nesta fase):**
 - Dual-auth ainda ativo (Fase 0 permanece)
@@ -287,12 +287,12 @@ Ou via Valkey se disponível (melhor para múltiplas réplicas).
 
 ### O `GET /v1.0/auth/me` após Fase 3
 
-Mantido como conveniência, mas apenas retorna as organizações do usuário (sem dados de perfil — esses vêm do ctech via `/v1/userinfo`). O py-dfe-client pode combinar os dois:
+Mantido como conveniência, mas apenas retorna as organizações do usuário (sem dados de perfil — esses vêm do ctech via `/v1.0/userinfo`). O py-dfe-client pode combinar os dois:
 
 ```typescript
 const [me, profile] = await Promise.all([
   api.get('/v1.0/auth/me'),
-  ctechApi.get('/v1/userinfo'),
+  ctechApi.get('/v1.0/userinfo'),
 ]);
 ```
 
@@ -300,7 +300,7 @@ const [me, profile] = await Promise.all([
 
 ```bash
 # Via ctech-account API (após first deploy)
-curl -X POST https://accounts.arturocarvalho.com/v1/account/oauth-clients \
+curl -X POST https://accounts.arturocarvalho.com/v1.0/account/oauth-clients \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

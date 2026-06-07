@@ -51,7 +51,7 @@ func (h *SessionsHandler) revoke(c fiber.Ctx) error {
 	targetSessionID := c.Params("id")
 
 	if targetSessionID == currentSessionID {
-		return apierror.InvalidRequest("Cannot revoke the current session — use POST /v1/auth/logout instead.", c.Path()).Send(c)
+		return apierror.InvalidRequest("Cannot revoke the current session — use POST /v1.0/auth/logout instead.", c.Path()).Send(c)
 	}
 
 	if err := h.sessionSvc.Revoke(c.Context(), userID, targetSessionID); err != nil {

@@ -52,7 +52,7 @@
 - [ ] Generate RSA key pair: `openssl genrsa -out private.pem 2048`
 - [ ] Store in SSM: `aws ssm put-parameter --name "/ctech-account/prod/rsa-private-key" --type SecureString --value "$(cat private.pem)"`
 - [ ] `cd cdk && npm install && cdk deploy --all`
-- [ ] Register py-dfe as OAuth client via POST /v1/account/oauth-clients (after first admin login)
+- [ ] Register py-dfe as OAuth client via POST /v1.0/account/oauth-clients (after first admin login)
 - [ ] Run `go mod tidy` to generate go.sum
 
 ---
@@ -61,19 +61,19 @@
 
 - [x] `internal/domain/mfa/passkey/` — WebAuthn credential model + repository + service
 - [x] `internal/handler/mfa.go` — TOTP setup/confirm/remove endpoints
-- [x] `GET /v1/account/mfa/totp/setup` — generate QR code URI
-- [x] `POST /v1/account/mfa/totp/confirm` — verify + activate + generate backup codes
-- [x] `DELETE /v1/account/mfa/totp`
-- [x] `POST /v1/account/mfa/totp/backup-codes` — regenerate (invalidates old)
-- [x] `POST /v1/account/mfa/passkeys/register/begin` — WebAuthn challenge (go-webauthn v0.17.4)
-- [x] `POST /v1/account/mfa/passkeys/register/complete`
-- [x] `GET /v1/account/mfa/passkeys`
-- [x] `DELETE /v1/account/mfa/passkeys/:id`
-- [x] MFA gate in `POST /v1/auth/login` — issues `mfa_token` (Valkey, 5 min TTL) if TOTP enabled
-- [x] `POST /v1/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
-- [x] `POST /v1/auth/passkeys/authenticate/begin` — discoverable login challenge
-- [x] `POST /v1/auth/passkeys/authenticate/complete` — validates assertion → creates session
-- [ ] PassKey authentication in `GET /v1/authorize` flow (OAuth PKCE — deferred to Sprint 3)
+- [x] `GET /v1.0/account/mfa/totp/setup` — generate QR code URI
+- [x] `POST /v1.0/account/mfa/totp/confirm` — verify + activate + generate backup codes
+- [x] `DELETE /v1.0/account/mfa/totp`
+- [x] `POST /v1.0/account/mfa/totp/backup-codes` — regenerate (invalidates old)
+- [x] `POST /v1.0/account/mfa/passkeys/register/begin` — WebAuthn challenge (go-webauthn v0.17.4)
+- [x] `POST /v1.0/account/mfa/passkeys/register/complete`
+- [x] `GET /v1.0/account/mfa/passkeys`
+- [x] `DELETE /v1.0/account/mfa/passkeys/:id`
+- [x] MFA gate in `POST /v1.0/auth/login` — issues `mfa_token` (Valkey, 5 min TTL) if TOTP enabled
+- [x] `POST /v1.0/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
+- [x] `POST /v1.0/auth/passkeys/authenticate/begin` — discoverable login challenge
+- [x] `POST /v1.0/auth/passkeys/authenticate/complete` — validates assertion → creates session
+- [ ] PassKey authentication in `GET /v1.0/authorize` flow (OAuth PKCE — deferred to Sprint 3)
 
 ---
 
@@ -94,7 +94,7 @@
 - [ ] `/account/api-keys` — list, create (with scopes), revoke
 - [ ] `/account/oauth-clients` — register app, view credentials, edit redirect URIs
 - [ ] OAuth redirect flow: `/login` reads `?continue=` param, redirects back after auth
-- [ ] Persistent session: silent refresh via `/v1/token` (refresh_token in httpOnly cookie)
+- [ ] Persistent session: silent refresh via `/v1.0/token` (refresh_token in httpOnly cookie)
 
 ---
 

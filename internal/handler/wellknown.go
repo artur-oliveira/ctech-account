@@ -24,10 +24,10 @@ func (h *WellKnownHandler) Configuration(c fiber.Ctx) error {
 	issuer := h.baseURL
 	return c.JSON(fiber.Map{
 		"issuer":                                issuer,
-		"authorization_endpoint":                issuer + "/v1/authorize",
-		"token_endpoint":                        issuer + "/v1/token",
-		"userinfo_endpoint":                     issuer + "/v1/userinfo",
-		"revocation_endpoint":                   issuer + "/v1/revoke",
+		"authorization_endpoint":                issuer + "/v1.0/authorize",
+		"token_endpoint":                        issuer + "/v1.0/token",
+		"userinfo_endpoint":                     issuer + "/v1.0/userinfo",
+		"revocation_endpoint":                   issuer + "/v1.0/revoke",
 		"jwks_uri":                              issuer + "/.well-known/jwks.json",
 		"response_types_supported":              []string{"code"},
 		"subject_types_supported":               []string{"public"},

@@ -52,37 +52,37 @@ ctech-account/
 
 ## API
 
-| Method   | Path                                | Auth     | Description                         |
-|----------|-------------------------------------|----------|-------------------------------------|
-| `POST`   | `/v1/auth/register`                 | —        | Create a new account                |
-| `POST`   | `/v1/auth/login`                    | —        | Password login; sets session cookie |
-| `POST`   | `/v1/auth/logout`                   | Optional | Revoke current session cookie       |
-| `GET`    | `/v1/authorize`                     | Session  | OAuth authorization endpoint        |
-| `POST`   | `/v1/token`                         | —        | OAuth token endpoint                |
-| `GET`    | `/v1/userinfo`                      | Bearer   | OIDC UserInfo                       |
-| `GET`    | `/v1/account/profile`               | Bearer   | Get profile                         |
-| `PATCH`  | `/v1/account/profile`               | Bearer   | Update profile                      |
-| `POST`   | `/v1/account/profile/password`      | Bearer   | Change password                     |
-| `GET`    | `/v1/account/sessions`              | Bearer   | List active sessions                |
-| `DELETE` | `/v1/account/sessions`              | Bearer   | Revoke all other sessions           |
-| `DELETE` | `/v1/account/sessions/:id`          | Bearer   | Revoke a specific session           |
-| `GET`    | `/v1/account/api-keys`              | Bearer   | List API keys                       |
-| `POST`   | `/v1/account/api-keys`              | Bearer   | Create API key                      |
-| `DELETE` | `/v1/account/api-keys/:id`          | Bearer   | Revoke API key                      |
-| `POST`   | `/v1/auth/mfa/challenge`                      | —      | Exchange MFA token + TOTP code for session |
-| `POST`   | `/v1/auth/passkeys/authenticate/begin`        | —      | WebAuthn discoverable login challenge       |
-| `POST`   | `/v1/auth/passkeys/authenticate/complete`     | —      | Validate assertion → session cookie         |
-| `GET`    | `/v1/account/mfa/totp/setup`                  | Bearer | Generate TOTP provisioning URI              |
-| `POST`   | `/v1/account/mfa/totp/confirm`                | Bearer | Activate TOTP + get backup codes            |
-| `DELETE` | `/v1/account/mfa/totp`                        | Bearer | Remove TOTP from account                    |
-| `POST`   | `/v1/account/mfa/totp/backup-codes`           | Bearer | Regenerate backup codes                     |
-| `GET`    | `/v1/account/mfa/passkeys`                    | Bearer | List registered passkeys                    |
-| `POST`   | `/v1/account/mfa/passkeys/register/begin`     | Bearer | WebAuthn registration challenge             |
-| `POST`   | `/v1/account/mfa/passkeys/register/complete`  | Bearer | Validate attestation → persist credential   |
-| `DELETE` | `/v1/account/mfa/passkeys/:id`                | Bearer | Remove a passkey                            |
-| `GET`    | `/.well-known/openid-configuration` | —        | OIDC Discovery document             |
-| `GET`    | `/.well-known/jwks.json`            | —        | JSON Web Key Set                    |
-| `GET`    | `/healthz`                          | —        | Health check (`application/health+json`) |
+| Method   | Path                                           | Auth     | Description                                |
+|----------|------------------------------------------------|----------|--------------------------------------------|
+| `POST`   | `/v1.0/auth/register`                          | —        | Create a new account                       |
+| `POST`   | `/v1.0/auth/login`                             | —        | Password login; sets session cookie        |
+| `POST`   | `/v1.0/auth/logout`                            | Optional | Revoke current session cookie              |
+| `GET`    | `/v1.0/authorize`                              | Session  | OAuth authorization endpoint               |
+| `POST`   | `/v1.0/token`                                  | —        | OAuth token endpoint                       |
+| `GET`    | `/v1.0/userinfo`                               | Bearer   | OIDC UserInfo                              |
+| `GET`    | `/v1.0/account/profile`                        | Bearer   | Get profile                                |
+| `PATCH`  | `/v1.0/account/profile`                        | Bearer   | Update profile                             |
+| `POST`   | `/v1.0/account/profile/password`               | Bearer   | Change password                            |
+| `GET`    | `/v1.0/account/sessions`                       | Bearer   | List active sessions                       |
+| `DELETE` | `/v1.0/account/sessions`                       | Bearer   | Revoke all other sessions                  |
+| `DELETE` | `/v1.0/account/sessions/:id`                   | Bearer   | Revoke a specific session                  |
+| `GET`    | `/v1.0/account/api-keys`                       | Bearer   | List API keys                              |
+| `POST`   | `/v1.0/account/api-keys`                       | Bearer   | Create API key                             |
+| `DELETE` | `/v1.0/account/api-keys/:id`                   | Bearer   | Revoke API key                             |
+| `POST`   | `/v1.0/auth/mfa/challenge`                     | —        | Exchange MFA token + TOTP code for session |
+| `POST`   | `/v1.0/auth/passkeys/authenticate/begin`       | —        | WebAuthn discoverable login challenge      |
+| `POST`   | `/v1.0/auth/passkeys/authenticate/complete`    | —        | Validate assertion → session cookie        |
+| `GET`    | `/v1.0/account/mfa/totp/setup`                 | Bearer   | Generate TOTP provisioning URI             |
+| `POST`   | `/v1.0/account/mfa/totp/confirm`               | Bearer   | Activate TOTP + get backup codes           |
+| `DELETE` | `/v1.0/account/mfa/totp`                       | Bearer   | Remove TOTP from account                   |
+| `POST`   | `/v1.0/account/mfa/totp/backup-codes`          | Bearer   | Regenerate backup codes                    |
+| `GET`    | `/v1.0/account/mfa/passkeys`                   | Bearer   | List registered passkeys                   |
+| `POST`   | `/v1.0/account/mfa/passkeys/register/begin`    | Bearer   | WebAuthn registration challenge            |
+| `POST`   | `/v1.0/account/mfa/passkeys/register/complete` | Bearer   | Validate attestation → persist credential  |
+| `DELETE` | `/v1.0/account/mfa/passkeys/:id`               | Bearer   | Remove a passkey                           |
+| `GET`    | `/.well-known/openid-configuration`            | —        | OIDC Discovery document                    |
+| `GET`    | `/.well-known/jwks.json`                       | —        | JSON Web Key Set                           |
+| `GET`    | `/healthz`                                     | —        | Health check (`application/health+json`)   |
 
 ---
 
@@ -96,7 +96,7 @@ All errors follow [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807):
   "title": "Invalid Credentials",
   "status": 401,
   "detail": "The email or password is incorrect.",
-  "instance": "/v1/auth/login"
+  "instance": "/v1.0/auth/login"
 }
 ```
 
@@ -108,17 +108,17 @@ Token endpoint errors additionally include `error` and `error_description` (RFC 
 
 All configuration is read from environment variables at startup.
 
-| Variable             | Required | Description                                           |
-|----------------------|----------|-------------------------------------------------------|
-| `ENVIRONMENT`        | Yes      | `production`, `staging`, or `development`             |
-| `BASE_URL`           | Yes      | Public base URL, e.g. `https://accounts.arturocarvalho.com` |
-| `PORT`               | No       | HTTP port (default `8080`)                            |
-| `DYNAMO_TABLE`       | Yes      | DynamoDB table name                                   |
-| `RSA_PRIVATE_KEY`    | Yes      | PEM-encoded RSA private key for JWT signing (RS256)   |
-| `PUBLIC_KEY_KID`     | Yes      | Key ID included in JWKS                               |
-| `VALKEY_URL`         | No       | Redis-compatible URL; cache disabled when absent or invalid |
-| `ACCESS_TOKEN_TTL`   | No       | Access token lifetime in seconds (default `900`)      |
-| `REFRESH_TOKEN_TTL`  | No       | Refresh token lifetime in seconds (default `2592000`) |
+| Variable            | Required | Description                                                 |
+|---------------------|----------|-------------------------------------------------------------|
+| `ENVIRONMENT`       | Yes      | `production`, `staging`, or `development`                   |
+| `BASE_URL`          | Yes      | Public base URL, e.g. `https://accounts.arturocarvalho.com` |
+| `PORT`              | No       | HTTP port (default `8080`)                                  |
+| `DYNAMO_TABLE`      | Yes      | DynamoDB table name                                         |
+| `RSA_PRIVATE_KEY`   | Yes      | PEM-encoded RSA private key for JWT signing (RS256)         |
+| `PUBLIC_KEY_KID`    | Yes      | Key ID included in JWKS                                     |
+| `VALKEY_URL`        | No       | Redis-compatible URL; cache disabled when absent or invalid |
+| `ACCESS_TOKEN_TTL`  | No       | Access token lifetime in seconds (default `900`)            |
+| `REFRESH_TOKEN_TTL` | No       | Refresh token lifetime in seconds (default `2592000`)       |
 
 ---
 

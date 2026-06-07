@@ -12,7 +12,7 @@ func TestListSessions_ReturnsCurrentSession(t *testing.T) {
 	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA")
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), []string{"openid"}, "http://localhost")
 
-	resp := app.doWithToken(http.MethodGet, "/v1/account/sessions", nil, token)
+	resp := app.doWithToken(http.MethodGet, "/v1.0/account/sessions", nil, token)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -32,7 +32,7 @@ func TestRevokeSession_OtherSession(t *testing.T) {
 	sess2, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.4", "UA2")
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), []string{"openid"}, "http://localhost")
 
-	resp := app.doWithToken(http.MethodDelete, "/v1/account/sessions/"+sess2.ID(), nil, token)
+	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions/"+sess2.ID(), nil, token)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected 204, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -45,7 +45,7 @@ func TestRevokeSession_CurrentSession_400(t *testing.T) {
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), []string{"openid"}, "http://localhost")
 
 	// Revoking the current session via DELETE /sessions/:id should be rejected.
-	resp := app.doWithToken(http.MethodDelete, "/v1/account/sessions/"+sess.ID(), nil, token)
+	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions/"+sess.ID(), nil, token)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -59,7 +59,7 @@ func TestRevokeAllSessions(t *testing.T) {
 	_, _, _ = app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.5", "UA2")
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), []string{"openid"}, "http://localhost")
 
-	resp := app.doWithToken(http.MethodDelete, "/v1/account/sessions", nil, token)
+	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions", nil, token)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected 204, got %d: %s", resp.StatusCode, bodyString(resp))
 	}

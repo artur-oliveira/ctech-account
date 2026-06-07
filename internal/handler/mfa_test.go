@@ -10,7 +10,7 @@ import (
 
 func TestTOTPSetup_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodGet, "/v1/account/mfa/totp/setup", nil)
+	resp := app.do(http.MethodGet, "/v1.0/account/mfa/totp/setup", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
@@ -23,7 +23,7 @@ func TestTOTPSetup_AuthenticatedButServiceFails_500(t *testing.T) {
 	u := app.registerUser(t, "mfa1@example.com", "pass1234", "MFA")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodGet, "/v1/account/mfa/totp/setup", nil, token)
+	resp := app.doWithToken(http.MethodGet, "/v1.0/account/mfa/totp/setup", nil, token)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500 (noop service), got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -32,7 +32,7 @@ func TestTOTPSetup_AuthenticatedButServiceFails_500(t *testing.T) {
 
 func TestTOTPConfirm_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodPost, "/v1/account/mfa/totp/confirm", map[string]any{"code": "123456"})
+	resp := app.do(http.MethodPost, "/v1.0/account/mfa/totp/confirm", map[string]any{"code": "123456"})
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
@@ -44,7 +44,7 @@ func TestTOTPConfirm_MissingCode_422(t *testing.T) {
 	u := app.registerUser(t, "mfa2@example.com", "pass1234", "MFA")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodPost, "/v1/account/mfa/totp/confirm", map[string]any{}, token)
+	resp := app.doWithToken(http.MethodPost, "/v1.0/account/mfa/totp/confirm", map[string]any{}, token)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("expected 422, got %d", resp.StatusCode)
 	}
@@ -57,7 +57,7 @@ func TestTOTPConfirm_InvalidCode_ServiceFails(t *testing.T) {
 	u := app.registerUser(t, "mfa3@example.com", "pass1234", "MFA")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodPost, "/v1/account/mfa/totp/confirm", map[string]any{
+	resp := app.doWithToken(http.MethodPost, "/v1.0/account/mfa/totp/confirm", map[string]any{
 		"code": "123456",
 	}, token)
 	if resp.StatusCode != http.StatusInternalServerError {
@@ -68,7 +68,7 @@ func TestTOTPConfirm_InvalidCode_ServiceFails(t *testing.T) {
 
 func TestTOTPRemove_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodDelete, "/v1/account/mfa/totp", nil)
+	resp := app.do(http.MethodDelete, "/v1.0/account/mfa/totp", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
@@ -80,7 +80,7 @@ func TestTOTPRemove_Authenticated_ServiceFails_500(t *testing.T) {
 	u := app.registerUser(t, "mfa4@example.com", "pass1234", "MFA")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodDelete, "/v1/account/mfa/totp", nil, token)
+	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/mfa/totp", nil, token)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500 (noop service), got %d", resp.StatusCode)
 	}
@@ -89,7 +89,7 @@ func TestTOTPRemove_Authenticated_ServiceFails_500(t *testing.T) {
 
 func TestTOTPRegenerateBackupCodes_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodPost, "/v1/account/mfa/totp/backup-codes", nil)
+	resp := app.do(http.MethodPost, "/v1.0/account/mfa/totp/backup-codes", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
@@ -101,7 +101,7 @@ func TestTOTPRegenerateBackupCodes_Authenticated_ServiceFails_500(t *testing.T) 
 	u := app.registerUser(t, "mfa5@example.com", "pass1234", "MFA")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodPost, "/v1/account/mfa/totp/backup-codes", nil, token)
+	resp := app.doWithToken(http.MethodPost, "/v1.0/account/mfa/totp/backup-codes", nil, token)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500 (noop service), got %d", resp.StatusCode)
 	}
@@ -110,7 +110,7 @@ func TestTOTPRegenerateBackupCodes_Authenticated_ServiceFails_500(t *testing.T) 
 
 func TestMFAChallenge_MissingBody_422(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodPost, "/v1/auth/mfa/challenge", map[string]any{})
+	resp := app.do(http.MethodPost, "/v1.0/auth/mfa/challenge", map[string]any{})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("expected 422, got %d", resp.StatusCode)
 	}
@@ -120,7 +120,7 @@ func TestMFAChallenge_MissingBody_422(t *testing.T) {
 func TestMFAChallenge_InvalidToken_401(t *testing.T) {
 	// cache is disabled → invalid token returns 401.
 	app := newTestApp(t)
-	resp := app.do(http.MethodPost, "/v1/auth/mfa/challenge", map[string]any{
+	resp := app.do(http.MethodPost, "/v1.0/auth/mfa/challenge", map[string]any{
 		"mfa_token": "mfa_invalid",
 		"code":      "123456",
 	})

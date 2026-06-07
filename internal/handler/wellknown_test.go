@@ -58,7 +58,7 @@ func TestUserInfo_Authenticated(t *testing.T) {
 	u := app.registerUser(t, "info@example.com", "pass1234", "Info")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodGet, "/v1/userinfo", nil, token)
+	resp := app.doWithToken(http.MethodGet, "/v1.0/userinfo", nil, token)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -75,7 +75,7 @@ func TestUserInfo_Authenticated(t *testing.T) {
 
 func TestUserInfo_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodGet, "/v1/userinfo", nil)
+	resp := app.do(http.MethodGet, "/v1.0/userinfo", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}

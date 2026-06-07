@@ -10,7 +10,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	u := app.registerUser(t, "apikey@example.com", "pass1234", "K")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodPost, "/v1/account/api-keys", map[string]any{
+	resp := app.doWithToken(http.MethodPost, "/v1.0/account/api-keys", map[string]any{
 		"name":   "My Key",
 		"scopes": []string{"read"},
 	}, token)
@@ -33,7 +33,7 @@ func TestCreateAPIKey_MissingName_422(t *testing.T) {
 	u := app.registerUser(t, "apikey2@example.com", "pass1234", "L")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodPost, "/v1/account/api-keys", map[string]any{
+	resp := app.doWithToken(http.MethodPost, "/v1.0/account/api-keys", map[string]any{
 		"scopes": []string{"read"},
 	}, token)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -46,7 +46,7 @@ func TestListAPIKeys_Empty(t *testing.T) {
 	u := app.registerUser(t, "apikey3@example.com", "pass1234", "M")
 	token := app.issueToken(t, u.ID())
 
-	resp := app.doWithToken(http.MethodGet, "/v1/account/api-keys", nil, token)
+	resp := app.doWithToken(http.MethodGet, "/v1.0/account/api-keys", nil, token)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
@@ -68,7 +68,7 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 	token := app.issueToken(t, u.ID())
 
 	// Create a key.
-	createResp := app.doWithToken(http.MethodPost, "/v1/account/api-keys", map[string]any{
+	createResp := app.doWithToken(http.MethodPost, "/v1.0/account/api-keys", map[string]any{
 		"name": "ToRevoke",
 	}, token)
 	var createBody map[string]any
@@ -76,7 +76,7 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 	keyID, _ := createBody["key_id"].(string)
 
 	// Revoke it.
-	resp := app.doWithToken(http.MethodDelete, "/v1/account/api-keys/"+keyID, nil, token)
+	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/api-keys/"+keyID, nil, token)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected 204, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -84,7 +84,7 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 
 func TestCreateAPIKey_Unauthenticated_401(t *testing.T) {
 	app := newTestApp(t)
-	resp := app.do(http.MethodPost, "/v1/account/api-keys", map[string]any{"name": "k"})
+	resp := app.do(http.MethodPost, "/v1.0/account/api-keys", map[string]any{"name": "k"})
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
