@@ -160,6 +160,44 @@ func (s *Service) validateBackupCode(ctx context.Context, secret *TOTPSecret, us
 	return false, nil
 }
 
+// RegenerateBackupCodes replaces all backup codes with a fresh set of 10 and returns the raw codes.
+func (s *Service) RegenerateBackupCodes(ctx context.Context, userID string) ([]string, error) {
+	secret, err := s.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !secret.Verified {
+		return nil, ErrNotFound
+	}
+
+	rawCodes := make([]string, 10)
+	hashedCodes := make([]string, 10)
+	for i := range rawCodes {
+		raw, _, err := crypto.GenerateCode()
+		if err != nil {
+			return nil, fmt.Errorf("generating backup code: %w", err)
+		}
+		hash, err := crypto.HashPassword(raw)
+		if err != nil {
+			return nil, fmt.Errorf("hashing backup code: %w", err)
+		}
+		rawCodes[i] = raw
+		hashedCodes[i] = hash
+	}
+
+	dbKey, _ := attributevalue.MarshalMap(map[string]string{
+		"pk": BuildPK(userID),
+		"sk": BuildSK(),
+	})
+	codesAV, _ := attributevalue.Marshal(hashedCodes)
+	if err := s.db.UpdateItem(ctx, s.table, dbKey, map[string]types.AttributeValue{
+		"backup_codes": codesAV,
+	}); err != nil {
+		return nil, fmt.Errorf("updating backup codes: %w", err)
+	}
+	return rawCodes, nil
+}
+
 func (s *Service) Remove(ctx context.Context, userID string) error {
 	key, err := attributevalue.MarshalMap(map[string]string{
 		"pk": BuildPK(userID),

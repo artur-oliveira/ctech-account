@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
@@ -127,7 +128,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	}
 
 	idToken := ""
-	if contains(ac.Scopes, "openid") {
+	if slices.Contains(ac.Scopes, "openid") {
 		idToken, err = h.jwtSvc.SignIDToken(ac.UserID, u.Email, u.FullName(), clientID, ac.Nonce, h.baseURL)
 		if err != nil {
 			return apierror.ServerError(c.Path()).Send(c)
@@ -141,13 +142,11 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	fullRefreshToken := ac.UserID + ":" + ac.SessionID + ":" + newRefreshToken
-
 	return c.JSON(fiber.Map{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": fullRefreshToken,
+		"refresh_token": session.BuildCookieValue(ac.UserID, ac.SessionID, newRefreshToken),
 		"id_token":      idToken,
 		"scope":         strings.Join(ac.Scopes, " "),
 	})
@@ -161,12 +160,10 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		return apierror.InvalidRequest("refresh_token and client_id are required.", c.Path()).Send(c)
 	}
 
-	// Refresh token format: "{userID}:{sessionID}:{rawToken}"
-	parts := strings.SplitN(rawRefreshToken, ":", 3)
-	if len(parts) != 3 {
+	userID, sessionID, rawToken, ok := splitRefreshToken(rawRefreshToken)
+	if !ok {
 		return apierror.InvalidGrant("Invalid refresh_token format.", c.Path()).Send(c)
 	}
-	userID, sessionID, rawToken := parts[0], parts[1], parts[2]
 
 	newRawToken, err := h.sessionSvc.Rotate(c.Context(), userID, sessionID, rawToken)
 	if err != nil {
@@ -189,7 +186,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": userID + ":" + sessionID + ":" + newRawToken,
+		"refresh_token": session.BuildCookieValue(userID, sessionID, newRawToken),
 		"scope":         strings.Join(scopes, " "),
 	})
 }
@@ -200,25 +197,25 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 		return apierror.InvalidRequest("token is required.", c.Path()).Send(c)
 	}
 
-	parts := strings.SplitN(rawToken, ":", 3)
-	if len(parts) == 3 {
-		_ = h.sessionSvc.Revoke(c.Context(), parts[0], parts[1])
+	if userID, sessionID, _, ok := splitRefreshToken(rawToken); ok {
+		_ = h.sessionSvc.Revoke(c.Context(), userID, sessionID)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"revoked": true})
+}
+
+// splitRefreshToken parses the "{userID}:{sessionID}:{rawToken}" format used by both
+// API refresh tokens and session cookies.
+func splitRefreshToken(raw string) (userID, sessionID, token string, ok bool) {
+	parts := strings.SplitN(raw, ":", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 func verifyPKCE(verifier, challenge string) bool {
 	sum := sha256.Sum256([]byte(verifier))
 	computed := base64.RawURLEncoding.EncodeToString(sum[:])
 	return subtle.ConstantTimeCompare([]byte(computed), []byte(challenge)) == 1
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

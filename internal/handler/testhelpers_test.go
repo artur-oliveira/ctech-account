@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
+	"github.com/artur-oliveira/ctech-account/internal/cache"
 	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	apikeyDomain "github.com/artur-oliveira/ctech-account/internal/domain/apikey"
@@ -28,10 +29,26 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 )
 
-// noopTOTPService implements TOTPService and always returns ErrNotFound (no TOTP configured).
+// noopTOTPService implements both TOTPService and TOTPManagementService.
+// All methods return errors — TOTP is not configured.
 type noopTOTPService struct{}
 
 func (n *noopTOTPService) Get(_ context.Context, _ string) (*totp.TOTPSecret, error) {
+	return nil, errors.New("totp not configured")
+}
+func (n *noopTOTPService) Validate(_ context.Context, _, _ string) (bool, error) {
+	return false, errors.New("totp not configured")
+}
+func (n *noopTOTPService) Generate(_ context.Context, _, _, _ string) (*totp.TOTPSecret, string, error) {
+	return nil, "", errors.New("totp not configured")
+}
+func (n *noopTOTPService) Verify(_ context.Context, _, _ string) ([]string, error) {
+	return nil, errors.New("totp not configured")
+}
+func (n *noopTOTPService) Remove(_ context.Context, _ string) error {
+	return errors.New("totp not configured")
+}
+func (n *noopTOTPService) RegenerateBackupCodes(_ context.Context, _ string) ([]string, error) {
 	return nil, errors.New("totp not configured")
 }
 
@@ -42,6 +59,7 @@ type testApp struct {
 	sessionSvc *sessionDomain.Service
 	apiKeySvc  *apikeyDomain.Service
 	jwtSvc     *crypto.JWTService
+	cfg        *config.Config
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -65,6 +83,9 @@ func newTestApp(t *testing.T) *testApp {
 		t.Fatalf("creating JWT service: %v", err)
 	}
 
+	// Disabled cache — no Valkey connection needed in tests.
+	disabledCache, _ := cache.New("")
+
 	userRepo := newMemUserRepo()
 	sessionRepo := newMemSessionRepo()
 	apikeyRepo := newMemAPIKeyRepo()
@@ -72,6 +93,8 @@ func newTestApp(t *testing.T) *testApp {
 	userSvc := userDomain.NewService(userRepo)
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	apiKeySvc := apikeyDomain.NewService(apikeyRepo)
+
+	noop := &noopTOTPService{}
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
@@ -84,13 +107,14 @@ func newTestApp(t *testing.T) *testApp {
 	app.Use(recover.New())
 
 	v1 := app.Group("/v1")
-	handler.NewAuthHandler(userSvc, sessionSvc, &noopTOTPService{}).Register(v1)
+	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache).Register(v1)
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
 	handler.NewProfileHandler(userSvc).Register(account)
 	handler.NewSessionsHandler(sessionSvc).Register(account)
 	handler.NewAPIKeysHandler(apiKeySvc).Register(account)
+	handler.NewMFAHandler(noop, userSvc, cfg).Register(account)
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
 
@@ -100,6 +124,7 @@ func newTestApp(t *testing.T) *testApp {
 		sessionSvc: sessionSvc,
 		apiKeySvc:  apiKeySvc,
 		jwtSvc:     jwtSvc,
+		cfg:        cfg,
 	}
 }
 
@@ -145,10 +170,7 @@ func (ta *testApp) registerUser(t *testing.T, email, password, firstName string)
 func readJSON(t *testing.T, resp *http.Response, dest any) {
 	t.Helper()
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
+		_ = Body.Close()
 	}(resp.Body)
 	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
 		t.Fatalf("decoding response body: %v", err)
@@ -157,10 +179,7 @@ func readJSON(t *testing.T, resp *http.Response, dest any) {
 
 func bodyString(resp *http.Response) string {
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
+		_ = Body.Close()
 	}(resp.Body)
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)

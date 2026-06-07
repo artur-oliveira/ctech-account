@@ -67,6 +67,11 @@ ctech-account/
 | `GET`    | `/v1/account/api-keys`              | Bearer   | List API keys                       |
 | `POST`   | `/v1/account/api-keys`              | Bearer   | Create API key                      |
 | `DELETE` | `/v1/account/api-keys/:id`          | Bearer   | Revoke API key                      |
+| `POST`   | `/v1/auth/mfa/challenge`            | —        | Exchange MFA token + TOTP code for session |
+| `GET`    | `/v1/account/mfa/totp/setup`        | Bearer   | Generate TOTP provisioning URI      |
+| `POST`   | `/v1/account/mfa/totp/confirm`      | Bearer   | Activate TOTP + get backup codes    |
+| `DELETE` | `/v1/account/mfa/totp`              | Bearer   | Remove TOTP from account            |
+| `POST`   | `/v1/account/mfa/totp/backup-codes` | Bearer   | Regenerate backup codes             |
 | `GET`    | `/.well-known/openid-configuration` | —        | OIDC Discovery document             |
 | `GET`    | `/.well-known/jwks.json`            | —        | JSON Web Key Set                    |
 | `GET`    | `/healthz`                          | —        | Health check (`application/health+json`) |

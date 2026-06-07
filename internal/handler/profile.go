@@ -6,7 +6,6 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
-	"github.com/artur-oliveira/ctech-account/internal/validate"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -57,12 +56,8 @@ func (h *ProfileHandler) update(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
 	var req updateProfileRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path()).Send(c)
-	}
-	if err := validate.Struct(req); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path()).Send(c)
+	if err := parseBody(c, &req); err != nil {
+		return err
 	}
 
 	if err := h.userSvc.UpdateProfile(c.Context(), userID, req.FirstName, req.LastName, req.DisplayName); err != nil {
@@ -91,12 +86,8 @@ func (h *ProfileHandler) changePassword(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
 	var req changePasswordRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path()).Send(c)
-	}
-	if err := validate.Struct(req); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path()).Send(c)
+	if err := parseBody(c, &req); err != nil {
+		return err
 	}
 
 	if err := h.userSvc.ChangePassword(c.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {

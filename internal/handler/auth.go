@@ -4,29 +4,42 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
+	"github.com/artur-oliveira/ctech-account/internal/cache"
+	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
-	"github.com/artur-oliveira/ctech-account/internal/validate"
 	"github.com/gofiber/fiber/v3"
 )
 
-// TOTPService is the minimal interface the auth handler needs for MFA gate checks.
+const mfaTokenTTL = 5 * time.Minute
+
+// TOTPService is the subset of totp.Service the auth handler needs.
 type TOTPService interface {
 	Get(ctx context.Context, userID string) (*totp.TOTPSecret, error)
+	Validate(ctx context.Context, userID, code string) (bool, error)
+}
+
+type mfaTokenPayload struct {
+	UserID     string `json:"user_id"`
+	DeviceName string `json:"device_name"`
+	IP         string `json:"ip"`
+	UserAgent  string `json:"user_agent"`
 }
 
 type AuthHandler struct {
 	userSvc    *user.Service
 	sessionSvc *session.Service
 	totpSvc    TOTPService
+	cache      *cache.Client
 }
 
-func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService) *AuthHandler {
-	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc}
+func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client) *AuthHandler {
+	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache}
 }
 
 func (h *AuthHandler) Register(v1 fiber.Router) {
@@ -34,6 +47,7 @@ func (h *AuthHandler) Register(v1 fiber.Router) {
 	auth.Post("/register", h.register)
 	auth.Post("/login", h.login)
 	auth.Post("/logout", h.logout)
+	auth.Post("/mfa/challenge", h.mfaChallenge)
 }
 
 type registerRequest struct {
@@ -45,14 +59,10 @@ type registerRequest struct {
 
 func (h *AuthHandler) register(c fiber.Ctx) error {
 	var req registerRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path()).Send(c)
+	if err := parseBody(c, &req); err != nil {
+		return err
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if err := validate.Struct(req); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path()).Send(c)
-	}
 
 	u, err := h.userSvc.Register(c.Context(), req.Email, req.Password, req.FirstName, req.LastName)
 	if err != nil {
@@ -77,12 +87,8 @@ type loginRequest struct {
 
 func (h *AuthHandler) login(c fiber.Ctx) error {
 	var req loginRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path()).Send(c)
-	}
-	if err := validate.Struct(req); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path()).Send(c)
+	if err := parseBody(c, &req); err != nil {
+		return err
 	}
 
 	u, err := h.userSvc.Login(c.Context(), req.Email, req.Password)
@@ -93,17 +99,103 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		return apierror.InvalidCredentials(c.Path()).Send(c)
 	}
 
-	// Sprint 2: when TOTP is configured, issue mfa_token instead of a full session.
 	totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID())
 	if totpErr == nil && totpSecret.IsSetup() {
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"requires_mfa": true,
-			"mfa_methods":  []string{"totp"},
-		})
+		return h.issueMFAToken(c, u)
 	}
 
+	return h.issueSession(c, u)
+}
+
+// issueMFAToken stores a short-lived token in Valkey and returns it to the client for MFA completion.
+func (h *AuthHandler) issueMFAToken(c fiber.Ctx, u *user.User) error {
+	if h.cache == nil || !h.cache.Enabled() {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	rawToken, hashHex, err := crypto.GenerateMFAToken()
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	payload := mfaTokenPayload{
+		UserID:     u.ID(),
+		DeviceName: parseDeviceName(c.Get("User-Agent")),
+		IP:         c.IP(),
+		UserAgent:  c.Get("User-Agent"),
+	}
+
+	if err := h.cache.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"requires_mfa": true,
+		"mfa_token":    rawToken,
+		"mfa_methods":  []string{"totp"},
+	})
+}
+
+// issueSession creates a session, sets the cookie, and returns user info.
+func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, c.IP(), c.Get("User-Agent"))
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "ctech_session",
+		Value:    session.BuildCookieValue(u.ID(), sess.ID(), rawToken),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+		Path:     "/",
+		MaxAge:   int(session.SessionTTL.Seconds()),
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"user_id":    u.ID(),
+		"email":      u.Email,
+		"first_name": u.FirstName,
+		"last_name":  u.LastName,
+		"session_id": sess.ID(),
+	})
+}
+
+type mfaChallengeRequest struct {
+	MFAToken string `json:"mfa_token" validate:"required"`
+	Code     string `json:"code"      validate:"required"`
+}
+
+func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
+	var req mfaChallengeRequest
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+
+	if h.cache == nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	hashHex := crypto.HashToken(req.MFAToken)
+	var payload mfaTokenPayload
+	if err := h.cache.Get(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
+		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), "mfa_token:"+hashHex) // single use
+
+	valid, err := h.totpSvc.Validate(c.Context(), payload.UserID, req.Code)
+	if err != nil || !valid {
+		return apierror.Unauthorized("Invalid MFA code.", c.Path()).Send(c)
+	}
+
+	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent)
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}

@@ -69,13 +69,14 @@ func main() {
 
 	// Handlers
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
-	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc)
+	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.BaseURL)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc)
 	profileH := handler.NewProfileHandler(userSvc)
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc)
+	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "ctech-account",
@@ -178,6 +179,7 @@ func main() {
 	profileH.Register(account)
 	sessionsH.Register(account)
 	apiKeysH.Register(account)
+	mfaH.Register(account)
 
 	port := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("ctech-account starting on %s (env=%s)", port, cfg.Environment)

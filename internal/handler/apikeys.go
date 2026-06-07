@@ -6,7 +6,6 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
 	"github.com/artur-oliveira/ctech-account/internal/domain/apikey"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
-	"github.com/artur-oliveira/ctech-account/internal/validate"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -58,12 +57,8 @@ func (h *APIKeysHandler) create(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
 	var req createAPIKeyRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path()).Send(c)
-	}
-	if err := validate.Struct(req); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path()).Send(c)
+	if err := parseBody(c, &req); err != nil {
+		return err
 	}
 
 	if len(req.Scopes) == 0 {

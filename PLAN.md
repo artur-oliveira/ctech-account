@@ -60,17 +60,17 @@
 ## Sprint 2 — MFA Completo + PassKeys
 
 - [ ] `internal/domain/mfa/passkey/` — WebAuthn credential model + repository
-- [ ] `internal/handler/mfa.go` — TOTP setup/confirm/remove + PassKey register/authenticate endpoints
-- [ ] `GET /v1/account/mfa/totp/setup` — generate QR code URI
-- [ ] `POST /v1/account/mfa/totp/confirm` — verify + activate + generate backup codes
-- [ ] `DELETE /v1/account/mfa/totp`
-- [ ] `POST /v1/account/mfa/totp/backup-codes` — regenerate (invalidates old)
+- [x] `internal/handler/mfa.go` — TOTP setup/confirm/remove endpoints
+- [x] `GET /v1/account/mfa/totp/setup` — generate QR code URI
+- [x] `POST /v1/account/mfa/totp/confirm` — verify + activate + generate backup codes
+- [x] `DELETE /v1/account/mfa/totp`
+- [x] `POST /v1/account/mfa/totp/backup-codes` — regenerate (invalidates old)
 - [ ] `POST /v1/account/mfa/passkeys/register/begin` — WebAuthn challenge
 - [ ] `POST /v1/account/mfa/passkeys/register/complete`
 - [ ] `GET /v1/account/mfa/passkeys`
 - [ ] `DELETE /v1/account/mfa/passkeys/:id`
-- [ ] MFA gate in `POST /v1/auth/login` — return `mfa_token` if TOTP enabled
-- [ ] `POST /v1/auth/mfa/challenge` — validates TOTP/passkey + exchanges mfa_token for auth_code
+- [x] MFA gate in `POST /v1/auth/login` — issues `mfa_token` (Valkey, 5 min TTL) if TOTP enabled
+- [x] `POST /v1/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
 - [ ] PassKey authentication in `GET /v1/authorize` flow
 
 ---
