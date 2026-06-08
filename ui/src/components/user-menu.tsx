@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslation } from 'react-i18next'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -11,9 +12,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { LogOut, Settings } from 'lucide-react'
+import { useAuthStore } from '@/store/auth'
+import { logoutAPI } from '@/lib/mutations'
 import type { User } from '@/lib/types'
 
 export function UserMenu({ user }: { user: User }) {
+  const { t } = useTranslation()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -24,8 +28,12 @@ export function UserMenu({ user }: { user: User }) {
 
   async function handleLogout() {
     setLoading(true)
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+    try {
+      await logoutAPI()
+    } finally {
+      useAuthStore.getState().clearAuth()
+      router.push('/login')
+    }
   }
 
   return (
@@ -55,7 +63,7 @@ export function UserMenu({ user }: { user: User }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<a href="/account/profile" />}>
           <Settings className="size-4" />
-          Settings
+          {t('menu.settings')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -64,7 +72,7 @@ export function UserMenu({ user }: { user: User }) {
           variant="destructive"
         >
           <LogOut className="size-4" />
-          {loading ? 'Signing out…' : 'Sign out'}
+          {loading ? t('menu.signingOut') : t('menu.signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

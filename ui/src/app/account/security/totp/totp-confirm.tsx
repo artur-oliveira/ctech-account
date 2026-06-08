@@ -1,38 +1,47 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
-import { useFormStatus } from 'react-dom'
+import { useState, FormEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { confirmTOTP } from '@/lib/actions'
+import { confirmTOTPAPI } from '@/lib/mutations'
+import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return <Button type="submit" disabled={pending}>{pending ? 'Verifying…' : 'Activate'}</Button>
-}
-
 export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }) {
-  const [state, action] = useActionState(confirmTOTP, null)
-  const backupCodes = state?.backup_codes as string[] | undefined
+  const { t } = useTranslation()
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
 
-  useEffect(() => {
-    if (state?.success && state.backup_codes) toast.success('TOTP activated. Save your backup codes.')
-    if (state?.error) toast.error(state.error)
-  }, [state])
+  const { mutate, isPending, error } = useMutation({
+    mutationFn: confirmTOTPAPI,
+    onSuccess: (data) => {
+      setBackupCodes(data.backup_codes)
+      toast.success(t('toast.totpActivated'))
+    },
+    onError: (err) => {
+      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('errors.invalidCode'))
+    },
+  })
 
-  if (state?.success && backupCodes?.length) {
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    mutate(fd.get('code') as string)
+  }
+
+  const errorMsg = isAxiosError(error) ? (error.response?.data?.detail ?? t('errors.invalidCode')) : null
+
+  if (backupCodes?.length) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>TOTP activated</CardTitle>
-          <CardDescription>
-            Save these backup codes somewhere safe. Each can only be used once.
-          </CardDescription>
+          <CardTitle>{t('totp.backup.title')}</CardTitle>
+          <CardDescription>{t('totp.backup.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
@@ -43,7 +52,7 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
             ))}
           </div>
           <Button render={<a href="/account/security" />} variant="outline">
-            Back to security
+            {t('totp.backup.back')}
           </Button>
         </CardContent>
       </Card>
@@ -54,17 +63,15 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Step 1 — Scan QR code</CardTitle>
-          <CardDescription>
-            Open your authenticator app and scan the code below.
-          </CardDescription>
+          <CardTitle>{t('totp.setup.step1Title')}</CardTitle>
+          <CardDescription>{t('totp.setup.step1Desc')}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4">
           <div className="rounded-lg border p-4 bg-white">
             <QRCodeSVG value={provisioningURI} size={180} />
           </div>
           <details className="text-xs text-muted-foreground w-full">
-            <summary className="cursor-pointer">Can&apos;t scan? Enter manually</summary>
+            <summary className="cursor-pointer">{t('totp.setup.cantScan')}</summary>
             <code className="mt-2 block break-all rounded bg-muted p-2">{provisioningURI}</code>
           </details>
         </CardContent>
@@ -72,20 +79,18 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
 
       <Card>
         <CardHeader>
-          <CardTitle>Step 2 — Verify code</CardTitle>
-          <CardDescription>
-            Enter the 6-digit code from your authenticator app to confirm setup.
-          </CardDescription>
+          <CardTitle>{t('totp.setup.step2Title')}</CardTitle>
+          <CardDescription>{t('totp.setup.step2Desc')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={action} className="space-y-4">
-            {state?.error && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {errorMsg && (
               <Alert variant="destructive">
-                <AlertDescription>{state.error}</AlertDescription>
+                <AlertDescription>{errorMsg}</AlertDescription>
               </Alert>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="code">Verification code</Label>
+              <Label htmlFor="code">{t('totp.setup.code')}</Label>
               <Input
                 id="code"
                 name="code"
@@ -98,7 +103,9 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
                 required
               />
             </div>
-            <SubmitButton />
+            <Button type="submit" disabled={isPending}>
+              {isPending ? t('totp.setup.activating') : t('totp.setup.activate')}
+            </Button>
           </form>
         </CardContent>
       </Card>

@@ -123,7 +123,7 @@ func newTestApp(t *testing.T) *testApp {
 	app.Use(recover.New())
 
 	v1 := app.Group("/v1.0")
-	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache).Register(v1)
+	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache, cfg).Register(v1)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 

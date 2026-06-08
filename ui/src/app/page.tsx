@@ -1,10 +1,17 @@
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+'use client'
 
-export default async function RootPage() {
-  const store = await cookies()
-  if (store.get('ctech_at')) {
-    redirect('/account')
-  }
-  redirect('/login')
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuthStore } from '@/store/auth'
+
+export default function RootPage() {
+  const router = useRouter()
+  const { accessToken, isInitialized } = useAuthStore()
+
+  useEffect(() => {
+    if (!isInitialized) return
+    router.replace(accessToken ? '/account' : '/login')
+  }, [isInitialized, accessToken, router])
+
+  return null
 }

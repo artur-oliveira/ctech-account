@@ -1,19 +1,20 @@
 'use client'
 
 import { Suspense, useState, FormEvent } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { toast } from 'sonner'
+import { api, isAxiosError } from '@/lib/axios'
+import { startOAuthFlow } from '@/lib/auth-flow'
 
 function MFAForm() {
-  const router = useRouter()
+  const { t } = useTranslation()
   const params = useSearchParams()
   const continueURL = params.get('continue') ?? '/account'
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -23,28 +24,26 @@ function MFAForm() {
     setLoading(true)
     const fd = new FormData(e.currentTarget)
 
+    const mfaToken = sessionStorage.getItem('mfa_token')
+    if (!mfaToken) {
+      setError(t('errors.sessionExpired'))
+      setLoading(false)
+      return
+    }
+
     try {
-      const res = await fetch('/api/auth/mfa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: fd.get('code'),
-          continue_url: continueURL,
-        }),
+      await api.post('/v1.0/auth/mfa/challenge', {
+        mfa_token: mfaToken,
+        code: fd.get('code'),
       })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.detail ?? 'MFA verification failed.')
-        return
+      sessionStorage.removeItem('mfa_token')
+      await startOAuthFlow(continueURL)
+    } catch (err) {
+      if (isAxiosError(err)) {
+        setError(err.response?.data?.detail ?? t('errors.mfaFailed'))
+      } else {
+        setError(t('errors.network'))
       }
-
-      toast.success('Logged in successfully.')
-      router.push(data.redirect ?? '/account')
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
       setLoading(false)
     }
   }
@@ -58,7 +57,7 @@ function MFAForm() {
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="code">Verification code</Label>
+        <Label htmlFor="code">{t('mfa.code')}</Label>
         <Input
           id="code"
           name="code"
@@ -73,25 +72,26 @@ function MFAForm() {
       </div>
 
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Verifying…' : 'Verify'}
+        {loading ? t('mfa.submitting') : t('mfa.submit')}
       </Button>
     </form>
   )
 }
 
 export default function MFAPage() {
+  const { t } = useTranslation()
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">arturocarvalho.com</h1>
-          <p className="text-muted-foreground text-sm mt-1">Account portal</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('app.name')}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{t('app.tagline')}</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Two-factor authentication</CardTitle>
-            <CardDescription>Enter the 6-digit code from your authenticator app.</CardDescription>
+            <CardTitle>{t('mfa.title')}</CardTitle>
+            <CardDescription>{t('mfa.description')}</CardDescription>
           </CardHeader>
           <CardContent>
             <Suspense fallback={<div className="h-32 animate-pulse bg-muted rounded" />}>

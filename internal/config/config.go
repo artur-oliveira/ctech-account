@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -23,6 +24,8 @@ type Config struct {
 	AllowedOrigins []string
 	Port           string
 	InternalToken  string
+	CookieSecure   bool
+	CookieDomain   string
 	// WebAuthn Relying on Party settings.
 	// RPID is the registerable domain (e.g. "arturocarvalho.com"). Passkeys registered here
 	// can be used on any subdomain of RPID. Defaults to the host portion of BaseURL.
@@ -80,24 +83,26 @@ func Load() (*Config, error) {
 		AllowedOrigins: origins,
 		Port:           port,
 		InternalToken:  os.Getenv("INTERNAL_TOKEN"),
+		CookieSecure:   getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
+		CookieDomain:   os.Getenv("COOKIE_DOMAIN"),
 		RPID:           rpid,
 		RPOrigins:      rpOrigins,
 	}, nil
 }
 
 func loadRSAKey() (*rsa.PrivateKey, string, error) {
-	pemStr := os.Getenv("RSA_PRIVATE_KEY_PEM")
-	if pemStr == "" {
-		return nil, "", fmt.Errorf("RSA_PRIVATE_KEY_PEM is required")
+	pemStr, err := base64.StdEncoding.DecodeString(
+		os.Getenv("RSA_PRIVATE_KEY_B64"),
+	)
+	if pemStr == nil || len(pemStr) == 0 || err != nil {
+		return nil, "", fmt.Errorf("RSA_PRIVATE_KEY_B64 is required")
 	}
-
-	block, _ := pem.Decode([]byte(pemStr))
+	block, _ := pem.Decode(pemStr)
 	if block == nil {
 		return nil, "", fmt.Errorf("failed to decode PEM block")
 	}
 
 	var privateKey *rsa.PrivateKey
-	var err error
 
 	switch block.Type {
 	case "RSA PRIVATE KEY":

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useTransition, useActionState, useEffect } from 'react'
-import { useFormStatus } from 'react-dom'
+import { useState, FormEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,65 +16,76 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { createAPIKey, revokeAPIKey } from '@/lib/actions'
+import { createAPIKeyAPI, revokeAPIKeyAPI } from '@/lib/mutations'
+import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 import { Plus, Copy } from 'lucide-react'
 
 const SCOPES = ['read', 'write', 'admin']
 
-function CreateSubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? 'Creating…' : 'Create key'}
-    </Button>
-  )
-}
-
 export function CreateAPIKeyDialog() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [state, action] = useActionState(createAPIKey, null)
-  const createdKey = state?.success && state?.key ? (state.key as string) : null
+  const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    if (state?.error) toast.error(state.error)
-  }, [state])
+  const { mutate, isPending, reset } = useMutation({
+    mutationFn: createAPIKeyAPI,
+    onSuccess: (data) => {
+      const key = data.raw_key ?? data.key
+      if (key) setCreatedKey(key as string)
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+    },
+    onError: (err) => {
+      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.createKeyFailed'))
+    },
+  })
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const scopes = fd.getAll('scopes') as string[]
+    mutate({
+      name: fd.get('name') as string,
+      scopes: scopes.length > 0 ? scopes : ['read'],
+      expires_in_days: parseInt(fd.get('expires_in_days') as string) || 0,
+    })
+  }
+
+  function handleClose() {
+    setOpen(false)
+    setCreatedKey(null)
+    reset()
+  }
 
   function handleCopy() {
     if (createdKey) {
       navigator.clipboard.writeText(createdKey)
-      toast.success('Copied to clipboard.')
+      toast.success(t('toast.keyCopied'))
     }
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v)
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else setOpen(true) }}>
       <DialogTrigger
         render={
           <Button size="sm">
             <Plus className="size-4" />
-            New key
+            {t('apiKeys.newKey')}
           </Button>
         }
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create API key</DialogTitle>
-          <DialogDescription>
-            Give your key a name and select the permissions it needs.
-          </DialogDescription>
+          <DialogTitle>{t('apiKeys.dialog.title')}</DialogTitle>
+          <DialogDescription>{t('apiKeys.dialog.description')}</DialogDescription>
         </DialogHeader>
 
         {createdKey ? (
           <div className="space-y-4">
             <Alert>
               <AlertDescription className="text-xs">
-                Copy this key now — you won&apos;t be able to see it again.
+                {t('apiKeys.dialog.copyWarning')}
               </AlertDescription>
             </Alert>
             <div className="flex gap-2">
@@ -83,22 +95,17 @@ export function CreateAPIKeyDialog() {
               </Button>
             </div>
             <DialogFooter>
-              <Button onClick={() => { setOpen(false) }}>Done</Button>
+              <Button onClick={handleClose}>{t('apiKeys.dialog.done')}</Button>
             </DialogFooter>
           </div>
         ) : (
-          <form action={action} className="space-y-4">
-            {state?.error && (
-              <Alert variant="destructive">
-                <AlertDescription>{state.error}</AlertDescription>
-              </Alert>
-            )}
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="name">Key name</Label>
-              <Input id="name" name="name" required placeholder="e.g. CI/CD pipeline" />
+              <Label htmlFor="name">{t('apiKeys.dialog.name')}</Label>
+              <Input id="name" name="name" required placeholder={t('apiKeys.dialog.namePlaceholder')} />
             </div>
             <div className="space-y-2">
-              <Label>Scopes</Label>
+              <Label>{t('apiKeys.dialog.scopes')}</Label>
               <div className="flex gap-4">
                 {SCOPES.map((scope) => (
                   <label key={scope} className="flex items-center gap-1.5 cursor-pointer text-sm">
@@ -114,7 +121,7 @@ export function CreateAPIKeyDialog() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="expires_in_days">Expiry (days, 0 = no expiry)</Label>
+              <Label htmlFor="expires_in_days">{t('apiKeys.dialog.expiry')}</Label>
               <Input
                 id="expires_in_days"
                 name="expires_in_days"
@@ -125,7 +132,9 @@ export function CreateAPIKeyDialog() {
               />
             </div>
             <DialogFooter showCloseButton>
-              <CreateSubmitButton />
+              <Button type="submit" disabled={isPending}>
+                {isPending ? t('apiKeys.dialog.creating') : t('apiKeys.dialog.create')}
+              </Button>
             </DialogFooter>
           </form>
         )}
@@ -135,20 +144,27 @@ export function CreateAPIKeyDialog() {
 }
 
 export function RevokeAPIKeyButton({ keyId }: { keyId: string }) {
-  const [pending, startTransition] = useTransition()
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => revokeAPIKeyAPI(keyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      toast.success(t('toast.keyRevoked'))
+    },
+    onError: (err) => {
+      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.revokeKeyFailed'))
+    },
+  })
 
   function handleRevoke() {
-    if (!confirm('Revoke this API key? This cannot be undone.')) return
-    startTransition(async () => {
-      const result = await revokeAPIKey(keyId)
-      if (result.error) toast.error(result.error)
-      else toast.success('API key revoked.')
-    })
+    if (!confirm(t('apiKeys.confirmRevoke'))) return
+    mutate()
   }
 
   return (
-    <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={pending}>
-      {pending ? 'Revoking…' : 'Revoke'}
+    <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={isPending}>
+      {isPending ? t('apiKeys.revoking') : t('apiKeys.revoke')}
     </Button>
   )
 }

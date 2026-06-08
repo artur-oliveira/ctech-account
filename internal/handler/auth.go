@@ -8,6 +8,7 @@ import (
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
 	"github.com/artur-oliveira/ctech-account/internal/cache"
+	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
@@ -36,10 +37,11 @@ type AuthHandler struct {
 	sessionSvc *session.Service
 	totpSvc    TOTPService
 	cache      *cache.Client
+	cfg        *config.Config
 }
 
-func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client) *AuthHandler {
-	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache}
+func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg}
 }
 
 func (h *AuthHandler) Register(v1 fiber.Router) {
@@ -233,6 +235,18 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",
+		Path:     "/",
+		MaxAge:   -1,
+	})
+
+	// Also clear the SPA refresh token cookie.
+	c.Cookie(&fiber.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    "",
+		HTTPOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		SameSite: "Lax",
+		Domain:   h.cfg.CookieDomain,
 		Path:     "/",
 		MaxAge:   -1,
 	})

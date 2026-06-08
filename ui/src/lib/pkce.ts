@@ -1,11 +1,21 @@
-import { randomBytes, createHash } from 'node:crypto'
-
-export function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
-  const codeVerifier = randomBytes(32).toString('base64url')
-  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
+export async function generatePKCE(): Promise<{ codeVerifier: string; codeChallenge: string }> {
+  const array = new Uint8Array(32)
+  crypto.getRandomValues(array)
+  const codeVerifier = base64url(array)
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
+  const codeChallenge = base64url(new Uint8Array(digest))
   return { codeVerifier, codeChallenge }
 }
 
 export function generateState(): string {
-  return randomBytes(16).toString('hex')
+  const array = new Uint8Array(16)
+  crypto.getRandomValues(array)
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function base64url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
 }

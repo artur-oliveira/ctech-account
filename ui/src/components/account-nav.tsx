@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -13,25 +14,26 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-const navItems = [
-  { href: '/account', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/account/profile', label: 'Profile', icon: User },
-  {
-    href: '/account/security',
-    label: 'Security',
-    icon: Shield,
-    children: [
-      { href: '/account/security/totp', label: 'Authenticator app' },
-      { href: '/account/security/passkeys', label: 'Passkeys' },
-    ],
-  },
-  { href: '/account/sessions', label: 'Sessions', icon: MonitorSmartphone },
-  { href: '/account/api-keys', label: 'API Keys', icon: Key },
-  { href: '/account/oauth-clients', label: 'OAuth Clients', icon: AppWindow },
-]
-
 export function AccountNav() {
+  const { t } = useTranslation()
   const pathname = usePathname()
+
+  const navItems = [
+    { href: '/account', label: t('nav.dashboard'), icon: LayoutDashboard, exact: true },
+    { href: '/account/profile', label: t('nav.profile'), icon: User },
+    {
+      href: '/account/security',
+      label: t('nav.security'),
+      icon: Shield,
+      children: [
+        { href: '/account/security/totp', label: t('nav.authenticator') },
+        { href: '/account/security/passkeys', label: t('nav.passkeys') },
+      ],
+    },
+    { href: '/account/sessions', label: t('nav.sessions'), icon: MonitorSmartphone },
+    { href: '/account/api-keys', label: t('nav.apiKeys'), icon: Key },
+    { href: '/account/oauth-clients', label: t('nav.oauthClients'), icon: AppWindow },
+  ]
 
   return (
     <nav className="space-y-0.5">

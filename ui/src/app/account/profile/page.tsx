@@ -1,95 +1,124 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
-import { useFormStatus } from 'react-dom'
+import { FormEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { updateProfile, changePassword } from '@/lib/actions'
+import { updateProfileAPI, changePasswordAPI } from '@/lib/mutations'
+import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 
-function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
-  const { pending } = useFormStatus()
-  return <Button type="submit" disabled={pending}>{pending ? pendingLabel : label}</Button>
-}
-
 function ProfileForm() {
-  const [state, action] = useActionState(updateProfile, null)
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { mutate: update, isPending, error } = useMutation({
+    mutationFn: updateProfileAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+      toast.success(t('toast.profileUpdated'))
+    },
+    onError: (err) => {
+      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('errors.updateFailed'))
+    },
+  })
 
-  useEffect(() => {
-    if (state?.success) toast.success('Profile updated.')
-    if (state?.error) toast.error(state.error)
-  }, [state])
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    update({
+      first_name: fd.get('first_name') as string,
+      last_name: (fd.get('last_name') as string) || '',
+      display_name: (fd.get('display_name') as string) || undefined,
+    })
+  }
+
+  const errorMsg = isAxiosError(error) ? (error.response?.data?.detail ?? t('errors.updateFailed')) : null
 
   return (
-    <form action={action} className="space-y-4">
-      {state?.error && (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {errorMsg && (
         <Alert variant="destructive">
-          <AlertDescription>{state.error}</AlertDescription>
+          <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="first_name">First name</Label>
+          <Label htmlFor="first_name">{t('profile.firstName')}</Label>
           <Input id="first_name" name="first_name" required />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="last_name">Last name</Label>
+          <Label htmlFor="last_name">{t('profile.lastName')}</Label>
           <Input id="last_name" name="last_name" />
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="display_name">Display name</Label>
-        <Input id="display_name" name="display_name" placeholder="Optional" />
+        <Label htmlFor="display_name">{t('profile.displayName')}</Label>
+        <Input id="display_name" name="display_name" placeholder={t('profile.displayNamePlaceholder')} />
       </div>
-      <SubmitButton label="Save changes" pendingLabel="Saving…" />
+      <Button type="submit" disabled={isPending}>{isPending ? t('profile.saving') : t('profile.save')}</Button>
     </form>
   )
 }
 
 function PasswordForm() {
-  const [state, action] = useActionState(changePassword, null)
+  const { t } = useTranslation()
+  const { mutate: changePassword, isPending, error } = useMutation({
+    mutationFn: changePasswordAPI,
+    onSuccess: () => toast.success(t('toast.passwordChanged')),
+    onError: (err) => {
+      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('errors.passwordChangeFailed'))
+    },
+  })
 
-  useEffect(() => {
-    if (state?.success) toast.success('Password changed.')
-    if (state?.error) toast.error(state.error)
-  }, [state])
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    changePassword({
+      current_password: fd.get('current_password') as string,
+      new_password: fd.get('new_password') as string,
+    })
+  }
+
+  const errorMsg = isAxiosError(error) ? (error.response?.data?.detail ?? t('errors.passwordChangeFailed')) : null
 
   return (
-    <form action={action} className="space-y-4">
-      {state?.error && (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {errorMsg && (
         <Alert variant="destructive">
-          <AlertDescription>{state.error}</AlertDescription>
+          <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
       <div className="space-y-1.5">
-        <Label htmlFor="current_password">Current password</Label>
+        <Label htmlFor="current_password">{t('profile.currentPassword')}</Label>
         <Input id="current_password" name="current_password" type="password" required autoComplete="current-password" />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="new_password">New password</Label>
+        <Label htmlFor="new_password">{t('profile.newPassword')}</Label>
         <Input id="new_password" name="new_password" type="password" required minLength={8} autoComplete="new-password" />
       </div>
-      <SubmitButton label="Change password" pendingLabel="Changing…" />
+      <Button type="submit" disabled={isPending}>{isPending ? t('profile.changing') : t('profile.changePassword')}</Button>
     </form>
   )
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Profile</h1>
-        <p className="text-muted-foreground text-sm mt-1">Manage your personal information.</p>
+        <h1 className="text-2xl font-semibold">{t('profile.title')}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{t('profile.subtitle')}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Personal information</CardTitle>
-          <CardDescription>Update your name and display name.</CardDescription>
+          <CardTitle>{t('profile.personalInfo')}</CardTitle>
+          <CardDescription>{t('profile.personalInfoDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <ProfileForm />
@@ -100,8 +129,8 @@ export default function ProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Password</CardTitle>
-          <CardDescription>Change your account password.</CardDescription>
+          <CardTitle>{t('profile.passwordSection')}</CardTitle>
+          <CardDescription>{t('profile.passwordSectionDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <PasswordForm />

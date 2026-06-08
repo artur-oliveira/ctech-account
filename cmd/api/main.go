@@ -85,9 +85,9 @@ func main() {
 
 	// Handlers
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
-	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient)
+	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient, cfg)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.BaseURL)
-	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL)
+	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL, cfg)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc)
 	profileH := handler.NewProfileHandler(userSvc)
@@ -131,7 +131,7 @@ func main() {
 	}))
 
 	// Health check — RFC health check response format (draft-inadarei-api-health-check)
-	app.Get("/health", func(c fiber.Ctx) error {
+	app.Get("/healthz", func(c fiber.Ctx) error {
 		type checkResult struct {
 			ComponentID string `json:"componentId"`
 			Status      string `json:"status"`

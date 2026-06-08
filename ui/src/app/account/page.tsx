@@ -1,10 +1,16 @@
-import { getProfile, getSessions } from '@/lib/api'
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { fetchProfile, fetchSessions } from '@/lib/queries'
+import { formatDistanceToNow } from '@/lib/format'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { formatDistanceToNow } from '@/lib/format'
 
-export default async function DashboardPage() {
-  const [user, sessions] = await Promise.all([getProfile(), getSessions()])
+export default function DashboardPage() {
+  const { t } = useTranslation()
+  const { data: user } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
+  const { data: sessions = [] } = useQuery({ queryKey: ['sessions'], queryFn: fetchSessions })
 
   if (!user) return null
 
@@ -14,12 +20,12 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">
-          Welcome back, {user.display_name ?? user.first_name}
+          {t('dashboard.welcome', { name: user.display_name ?? user.first_name })}
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           {user.email}
           {!user.email_verified && (
-            <Badge variant="secondary" className="ml-2 text-xs">Unverified</Badge>
+            <Badge variant="secondary" className="ml-2 text-xs">{t('dashboard.unverified')}</Badge>
           )}
         </p>
       </div>
@@ -27,21 +33,21 @@ export default async function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Active sessions</CardDescription>
+            <CardDescription>{t('dashboard.activeSessions')}</CardDescription>
             <CardTitle className="text-3xl">{sessions.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <a href="/account/sessions" className="text-sm text-primary hover:underline">
-              Manage sessions →
+              {t('dashboard.manageSessions')}
             </a>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Current session</CardDescription>
+            <CardDescription>{t('dashboard.currentSession')}</CardDescription>
             <CardTitle className="text-base truncate">
-              {currentSession?.device_name ?? 'Unknown device'}
+              {currentSession?.device_name ?? t('dashboard.unknownDevice')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -53,14 +59,14 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Account created</CardDescription>
+            <CardDescription>{t('dashboard.accountCreated')}</CardDescription>
             <CardTitle className="text-base">
               {formatDistanceToNow(user.created_at)}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <a href="/account/security" className="text-sm text-primary hover:underline">
-              Security settings →
+              {t('dashboard.securitySettings')}
             </a>
           </CardContent>
         </Card>

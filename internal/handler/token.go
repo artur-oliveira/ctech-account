@@ -7,8 +7,10 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
+	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
 	oauthclient "github.com/artur-oliveira/ctech-account/internal/domain/oauth/client"
 	authcode "github.com/artur-oliveira/ctech-account/internal/domain/oauth/code"
@@ -17,6 +19,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const refreshTokenCookieName = "ctech_rt"
+const refreshTokenMaxAge = 90 * 24 * 60 * 60
+
 type TokenHandler struct {
 	clientRepo oauthclient.Repository
 	codeRepo   *authcode.Repository
@@ -24,6 +29,7 @@ type TokenHandler struct {
 	userSvc    *user.Service
 	jwtSvc     *crypto.JWTService
 	baseURL    string
+	cfg        *config.Config
 }
 
 func NewTokenHandler(
@@ -33,6 +39,7 @@ func NewTokenHandler(
 	userSvc *user.Service,
 	jwtSvc *crypto.JWTService,
 	baseURL string,
+	cfg *config.Config,
 ) *TokenHandler {
 	return &TokenHandler{
 		clientRepo: clientRepo,
@@ -41,6 +48,7 @@ func NewTokenHandler(
 		userSvc:    userSvc,
 		jwtSvc:     jwtSvc,
 		baseURL:    baseURL,
+		cfg:        cfg,
 	}
 }
 
@@ -79,7 +87,6 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	// Confidential clients must authenticate before consuming the code.
 	if !oauthClient.IsPublic() {
 		clientSecret := c.FormValue("client_secret")
 		if clientSecret == "" {
@@ -135,25 +142,32 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		}
 	}
 
-	// Issue an API refresh token by replacing the session's current cookie-based token.
-	// The session was created at login with a cookie token; we issue a new one for API use.
 	newRefreshToken, err := h.sessionSvc.ReplaceRefreshToken(c.Context(), ac.UserID, ac.SessionID)
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
+	refreshTokenValue := session.BuildCookieValue(ac.UserID, ac.SessionID, newRefreshToken)
+
+	// Set httpOnly cookie so SPA clients receive the refresh token without JS access.
+	h.setRefreshCookie(c, refreshTokenValue, refreshTokenMaxAge)
+
 	return c.JSON(fiber.Map{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": session.BuildCookieValue(ac.UserID, ac.SessionID, newRefreshToken),
+		"refresh_token": refreshTokenValue,
 		"id_token":      idToken,
 		"scope":         strings.Join(ac.Scopes, " "),
 	})
 }
 
 func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
+	// Accept refresh token from form field or httpOnly cookie (SPA clients use the cookie).
 	rawRefreshToken := c.FormValue("refresh_token")
+	if rawRefreshToken == "" {
+		rawRefreshToken = c.Cookies(refreshTokenCookieName)
+	}
 	clientID := c.FormValue("client_id")
 
 	if rawRefreshToken == "" || clientID == "" {
@@ -182,11 +196,16 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
+	newTokenValue := session.BuildCookieValue(userID, sessionID, newRawToken)
+
+	// Rotate the cookie with the new refresh token value.
+	h.setRefreshCookie(c, newTokenValue, refreshTokenMaxAge)
+
 	return c.JSON(fiber.Map{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": session.BuildCookieValue(userID, sessionID, newRawToken),
+		"refresh_token": newTokenValue,
 		"scope":         strings.Join(scopes, " "),
 	})
 }
@@ -201,11 +220,38 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 		_ = h.sessionSvc.Revoke(c.Context(), userID, sessionID)
 	}
 
+	h.clearRefreshCookie(c)
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"revoked": true})
 }
 
-// splitRefreshToken parses the "{userID}:{sessionID}:{rawToken}" format used by both
-// API refresh tokens and session cookies.
+func (h *TokenHandler) setRefreshCookie(c fiber.Ctx, value string, maxAge int) {
+	c.Cookie(&fiber.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    value,
+		MaxAge:   maxAge,
+		HTTPOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		SameSite: "Lax",
+		Domain:   h.cfg.CookieDomain,
+		Path:     "/",
+		Expires:  time.Now().Add(time.Duration(maxAge) * time.Second),
+	})
+}
+
+func (h *TokenHandler) clearRefreshCookie(c fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		HTTPOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		SameSite: "Lax",
+		Domain:   h.cfg.CookieDomain,
+		Path:     "/",
+	})
+}
+
 func splitRefreshToken(raw string) (userID, sessionID, token string, ok bool) {
 	parts := strings.SplitN(raw, ":", 3)
 	if len(parts) != 3 {
