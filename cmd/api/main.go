@@ -186,7 +186,7 @@ func main() {
 
 	wellknownH.Register(app)
 
-	v1 := app.Group("/v1")
+	v1 := app.Group("/v1.0")
 	authH.Register(v1)
 	authorizeH.Register(v1)
 	tokenH.Register(v1)

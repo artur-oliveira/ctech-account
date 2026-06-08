@@ -158,6 +158,104 @@ Integration tests use in-memory repository implementations — no real DynamoDB 
 
 ---
 
+## First Deploy Checklist
+
+Run these once before the first production deployment. Order matters.
+
+### 1 — Generate RSA key pair (RS256 for JWT signing)
+```bash
+# 4096-bit RSA key, no passphrase (Lambda/ECS reads it from env)
+openssl genrsa -out key.pem 4096
+openssl rsa -in key.pem -pubout -out key.pub
+
+# Verify
+openssl rsa -in key.pem -check -noout
+```
+
+### 2 — Store secrets in AWS SSM Parameter Store
+```bash
+REGION=eu-west-1
+ENV=production
+
+# RSA private key
+aws ssm put-parameter \
+  --name "/$ENV/ctech-account/RSA_PRIVATE_KEY" \
+  --value "$(cat key.pem)" \
+  --type SecureString --region $REGION
+
+# Assign a key ID (any stable string, e.g. year + env)
+aws ssm put-parameter \
+  --name "/$ENV/ctech-account/PUBLIC_KEY_KID" \
+  --value "2026-$ENV" \
+  --type String --region $REGION
+
+# Delete local private key after storing
+rm key.pem
+```
+
+### 3 — Deploy CDK infrastructure
+```bash
+cd cdk
+npm install
+npx cdk bootstrap aws://ACCOUNT_ID/$REGION
+npx cdk deploy --all
+```
+This creates: DynamoDB table, Lambda function, API Gateway, IAM roles, SSM read permissions.
+
+### 4 — Seed the `accounts-ui` OAuth client in DynamoDB
+The frontend BFF uses client ID `accounts-ui` for the authorization code flow. Write this item once:
+
+```bash
+TABLE=ctech-account-production  # adjust to your CDK output
+
+aws dynamodb put-item --table-name $TABLE --region $REGION --item '{
+  "pk":           {"S": "OAUTH_CLIENT#accounts-ui"},
+  "sk":           {"S": "OAUTH_CLIENT#accounts-ui"},
+  "client_id":    {"S": "accounts-ui"},
+  "redirect_uris":{"SS": ["https://accounts.arturocarvalho.com/api/auth/login"]},
+  "scopes":       {"SS": ["openid", "profile", "email"]},
+  "public":       {"BOOL": true}
+}'
+```
+
+### 5 — Configure Next.js environment (Vercel / ECS / EC2)
+```bash
+API_URL=https://api-id.execute-api.eu-west-1.amazonaws.com/prod  # your API GW URL
+NEXT_PUBLIC_API_URL=$API_URL
+OAUTH_CLIENT_ID=accounts-ui
+BASE_URL=https://accounts.arturocarvalho.com
+```
+Set these in Vercel dashboard → Settings → Environment Variables, or in your ECS task definition.
+
+### 6 — Deploy Next.js frontend
+```bash
+cd ui
+npm run build  # verify clean build before deploy
+# then: vercel deploy --prod  OR  docker build + push + ECS service update
+```
+
+### 7 — Smoke test
+```bash
+# Backend health
+curl -s https://<api-gw-url>/healthz | jq .
+
+# OIDC discovery
+curl -s https://<api-gw-url>/.well-known/openid-configuration | jq .issuer
+
+# JWKS (confirm your kid matches PUBLIC_KEY_KID)
+curl -s https://<api-gw-url>/.well-known/jwks.json | jq '.keys[0].kid'
+
+# Frontend
+curl -sI https://accounts.arturocarvalho.com/login  # expect 200
+```
+
+### 8 — Post-deploy
+- Rotate the RSA key annually: generate new pair, update SSM, redeploy, update `PUBLIC_KEY_KID`.
+- Enable DynamoDB Point-in-Time Recovery on the table.
+- Set CloudWatch alarm on Lambda error rate > 1%.
+
+---
+
 ## License
 
 Elastic License 2.0 — see [LICENSE.md](LICENSE.md).

@@ -1,13 +1,14 @@
 # ctech-account — Implementation Plan
 
 > Persist-tolerant checklist. Mark items with `[x]` as you complete them.
-> Last updated: 2026-06-07
+> Last updated: 2026-06-08
 
 ---
 
 ## Sprint 1 — Core Auth + OIDC (current)
 
 ### Go Backend
+
 - [x] Project structure created (`cmd/`, `internal/`, `cdk/`, `.github/`)
 - [x] `go.mod` initialized with all dependencies
 - [x] `internal/config/config.go` — env vars + RSA key loading
@@ -34,6 +35,7 @@
 - [x] `cmd/api/main.go` — wire all dependencies + Fiber router
 
 ### Infrastructure
+
 - [x] `cdk/lib/types.ts`
 - [x] `cdk/lib/dynamodb-stack.ts` — 5 ctech_* tables + GSIs
 - [x] `cdk/lib/compute-stack.ts` — ASG + EC2 t4g.micro (clone of ApiStackV2, Go binary)
@@ -44,13 +46,16 @@
 - [x] `cdk/package.json`, `cdk/tsconfig.json`, `cdk/cdk.json`
 
 ### CI/CD
+
 - [x] `.github/workflows/ci.yml` — go test, go vet, go build (on PR)
 - [x] `.github/workflows/deploy-backend.yml` — build arm64 → S3 → SSM rolling deploy
 - [x] `.github/workflows/deploy-frontend.yml` — next build → S3 sync → CF invalidate
 
 ### First Deploy Steps
+
 - [ ] Generate RSA key pair: `openssl genrsa -out private.pem 2048`
-- [ ] Store in SSM: `aws ssm put-parameter --name "/ctech-account/prod/rsa-private-key" --type SecureString --value "$(cat private.pem)"`
+- [ ] Store in SSM:
+  `aws ssm put-parameter --name "/ctech-account/prod/rsa-private-key" --type SecureString --value "$(cat private.pem)"`
 - [ ] `cd cdk && npm install && cdk deploy --all`
 - [ ] Register py-dfe as OAuth client via POST /v1.0/account/oauth-clients (after first admin login)
 - [ ] Run `go mod tidy` to generate go.sum
@@ -79,22 +84,26 @@
 
 ## Sprint 3 — Frontend (accounts.arturocarvalho.com)
 
-- [ ] Init Next.js app: `npx create-next-app@latest ui --typescript --tailwind --app`
-- [ ] Install ShadCN: `npx shadcn@latest init`
-- [ ] `/login` — email/password form + passkey button
-- [ ] `/login/mfa` — TOTP code input + backup code fallback
-- [ ] `/register` — create account form
-- [ ] `/register/verify` — email verification confirmation page
-- [ ] `/account` — dashboard (security summary, recent sessions)
-- [ ] `/account/profile` — edit name, email, avatar
-- [ ] `/account/security` — password change + MFA methods list
-- [ ] `/account/security/totp` — QR code setup + backup codes
-- [ ] `/account/security/passkeys` — list + register + remove
-- [ ] `/account/sessions` — table: device, IP, last activity + revoke buttons
-- [ ] `/account/api-keys` — list, create (with scopes), revoke
-- [ ] `/account/oauth-clients` — register app, view credentials, edit redirect URIs
-- [ ] OAuth redirect flow: `/login` reads `?continue=` param, redirects back after auth
-- [ ] Persistent session: silent refresh via `/v1.0/token` (refresh_token in httpOnly cookie)
+- [x] Init Next.js app: `npx create-next-app@latest ui --typescript --tailwind --app`
+- [x] Install ShadCN: `npx shadcn@latest init` (v4 with @base-ui/react, Tailwind v4)
+- [x] `/login` — email/password form + continue param support
+- [x] `/login/mfa` — TOTP code input
+- [x] `/register` — create account form
+- [x] `/register/verify` — email verification confirmation page
+- [x] `/account` — dashboard (session count, current session, account age)
+- [x] `/account/profile` — edit name + change password
+- [x] `/account/security` — MFA methods list + TOTP remove
+- [x] `/account/security/totp` — QR code setup + backup codes
+- [x] `/account/security/passkeys` — list + register (WebAuthn) + remove
+- [x] `/account/sessions` — device/IP/last-active + revoke buttons
+- [x] `/account/api-keys` — list, create (with scopes + expiry), revoke
+- [x] `/account/oauth-clients` — placeholder (admin-only provisioning)
+- [x] OAuth redirect flow: `/login` reads `?continue=` param, redirects back after auth
+- [x] `src/proxy.ts` — protects `/account/*`, redirects to `/login?continue=` if no token
+- [x] BFF auth Route Handlers: login (server-side PKCE OAuth dance), register, logout, MFA, refresh
+- [x] Server Actions for all account mutations (profile, sessions, API keys, TOTP, passkeys)
+- [ ] Persistent session: client-side silent refresh via `/api/auth/refresh` (not yet wired)
+- [ ] `accounts-ui` OAuth client must be registered in DynamoDB before first login
 
 ---
 
@@ -112,22 +121,22 @@ See `PYDFE_MIGRATION.md` for the full plan.
 
 ## Pending Decisions
 
-| Decision | Options | Status |
-|---|---|---|
-| Domain routing for accounts UI | Single CloudFront (multi-origin) vs separate domains | Decided: single CF (see CDK) |
-| Refresh token storage on client | httpOnly cookie vs localStorage | httpOnly cookie on accounts.arturocarvalho.com |
-| Email verification provider | AWS SES | Not implemented (Sprint 2+) |
-| py-dfe OAuth client registration | Manual seed script vs admin UI | Manual SSM/direct for now |
-| Backup codes encryption | Argon2id hash only | Decided: hash only (unrecoverable) |
+| Decision                         | Options                                              | Status                                         |
+|----------------------------------|------------------------------------------------------|------------------------------------------------|
+| Domain routing for accounts UI   | Single CloudFront (multi-origin) vs separate domains | Decided: single CF (see CDK)                   |
+| Refresh token storage on client  | httpOnly cookie vs localStorage                      | httpOnly cookie on accounts.arturocarvalho.com |
+| Email verification provider      | AWS SES                                              | Not implemented (Sprint 2+)                    |
+| py-dfe OAuth client registration | Manual seed script vs admin UI                       | Manual SSM/direct for now                      |
+| Backup codes encryption          | Argon2id hash only                                   | Decided: hash only (unrecoverable)             |
 
 ---
 
 ## SSM Parameters Required
 
-| Path | Type | Description |
-|---|---|---|
-| `/ctech-account/{env}/rsa-private-key` | SecureString | RSA 2048 PEM private key |
-| `/ctech/{env}/valkey/url` | String | Valkey connection URL (existing, from ctech-cdk) |
+| Path                                   | Type         | Description                                      |
+|----------------------------------------|--------------|--------------------------------------------------|
+| `/ctech-account/{env}/rsa-private-key` | SecureString | RSA 2048 PEM private key                         |
+| `/ctech/{env}/valkey/url`              | String       | Valkey connection URL (existing, from ctech-cdk) |
 
 ---
 
@@ -136,6 +145,7 @@ See `PYDFE_MIGRATION.md` for the full plan.
 - Token flow: access_token (RS256 JWT, 15min) + refresh_token (opaque, 90d, in httpOnly cookie)
 - Refresh token rotation: single-use; reuse = theft → revoke full session
 - PKCE mandatory for all public OAuth clients
-- KID rotation: generate new key pair → deploy with both KIDs in JWKS → after 24h, remove old KID from JWKS → after another 24h, stop issuing with old KID
+- KID rotation: generate new key pair → deploy with both KIDs in JWKS → after 24h, remove old KID from JWKS → after
+  another 24h, stop issuing with old KID
 - CORS: `accounts.arturocarvalho.com` whitelisted + any registered OAuth client origin
 - Rate limiting: 5 failed logins / 15min per IP (Valkey counter), 100 req/min per authenticated user
