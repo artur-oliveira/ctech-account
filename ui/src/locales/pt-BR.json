@@ -1,0 +1,231 @@
+{
+  "app": {
+    "name": "CTech Account",
+    "tagline": "Portal da conta"
+  },
+  "nav": {
+    "dashboard": "Painel",
+    "profile": "Perfil",
+    "security": "Segurança",
+    "authenticator": "App autenticador",
+    "passkeys": "Chaves de acesso",
+    "sessions": "Sessões",
+    "apiKeys": "Chaves de API",
+    "oauthClients": "Clientes OAuth"
+  },
+  "common": {
+    "loading": "Carregando…",
+    "email": "E-mail",
+    "password": "Senha",
+    "signIn": "Entrar",
+    "optional": "Opcional",
+    "back": "Voltar",
+    "done": "Concluído"
+  },
+  "errors": {
+    "network": "Erro de rede. Tente novamente.",
+    "loginFailed": "Falha ao entrar.",
+    "mfaFailed": "Falha na verificação MFA.",
+    "sessionExpired": "Sessão expirada. Faça login novamente.",
+    "registrationFailed": "Falha no cadastro.",
+    "updateFailed": "Falha na atualização.",
+    "passwordMismatch": "As senhas não coincidem.",
+    "passwordChangeFailed": "Falha ao alterar a senha.",
+    "invalidCode": "Código inválido."
+  },
+  "login": {
+    "title": "Entrar",
+    "description": "Insira suas credenciais para acessar sua conta.",
+    "emailPlaceholder": "voce@exemplo.com",
+    "submit": "Entrar",
+    "submitting": "Entrando…",
+    "noAccount": "Não tem conta?",
+    "createOne": "Crie uma"
+  },
+  "mfa": {
+    "title": "Autenticação em dois fatores",
+    "description": "Insira o código de 6 dígitos do seu app autenticador.",
+    "code": "Código de verificação",
+    "submit": "Verificar",
+    "submitting": "Verificando…"
+  },
+  "register": {
+    "title": "Criar uma conta",
+    "description": "Preencha seus dados para começar.",
+    "firstName": "Nome",
+    "lastName": "Sobrenome",
+    "confirmPassword": "Confirmar senha",
+    "submit": "Criar conta",
+    "submitting": "Criando conta…",
+    "alreadyHave": "Já tem uma conta?",
+    "signIn": "Entrar"
+  },
+  "verify": {
+    "title": "Verifique seu e-mail",
+    "description": "Enviamos um link de verificação para o seu endereço de e-mail.",
+    "body": "Clique no link do e-mail para verificar sua conta. Se não encontrar, verifique a pasta de spam.",
+    "back": "Voltar para o login"
+  },
+  "callback": {
+    "completing": "Concluindo login…",
+    "missingCode": "Código de autorização ou verificador ausente. Faça login novamente.",
+    "invalidState": "Estado inválido. Possível CSRF — faça login novamente.",
+    "tokenError": "Falha na troca do token. Faça login novamente.",
+    "backToSignIn": "Voltar para o login"
+  },
+  "dashboard": {
+    "welcome": "Bem-vindo de volta, {{name}}",
+    "activeSessions": "Sessões ativas",
+    "manageSessions": "Gerenciar sessões →",
+    "currentSession": "Sessão atual",
+    "unknownDevice": "Dispositivo desconhecido",
+    "accountCreated": "Conta criada",
+    "securitySettings": "Configurações de segurança →",
+    "unverified": "Não verificado"
+  },
+  "profile": {
+    "title": "Perfil",
+    "subtitle": "Gerencie suas informações pessoais.",
+    "personalInfo": "Informações pessoais",
+    "personalInfoDesc": "Atualize seu nome e nome de exibição.",
+    "firstName": "Nome",
+    "lastName": "Sobrenome",
+    "displayName": "Nome de exibição",
+    "displayNamePlaceholder": "Opcional",
+    "save": "Salvar alterações",
+    "saving": "Salvando…",
+    "passwordSection": "Senha",
+    "passwordSectionDesc": "Altere a senha da sua conta.",
+    "currentPassword": "Senha atual",
+    "newPassword": "Nova senha",
+    "changePassword": "Alterar senha",
+    "changing": "Alterando…"
+  },
+  "sessions": {
+    "title": "Sessões",
+    "subtitle": "Dispositivos atualmente conectados à sua conta.",
+    "current": "Atual",
+    "revokeAll": "Revogar todas as outras",
+    "revoking": "Revogando…",
+    "revoke": "Revogar",
+    "noSessions": "Nenhuma sessão ativa encontrada.",
+    "lastActive": "Última atividade {{time}}",
+    "created": "Criada em {{date}}"
+  },
+  "apiKeys": {
+    "title": "Chaves de API",
+    "subtitle": "Tokens de longa duração para acesso programático à API.",
+    "newKey": "Nova chave",
+    "created": "Criada em {{date}}",
+    "lastUsed": "Usado {{time}}",
+    "expires": "Expira em {{date}}",
+    "noKeys": "Nenhuma chave de API ainda.",
+    "revoke": "Revogar",
+    "revoking": "Revogando…",
+    "confirmRevoke": "Revogar esta chave de API? Essa ação não pode ser desfeita.",
+    "dialog": {
+      "title": "Criar chave de API",
+      "description": "Dê um nome à sua chave e selecione as permissões necessárias.",
+      "name": "Nome da chave",
+      "namePlaceholder": "ex.: pipeline CI/CD",
+      "scopes": "Escopos",
+      "expiry": "Validade (dias, 0 = sem expiração)",
+      "create": "Criar chave",
+      "creating": "Criando…",
+      "done": "Concluído",
+      "copyWarning": "Copie esta chave agora — você não poderá vê-la novamente."
+    }
+  },
+  "security": {
+    "title": "Segurança",
+    "subtitle": "Gerencie seus métodos de autenticação e configurações de segurança.",
+    "totp": {
+      "title": "App autenticador (TOTP)",
+      "description": "Use um app de senha única baseada em tempo (TOTP) para maior segurança no login.",
+      "setup": "Configurar",
+      "remove": "Remover",
+      "removing": "Removendo…",
+      "confirmRemove": "Remover a autenticação TOTP? Sua conta ficará menos segura."
+    },
+    "passkeys": {
+      "title": "Chaves de acesso",
+      "description": "Login biométrico ou com chave de hardware — sem senha.",
+      "manage": "Gerenciar",
+      "count_one": "{{count}} chave de acesso cadastrada",
+      "count_other": "{{count}} chaves de acesso cadastradas"
+    },
+    "password": {
+      "title": "Senha",
+      "description": "Altere a senha da sua conta.",
+      "change": "Alterar senha"
+    }
+  },
+  "totp": {
+    "setup": {
+      "title": "Configurar app autenticador",
+      "subtitle": "Escaneie o QR code com um app autenticador e verifique com um código.",
+      "alreadyConfigured": "TOTP já configurado",
+      "alreadyDesc": "Um app autenticador já está configurado para sua conta. Remova-o na página de segurança para configurar um novo.",
+      "step1Title": "Passo 1 — Escanear QR code",
+      "step1Desc": "Abra seu app autenticador e escaneie o código abaixo.",
+      "cantScan": "Não consegue escanear? Insira manualmente",
+      "step2Title": "Passo 2 — Verificar código",
+      "step2Desc": "Insira o código de 6 dígitos do seu app autenticador para confirmar a configuração.",
+      "code": "Código de verificação",
+      "activate": "Ativar",
+      "activating": "Verificando…"
+    },
+    "backup": {
+      "title": "TOTP ativado",
+      "description": "Salve esses códigos de backup em um lugar seguro. Cada um pode ser usado apenas uma vez.",
+      "back": "Voltar para segurança"
+    }
+  },
+  "passkeys": {
+    "title": "Chaves de acesso",
+    "subtitle": "Login sem senha usando biometria ou chaves de segurança de hardware.",
+    "add": "Adicionar chave de acesso",
+    "registering": "Cadastrando…",
+    "defaultName": "Chave de acesso",
+    "added": "Adicionada em {{date}}",
+    "lastUsed": "Usado {{time}}",
+    "noPasskeys": "Nenhuma chave de acesso cadastrada.",
+    "remove": "Remover",
+    "removing": "Removendo…",
+    "confirmRemove": "Remover esta chave de acesso?"
+  },
+  "oauthClients": {
+    "title": "Clientes OAuth",
+    "subtitle": "Aplicativos autorizados a agir em seu nome.",
+    "management": "Gerenciamento de clientes",
+    "comingSoon": "Em breve",
+    "description": "O cadastro e gerenciamento de clientes OAuth estarão disponíveis em uma versão futura. Entre em contato com o administrador para registrar um novo aplicativo.",
+    "body": "Se precisar integrar um aplicativo ao provedor de identidade do CTech Account, entre em contato pela página de contato para obter um client ID e secret."
+  },
+  "menu": {
+    "settings": "Configurações",
+    "signOut": "Sair",
+    "signingOut": "Saindo…"
+  },
+  "toast": {
+    "profileUpdated": "Perfil atualizado.",
+    "passwordChanged": "Senha alterada.",
+    "sessionRevoked": "Sessão revogada.",
+    "allSessionsRevoked": "Todas as outras sessões foram revogadas.",
+    "keyRevoked": "Chave de API revogada.",
+    "keyCopied": "Copiado para a área de transferência.",
+    "totpActivated": "TOTP ativado. Salve seus códigos de backup.",
+    "totpRemoved": "TOTP removido.",
+    "passkeyRegistered": "Chave de acesso cadastrada com sucesso.",
+    "passkeyRemoved": "Chave de acesso removida.",
+    "accountCreated": "Conta criada! Faça login.",
+    "createKeyFailed": "Falha ao criar chave de API.",
+    "revokeKeyFailed": "Falha ao revogar chave de API.",
+    "revokeSessionFailed": "Falha ao revogar sessão.",
+    "revokeAllSessionsFailed": "Falha ao revogar sessões.",
+    "removeTOTPFailed": "Falha ao remover TOTP.",
+    "removePasskeyFailed": "Falha ao remover chave de acesso.",
+    "registrationFailed": "Falha no cadastro.",
+    "passkeyRegistrationCancelled": "Cadastro de chave de acesso cancelado ou falhou."
+  }
+}

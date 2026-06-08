@@ -1,0 +1,231 @@
+{
+  "app": {
+    "name": "CTech Account",
+    "tagline": "Account portal"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "security": "Security",
+    "authenticator": "Authenticator app",
+    "passkeys": "Passkeys",
+    "sessions": "Sessions",
+    "apiKeys": "API Keys",
+    "oauthClients": "OAuth Clients"
+  },
+  "common": {
+    "loading": "Loading…",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "optional": "Optional",
+    "back": "Back",
+    "done": "Done"
+  },
+  "errors": {
+    "network": "Network error. Please try again.",
+    "loginFailed": "Login failed.",
+    "mfaFailed": "MFA verification failed.",
+    "sessionExpired": "Session expired. Please sign in again.",
+    "registrationFailed": "Registration failed.",
+    "updateFailed": "Update failed.",
+    "passwordMismatch": "Passwords do not match.",
+    "passwordChangeFailed": "Password change failed.",
+    "invalidCode": "Invalid code."
+  },
+  "login": {
+    "title": "Sign in",
+    "description": "Enter your credentials to access your account.",
+    "emailPlaceholder": "you@example.com",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "noAccount": "No account?",
+    "createOne": "Create one"
+  },
+  "mfa": {
+    "title": "Two-factor authentication",
+    "description": "Enter the 6-digit code from your authenticator app.",
+    "code": "Verification code",
+    "submit": "Verify",
+    "submitting": "Verifying…"
+  },
+  "register": {
+    "title": "Create an account",
+    "description": "Fill in your details to get started.",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "confirmPassword": "Confirm password",
+    "submit": "Create account",
+    "submitting": "Creating account…",
+    "alreadyHave": "Already have an account?",
+    "signIn": "Sign in"
+  },
+  "verify": {
+    "title": "Check your email",
+    "description": "We sent a verification link to your email address.",
+    "body": "Click the link in your email to verify your account. If you don't see it, check your spam folder.",
+    "back": "Back to sign in"
+  },
+  "callback": {
+    "completing": "Completing sign in…",
+    "missingCode": "Missing authorization code or verifier. Please sign in again.",
+    "invalidState": "Invalid state. Possible CSRF — please sign in again.",
+    "tokenError": "Token exchange failed. Please sign in again.",
+    "backToSignIn": "Back to sign in"
+  },
+  "dashboard": {
+    "welcome": "Welcome back, {{name}}",
+    "activeSessions": "Active sessions",
+    "manageSessions": "Manage sessions →",
+    "currentSession": "Current session",
+    "unknownDevice": "Unknown device",
+    "accountCreated": "Account created",
+    "securitySettings": "Security settings →",
+    "unverified": "Unverified"
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Manage your personal information.",
+    "personalInfo": "Personal information",
+    "personalInfoDesc": "Update your name and display name.",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Optional",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "passwordSection": "Password",
+    "passwordSectionDesc": "Change your account password.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "changePassword": "Change password",
+    "changing": "Changing…"
+  },
+  "sessions": {
+    "title": "Sessions",
+    "subtitle": "Devices currently signed in to your account.",
+    "current": "Current",
+    "revokeAll": "Revoke all others",
+    "revoking": "Revoking…",
+    "revoke": "Revoke",
+    "noSessions": "No active sessions found.",
+    "lastActive": "Last active {{time}}",
+    "created": "Created {{date}}"
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "subtitle": "Long-lived tokens for programmatic API access.",
+    "newKey": "New key",
+    "created": "Created {{date}}",
+    "lastUsed": "Last used {{time}}",
+    "expires": "Expires {{date}}",
+    "noKeys": "No API keys yet.",
+    "revoke": "Revoke",
+    "revoking": "Revoking…",
+    "confirmRevoke": "Revoke this API key? This cannot be undone.",
+    "dialog": {
+      "title": "Create API key",
+      "description": "Give your key a name and select the permissions it needs.",
+      "name": "Key name",
+      "namePlaceholder": "e.g. CI/CD pipeline",
+      "scopes": "Scopes",
+      "expiry": "Expiry (days, 0 = no expiry)",
+      "create": "Create key",
+      "creating": "Creating…",
+      "done": "Done",
+      "copyWarning": "Copy this key now — you won't be able to see it again."
+    }
+  },
+  "security": {
+    "title": "Security",
+    "subtitle": "Manage your authentication methods and security settings.",
+    "totp": {
+      "title": "Authenticator app (TOTP)",
+      "description": "Use a time-based one-time password (TOTP) app for extra login security.",
+      "setup": "Set up",
+      "remove": "Remove",
+      "removing": "Removing…",
+      "confirmRemove": "Remove TOTP authentication? Your account will be less secure."
+    },
+    "passkeys": {
+      "title": "Passkeys",
+      "description": "Biometric or hardware-key login — no password required.",
+      "manage": "Manage",
+      "count_one": "{{count}} passkey registered",
+      "count_other": "{{count}} passkeys registered"
+    },
+    "password": {
+      "title": "Password",
+      "description": "Change your account password.",
+      "change": "Change password"
+    }
+  },
+  "totp": {
+    "setup": {
+      "title": "Set up authenticator app",
+      "subtitle": "Scan the QR code with an authenticator app, then verify with a code.",
+      "alreadyConfigured": "TOTP already configured",
+      "alreadyDesc": "An authenticator app is already set up for your account. Remove it from the security page to set up a new one.",
+      "step1Title": "Step 1 — Scan QR code",
+      "step1Desc": "Open your authenticator app and scan the code below.",
+      "cantScan": "Can't scan? Enter manually",
+      "step2Title": "Step 2 — Verify code",
+      "step2Desc": "Enter the 6-digit code from your authenticator app to confirm setup.",
+      "code": "Verification code",
+      "activate": "Activate",
+      "activating": "Verifying…"
+    },
+    "backup": {
+      "title": "TOTP activated",
+      "description": "Save these backup codes somewhere safe. Each can only be used once.",
+      "back": "Back to security"
+    }
+  },
+  "passkeys": {
+    "title": "Passkeys",
+    "subtitle": "Passwordless login using biometrics or hardware security keys.",
+    "add": "Add passkey",
+    "registering": "Registering…",
+    "defaultName": "Passkey",
+    "added": "Added {{date}}",
+    "lastUsed": "Last used {{time}}",
+    "noPasskeys": "No passkeys registered.",
+    "remove": "Remove",
+    "removing": "Removing…",
+    "confirmRemove": "Remove this passkey?"
+  },
+  "oauthClients": {
+    "title": "OAuth Clients",
+    "subtitle": "Applications authorized to act on your behalf.",
+    "management": "Client management",
+    "comingSoon": "Coming soon",
+    "description": "OAuth client registration and management will be available in a future release. Contact the administrator to register a new application.",
+    "body": "If you need to integrate an application with CTech Account's identity provider, reach out via the contact page to get a client ID and secret provisioned."
+  },
+  "menu": {
+    "settings": "Settings",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…"
+  },
+  "toast": {
+    "profileUpdated": "Profile updated.",
+    "passwordChanged": "Password changed.",
+    "sessionRevoked": "Session revoked.",
+    "allSessionsRevoked": "All other sessions revoked.",
+    "keyRevoked": "API key revoked.",
+    "keyCopied": "Copied to clipboard.",
+    "totpActivated": "TOTP activated. Save your backup codes.",
+    "totpRemoved": "TOTP removed.",
+    "passkeyRegistered": "Passkey registered successfully.",
+    "passkeyRemoved": "Passkey removed.",
+    "accountCreated": "Account created! Please sign in.",
+    "createKeyFailed": "Failed to create API key.",
+    "revokeKeyFailed": "Failed to revoke API key.",
+    "revokeSessionFailed": "Failed to revoke session.",
+    "revokeAllSessionsFailed": "Failed to revoke sessions.",
+    "removeTOTPFailed": "Failed to remove TOTP.",
+    "removePasskeyFailed": "Failed to remove passkey.",
+    "registrationFailed": "Registration failed.",
+    "passkeyRegistrationCancelled": "Passkey creation cancelled or failed."
+  }
+}
