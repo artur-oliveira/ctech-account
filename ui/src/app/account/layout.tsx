@@ -36,7 +36,13 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     )
   }
 
-  if (!user) return null
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="animate-pulse text-muted-foreground text-sm">{t('common.loading')}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

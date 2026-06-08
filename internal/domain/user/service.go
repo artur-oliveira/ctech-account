@@ -114,6 +114,47 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	return s.repo.Update(ctx, userID, map[string]any{"password_hash": hash})
 }
 
+func (s *Service) MarkEmailVerified(ctx context.Context, userID string) error {
+	return s.repo.Update(ctx, userID, map[string]any{"email_verified": true})
+}
+
+func (s *Service) ForceSetPassword(ctx context.Context, userID, passwordHash string) error {
+	return s.repo.Update(ctx, userID, map[string]any{"password_hash": passwordHash})
+}
+
+// FindOrCreateByGoogle looks up a user by email (from Google OAuth) or creates one.
+func (s *Service) FindOrCreateByGoogle(ctx context.Context, googleSub, email, firstName, lastName, avatarURL string) (*User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	u, err := s.repo.GetByEmail(ctx, email)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("looking up user: %w", err)
+	}
+	if u != nil {
+		// Existing user — update avatar if changed.
+		if avatarURL != "" && u.AvatarURL != avatarURL {
+			_ = s.repo.Update(ctx, u.ID(), map[string]any{"avatar_url": avatarURL})
+			u.AvatarURL = avatarURL
+		}
+		return u, nil
+	}
+
+	// New user via Google — no password, already email-verified.
+	u = &User{
+		Email:         email,
+		PasswordHash:  "",
+		FirstName:     strings.TrimSpace(firstName),
+		LastName:      strings.TrimSpace(lastName),
+		AvatarURL:     avatarURL,
+		EmailVerified: true,
+		IsEnabled:     true,
+	}
+	if err := s.repo.Create(ctx, u); err != nil {
+		return nil, fmt.Errorf("creating user: %w", err)
+	}
+	return u, nil
+}
+
 // RegisterWithHash is used by the migration endpoint — accepts a pre-computed Argon2id hash.
 func (s *Service) RegisterWithHash(ctx context.Context, email, passwordHash, firstName, lastName string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

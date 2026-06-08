@@ -31,6 +31,14 @@ type Config struct {
 	// can be used on any subdomain of RPID. Defaults to the host portion of BaseURL.
 	RPID      string
 	RPOrigins []string
+
+	// Email (SES)
+	FromEmail string // FROM_EMAIL env var
+	AppURL    string // APP_URL env var — base URL for links in emails (defaults to BaseURL)
+
+	// Google OAuth
+	GoogleClientID     string
+	GoogleClientSecret string
 }
 
 func Load() (*Config, error) {
@@ -87,6 +95,10 @@ func Load() (*Config, error) {
 		CookieDomain:   os.Getenv("COOKIE_DOMAIN"),
 		RPID:           rpid,
 		RPOrigins:      rpOrigins,
+		FromEmail:      os.Getenv("FROM_EMAIL"),
+		AppURL:         getEnv("APP_URL", baseURL),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 	}, nil
 }
 

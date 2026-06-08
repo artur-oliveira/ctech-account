@@ -13,11 +13,14 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
+	"github.com/artur-oliveira/ctech-account/internal/email"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
 	"github.com/gofiber/fiber/v3"
 )
 
 const mfaTokenTTL = 5 * time.Minute
+const emailVerifyTTL = 24 * time.Hour
+const passwordResetTTL = 15 * time.Minute
 
 // TOTPService is the subset of totp.Service the auth handler needs.
 type TOTPService interface {
@@ -38,10 +41,11 @@ type AuthHandler struct {
 	totpSvc    TOTPService
 	cache      *cache.Client
 	cfg        *config.Config
+	emailCli   *email.Client // nil when FROM_EMAIL is not set
 }
 
-func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg}
+func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config, emailCli *email.Client) *AuthHandler {
+	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg, emailCli: emailCli}
 }
 
 func (h *AuthHandler) Register(v1 fiber.Router) {
@@ -50,6 +54,10 @@ func (h *AuthHandler) Register(v1 fiber.Router) {
 	auth.Post("/login", h.login)
 	auth.Post("/logout", h.logout)
 	auth.Post("/mfa/challenge", h.mfaChallenge)
+	auth.Post("/verify-email", h.verifyEmail)
+	auth.Post("/resend-verification", h.resendVerification)
+	auth.Post("/forgot-password", h.forgotPassword)
+	auth.Post("/reset-password", h.resetPassword)
 }
 
 type registerRequest struct {
@@ -72,6 +80,11 @@ func (h *AuthHandler) register(c fiber.Ctx) error {
 			return apierror.Conflict("An account with this email address already exists.", c.Path()).Send(c)
 		}
 		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	// Send verification email asynchronously — non-blocking.
+	if h.emailCli != nil {
+		go h.sendVerificationEmail(context.Background(), u.ID(), u.Email, u.FirstName)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
@@ -252,6 +265,121 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 	})
 
 	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// ── Email verification ─────────────────────────────────────────────────────
+
+func (h *AuthHandler) sendVerificationEmail(ctx context.Context, userID, toEmail, firstName string) {
+	if h.cache == nil || !h.cache.Enabled() || h.emailCli == nil {
+		return
+	}
+	rawToken, hashHex, err := crypto.GenerateMFAToken()
+	if err != nil {
+		return
+	}
+	if err := h.cache.Set(ctx, "ev:"+hashHex, userID, emailVerifyTTL); err != nil {
+		return
+	}
+	_ = h.emailCli.SendVerificationEmail(ctx, toEmail, firstName, rawToken)
+}
+
+func (h *AuthHandler) verifyEmail(c fiber.Ctx) error {
+	type req struct {
+		Token string `json:"token" validate:"required"`
+	}
+	var r req
+	if err := parseBody(c, &r); err != nil {
+		return err
+	}
+	if h.cache == nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	hashHex := crypto.HashToken(r.Token)
+	var userID string
+	if err := h.cache.Get(c.Context(), "ev:"+hashHex, &userID); err != nil {
+		return apierror.InvalidToken("Verification link is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), "ev:"+hashHex)
+	if err := h.userSvc.MarkEmailVerified(c.Context(), userID); err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"verified": true})
+}
+
+func (h *AuthHandler) resendVerification(c fiber.Ctx) error {
+	type req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	var r req
+	if err := parseBody(c, &r); err != nil {
+		return err
+	}
+	// Always respond 200 regardless — prevents email enumeration.
+	u, err := h.userSvc.GetByEmail(c.Context(), strings.ToLower(r.Email))
+	if err == nil && !u.EmailVerified && h.emailCli != nil {
+		go h.sendVerificationEmail(context.Background(), u.ID(), u.Email, u.FirstName)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"sent": true})
+}
+
+// ── Password reset ──────────────────────────────────────────────────────────
+
+func (h *AuthHandler) forgotPassword(c fiber.Ctx) error {
+	type req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	var r req
+	if err := parseBody(c, &r); err != nil {
+		return err
+	}
+	// Always 200 — no email enumeration.
+	u, err := h.userSvc.GetByEmail(c.Context(), strings.ToLower(r.Email))
+	if err == nil && h.emailCli != nil && h.cache != nil && h.cache.Enabled() {
+		rawToken, hashHex, genErr := crypto.GenerateMFAToken()
+		if genErr == nil {
+			if setErr := h.cache.Set(c.Context(), "pr:"+hashHex, u.ID(), passwordResetTTL); setErr == nil {
+				go func() {
+					err := h.emailCli.SendPasswordResetEmail(context.Background(), u.Email, u.FirstName, rawToken)
+					if err != nil {
+
+					}
+				}()
+			}
+		}
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"sent": true})
+}
+
+func (h *AuthHandler) resetPassword(c fiber.Ctx) error {
+	type req struct {
+		Token       string `json:"token"        validate:"required"`
+		NewPassword string `json:"new_password" validate:"required,min=8,max=128"`
+	}
+	var r req
+	if err := parseBody(c, &r); err != nil {
+		return err
+	}
+	if h.cache == nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	hashHex := crypto.HashToken(r.Token)
+	var userID string
+	if err := h.cache.Get(c.Context(), "pr:"+hashHex, &userID); err != nil {
+		return apierror.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), "pr:"+hashHex)
+
+	hash, err := crypto.HashPassword(r.NewPassword)
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	if _, err := h.userSvc.GetByID(c.Context(), userID); err != nil {
+		return apierror.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
+	}
+	if updErr := h.userSvc.ForceSetPassword(c.Context(), userID, hash); updErr != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"reset": true})
 }
 
 func parseDeviceName(userAgent string) string {

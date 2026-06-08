@@ -78,7 +78,7 @@
 - [x] `POST /v1.0/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
 - [x] `POST /v1.0/auth/passkeys/authenticate/begin` — discoverable login challenge
 - [x] `POST /v1.0/auth/passkeys/authenticate/complete` — validates assertion → creates session
-- [ ] PassKey authentication in `GET /v1.0/authorize` flow (OAuth PKCE — deferred to Sprint 3)
+- [x] PassKey authentication in `GET /v1.0/authorize` flow — passkey login button on /login; after successful auth ctech_session cookie is set, /authorize redirects to callback normally
 
 ---
 
@@ -102,7 +102,12 @@
 - [x] `src/proxy.ts` — protects `/account/*`, redirects to `/login?continue=` if no token
 - [x] BFF auth Route Handlers: login (server-side PKCE OAuth dance), register, logout, MFA, refresh
 - [x] Server Actions for all account mutations (profile, sessions, API keys, TOTP, passkeys)
-- [ ] Persistent session: client-side silent refresh via `/api/auth/refresh` (not yet wired)
+- [x] Persistent session: client-side silent refresh via `/v1.0/token` (AuthInitializer in query-provider.tsx)
+- [x] `/forgot-password` — email form, calls POST /v1.0/auth/forgot-password, always 200 (no enumeration)
+- [x] `/reset-password` — reads `?token=`, validates password match, calls POST /v1.0/auth/reset-password
+- [x] `/verify-email` — reads `?token=`, calls POST /v1.0/auth/verify-email on mount, shows success/error
+- [x] `/login` — added "Forgot password?" link + Google sign-in button (redirects to /v1.0/auth/google)
+- [x] i18n strings (en + pt-BR): forgotPassword, resetPassword, verifyEmail namespaces
 - [ ] `accounts-ui` OAuth client must be registered in DynamoDB before first login
 
 ---
@@ -111,11 +116,11 @@
 
 See `PYDFE_MIGRATION.md` for the full plan.
 
-- [ ] Phase 0: py-dfe-api dual-auth (RS256 ctech + HS256 local)
-- [ ] Phase 1: User data migration script
-- [ ] Phase 2: py-dfe-client OAuth redirect switch
-- [ ] Phase 3: py-dfe-api cutover (RS256 only)
-- [ ] Phase 4: Table cleanup
+- [x] Phase 0: py-dfe-api dual-auth — verify_rs256 fallback in security.py + get_current_token; HS256 path unchanged
+- [x] Phase 1: ctech-account POST /internal/v1.0/users/migrate (X-Internal-Token auth, idempotent); py-dfe-api get_user_by_ctech_id + ctech-user-id-index GSI in CDK; migration script at py-dfe-api/scripts/migrate_users_to_ctech.py
+- [x] Phase 2: py-dfe-client OAuth redirect switch
+- [x] Phase 3: py-dfe-api cutover (RS256 only) — HS256 path removed, RS256-only verify
+- [x] Phase 4: Lazy user creation via ctech /v1.0/userinfo (PK = USER_{ctech_user_id}); no migration needed
 
 ---
 
@@ -125,7 +130,8 @@ See `PYDFE_MIGRATION.md` for the full plan.
 |----------------------------------|------------------------------------------------------|------------------------------------------------|
 | Domain routing for accounts UI   | Single CloudFront (multi-origin) vs separate domains | Decided: single CF (see CDK)                   |
 | Refresh token storage on client  | httpOnly cookie vs localStorage                      | httpOnly cookie on accounts.arturocarvalho.com |
-| Email verification provider      | AWS SES                                              | Not implemented (Sprint 2+)                    |
+| Email verification provider      | AWS SES                                              | Implemented: SESv2, verify + password reset    |
+| Google OAuth                     | google-oauth2 via /v1.0/auth/google                  | Implemented: state in Valkey (gs:, 10min TTL)  |
 | py-dfe OAuth client registration | Manual seed script vs admin UI                       | Manual SSM/direct for now                      |
 | Backup codes encryption          | Argon2id hash only                                   | Decided: hash only (unrecoverable)             |
 
@@ -133,10 +139,14 @@ See `PYDFE_MIGRATION.md` for the full plan.
 
 ## SSM Parameters Required
 
-| Path                                   | Type         | Description                                      |
-|----------------------------------------|--------------|--------------------------------------------------|
-| `/ctech-account/{env}/rsa-private-key` | SecureString | RSA 2048 PEM private key                         |
-| `/ctech/{env}/valkey/url`              | String       | Valkey connection URL (existing, from ctech-cdk) |
+| Path                                        | Type         | Description                                               |
+|---------------------------------------------|--------------|-----------------------------------------------------------|
+| `/ctech-account/{env}/rsa-private-key`      | SecureString | RSA 2048 PEM private key                                  |
+| `/ctech/{env}/valkey/url`                   | String       | Valkey connection URL (existing, from ctech-cdk)          |
+| `/ctech-account/{env}/from-email`           | String       | SES verified sender address (FROM_EMAIL)                  |
+| `/ctech-account/{env}/app-url`              | String       | Public base URL, e.g. https://accounts.arturocarvalho.com |
+| `/ctech-account/{env}/google-client-id`     | String       | Google OAuth 2.0 client ID                                |
+| `/ctech-account/{env}/google-client-secret` | SecureString | Google OAuth 2.0 client secret                            |
 
 ---
 

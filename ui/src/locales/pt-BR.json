@@ -40,7 +40,34 @@
     "submit": "Entrar",
     "submitting": "Entrando…",
     "noAccount": "Não tem conta?",
-    "createOne": "Crie uma"
+    "createOne": "Crie uma",
+    "or": "ou",
+    "passkey": "Entrar com chave de acesso",
+    "passkeyPending": "Autenticando…",
+    "forgotPassword": "Esqueci a senha",
+    "google": "Continuar com Google"
+  },
+  "forgotPassword": {
+    "title": "Redefinir senha",
+    "description": "Informe seu e-mail e enviaremos um link de redefinição.",
+    "submit": "Enviar link de redefinição",
+    "sent": "Se existe uma conta com esse e-mail, um link de redefinição foi enviado. Verifique sua caixa de entrada.",
+    "backToLogin": "Voltar para o login"
+  },
+  "resetPassword": {
+    "title": "Definir nova senha",
+    "description": "Escolha uma senha forte para sua conta.",
+    "newPassword": "Nova senha",
+    "confirmPassword": "Confirmar nova senha",
+    "submit": "Definir senha",
+    "mismatch": "As senhas não coincidem.",
+    "invalidLink": "Este link de redefinição é inválido ou expirou. Solicite um novo."
+  },
+  "verifyEmail": {
+    "title": "Verificação de e-mail",
+    "success": "Seu e-mail foi verificado. Você já pode entrar.",
+    "error": "Este link de verificação é inválido ou expirou. Solicite um novo nas configurações da conta.",
+    "goToAccount": "Ir para a conta"
   },
   "mfa": {
     "title": "Autenticação em dois fatores",

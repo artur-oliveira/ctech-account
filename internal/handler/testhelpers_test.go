@@ -80,6 +80,7 @@ func newTestApp(t *testing.T) *testApp {
 		PublicKeyKID:  "test-kid",
 		RPID:          "localhost",
 		RPOrigins:     []string{"http://localhost"},
+		InternalToken: "test-internal-token",
 	}
 
 	jwtSvc, err := crypto.NewJWTService(cfg)
@@ -123,7 +124,7 @@ func newTestApp(t *testing.T) *testApp {
 	app.Use(recover.New())
 
 	v1 := app.Group("/v1.0")
-	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache, cfg).Register(v1)
+	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache, cfg, nil).Register(v1)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
@@ -135,6 +136,7 @@ func newTestApp(t *testing.T) *testApp {
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterManagement(account)
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
+	handler.NewInternalHandler(userSvc, cfg.InternalToken).Register(app)
 
 	return &testApp{
 		app:        app,

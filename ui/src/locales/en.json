@@ -40,7 +40,34 @@
     "submit": "Sign in",
     "submitting": "Signing in…",
     "noAccount": "No account?",
-    "createOne": "Create one"
+    "createOne": "Create one",
+    "or": "or",
+    "passkey": "Sign in with passkey",
+    "passkeyPending": "Authenticating…",
+    "forgotPassword": "Forgot password?",
+    "google": "Continue with Google"
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "description": "Enter your email and we'll send you a reset link.",
+    "submit": "Send reset link",
+    "sent": "If an account with that email exists, a reset link has been sent. Check your inbox.",
+    "backToLogin": "Back to sign in"
+  },
+  "resetPassword": {
+    "title": "Set new password",
+    "description": "Choose a strong password for your account.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "submit": "Set password",
+    "mismatch": "Passwords do not match.",
+    "invalidLink": "This reset link is invalid or has expired. Request a new one."
+  },
+  "verifyEmail": {
+    "title": "Email verification",
+    "success": "Your email has been verified. You can now sign in.",
+    "error": "This verification link is invalid or has expired. Request a new one from your account settings.",
+    "goToAccount": "Go to account"
   },
   "mfa": {
     "title": "Two-factor authentication",

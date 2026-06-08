@@ -22,6 +22,7 @@ import (
 	authcodeDomain "github.com/artur-oliveira/ctech-account/internal/domain/oauth/code"
 	sessionDomain "github.com/artur-oliveira/ctech-account/internal/domain/session"
 	userDomain "github.com/artur-oliveira/ctech-account/internal/domain/user"
+	"github.com/artur-oliveira/ctech-account/internal/email"
 	"github.com/artur-oliveira/ctech-account/internal/handler"
 	"github.com/artur-oliveira/ctech-account/internal/middleware"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -83,9 +84,20 @@ func main() {
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
 	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, valkeyClient)
 
+	// Email client (optional — only active when FROM_EMAIL is set)
+	var emailCli *email.Client
+	if cfg.FromEmail != "" {
+		emailCli, err = email.New(ctx, cfg.AWSRegion, cfg.FromEmail, cfg.AppURL)
+		if err != nil {
+			log.Printf("warning: email client init failed: %v (email sending disabled)", err)
+			emailCli = nil
+		}
+	}
+
 	// Handlers
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
-	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient, cfg)
+	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient, cfg, emailCli)
+	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.BaseURL)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL, cfg)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
@@ -94,6 +106,7 @@ func main() {
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc)
 	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc)
+	internalH := handler.NewInternalHandler(userSvc, cfg.InternalToken)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "ctech-account",
@@ -185,9 +198,11 @@ func main() {
 	})
 
 	wellknownH.Register(app)
+	internalH.Register(app)
 
 	v1 := app.Group("/v1.0")
 	authH.Register(v1)
+	socialH.Register(v1)
 	authorizeH.Register(v1)
 	tokenH.Register(v1)
 	passkeyH.RegisterAuth(v1.Group("/auth"))

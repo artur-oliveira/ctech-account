@@ -82,11 +82,52 @@ export async function removePasskeyAPI(passkeyId: string) {
   await api.delete(`/v1.0/account/mfa/passkeys/${passkeyId}`)
 }
 
-export async function beginPasskeyRegistrationAPI() {
-  const { data } = await api.post('/v1.0/account/mfa/passkeys/register/begin')
+export async function beginPasskeyRegistrationAPI(name: string) {
+  const { data } = await api.post<{ session_token: string; name: string; options: string }>(
+    '/v1.0/account/mfa/passkeys/register/begin',
+    { name },
+  )
   return data
 }
 
-export async function completePasskeyRegistrationAPI(credential: unknown) {
-  await api.post('/v1.0/account/mfa/passkeys/register/complete', credential)
+export async function completePasskeyRegistrationAPI(
+  sessionToken: string,
+  name: string,
+  credential: unknown,
+) {
+  await api.post(
+    `/v1.0/account/mfa/passkeys/register/complete?session_token=${encodeURIComponent(sessionToken)}&name=${encodeURIComponent(name)}`,
+    credential,
+  )
+}
+
+export async function forgotPasswordAPI(email: string) {
+  await api.post('/v1.0/auth/forgot-password', { email })
+}
+
+export async function resetPasswordAPI(token: string, newPassword: string) {
+  await api.post('/v1.0/auth/reset-password', { token, new_password: newPassword })
+}
+
+export async function verifyEmailAPI(token: string) {
+  await api.post('/v1.0/auth/verify-email', { token })
+}
+
+export async function resendVerificationAPI(email: string) {
+  await api.post('/v1.0/auth/resend-verification', { email })
+}
+
+export async function beginPasskeyAuthAPI() {
+  const { data } = await api.post<{ session_token: string; options: string }>(
+    '/v1.0/auth/passkeys/authenticate/begin',
+  )
+  return data
+}
+
+export async function completePasskeyAuthAPI(sessionToken: string, credential: unknown) {
+  const { data } = await api.post(
+    `/v1.0/auth/passkeys/authenticate/complete?session_token=${encodeURIComponent(sessionToken)}`,
+    credential,
+  )
+  return data
 }
