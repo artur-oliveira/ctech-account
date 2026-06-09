@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -41,7 +41,7 @@ export function CreateAPIKeyDialog() {
     },
   })
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     const scopes = fd.getAll('scopes') as string[]

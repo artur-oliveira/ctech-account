@@ -147,16 +147,28 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	refreshTokenValue := session.BuildCookieValue(ac.UserID, ac.SessionID, newRefreshToken)
-
 	// Set httpOnly cookie so SPA clients receive the refresh token without JS access.
-	h.setRefreshCookie(c, refreshTokenValue, refreshTokenMaxAge)
+	h.setRefreshCookie(c, newRefreshToken, refreshTokenMaxAge)
+
+	// Keep ctech_session in sync: ReplaceRefreshToken changes the stored hash, so the old
+	// session cookie value would no longer be found by the authorize endpoint's ValidateToken.
+	if c.Cookies("ctech_session") != "" {
+		c.Cookie(&fiber.Cookie{
+			Name:     "ctech_session",
+			Value:    newRefreshToken,
+			HTTPOnly: true,
+			Secure:   true,
+			SameSite: "Lax",
+			Path:     "/",
+			MaxAge:   refreshTokenMaxAge,
+		})
+	}
 
 	return c.JSON(fiber.Map{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": refreshTokenValue,
+		"refresh_token": newRefreshToken,
 		"id_token":      idToken,
 		"scope":         strings.Join(ac.Scopes, " "),
 	})
@@ -174,12 +186,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		return apierror.InvalidRequest("refresh_token and client_id are required.", c.Path()).Send(c)
 	}
 
-	userID, sessionID, rawToken, ok := splitRefreshToken(rawRefreshToken)
-	if !ok {
-		return apierror.InvalidGrant("Invalid refresh_token format.", c.Path()).Send(c)
-	}
-
-	newRawToken, err := h.sessionSvc.Rotate(c.Context(), userID, sessionID, rawToken)
+	sess, newRawToken, err := h.sessionSvc.Rotate(c.Context(), rawRefreshToken)
 	if err != nil {
 		if errors.Is(err, session.ErrTokenReuse) {
 			return apierror.TokenReuse(c.Path()).Send(c)
@@ -191,21 +198,32 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	}
 
 	scopes := []string{"openid", "profile", "email"}
-	accessToken, err := h.jwtSvc.SignAccessToken(userID, sessionID, scopes, h.baseURL)
+	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), scopes, h.baseURL)
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	newTokenValue := session.BuildCookieValue(userID, sessionID, newRawToken)
-
 	// Rotate the cookie with the new refresh token value.
-	h.setRefreshCookie(c, newTokenValue, refreshTokenMaxAge)
+	h.setRefreshCookie(c, newRawToken, refreshTokenMaxAge)
+
+	// Keep ctech_session in sync for the same reason as in authorizationCode.
+	if c.Cookies("ctech_session") != "" {
+		c.Cookie(&fiber.Cookie{
+			Name:     "ctech_session",
+			Value:    newRawToken,
+			HTTPOnly: true,
+			Secure:   true,
+			SameSite: "Lax",
+			Path:     "/",
+			MaxAge:   refreshTokenMaxAge,
+		})
+	}
 
 	return c.JSON(fiber.Map{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"expires_in":    900,
-		"refresh_token": newTokenValue,
+		"refresh_token": newRawToken,
 		"scope":         strings.Join(scopes, " "),
 	})
 }
@@ -216,8 +234,8 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 		return apierror.InvalidRequest("token is required.", c.Path()).Send(c)
 	}
 
-	if userID, sessionID, _, ok := splitRefreshToken(rawToken); ok {
-		_ = h.sessionSvc.Revoke(c.Context(), userID, sessionID)
+	if sess, err := h.sessionSvc.ValidateToken(c.Context(), rawToken); err == nil {
+		_ = h.sessionSvc.Revoke(c.Context(), sess.UserID(), sess.ID())
 	}
 
 	h.clearRefreshCookie(c)
@@ -250,14 +268,6 @@ func (h *TokenHandler) clearRefreshCookie(c fiber.Ctx) {
 		Domain:   h.cfg.CookieDomain,
 		Path:     "/",
 	})
-}
-
-func splitRefreshToken(raw string) (userID, sessionID, token string, ok bool) {
-	parts := strings.SplitN(raw, ":", 3)
-	if len(parts) != 3 {
-		return "", "", "", false
-	}
-	return parts[0], parts[1], parts[2], true
 }
 
 func verifyPKCE(verifier, challenge string) bool {

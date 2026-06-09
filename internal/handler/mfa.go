@@ -34,14 +34,33 @@ func NewMFAHandler(totpSvc TOTPManagementService, userSvc *user.Service, cfg *co
 
 func (h *MFAHandler) Register(account fiber.Router) {
 	mfa := account.Group("/mfa")
+	mfa.Get("/totp", h.totpStatus)
 	mfa.Get("/totp/setup", h.totpSetup)
 	mfa.Post("/totp/confirm", h.totpConfirm)
 	mfa.Delete("/totp", h.totpRemove)
 	mfa.Post("/totp/backup-codes", h.totpRegenerateBackupCodes)
 }
 
+func (h *MFAHandler) totpStatus(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	secret, err := h.totpSvc.Get(c.Context(), userID)
+	if err != nil {
+		if errors.Is(err, totp.ErrNotFound) {
+			return c.JSON(fiber.Map{"enabled": false})
+		}
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+	return c.JSON(fiber.Map{"enabled": secret.IsSetup()})
+}
+
 func (h *MFAHandler) totpSetup(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
+
+	// If already verified, return 409 so the frontend shows "already configured".
+	existing, err := h.totpSvc.Get(c.Context(), userID)
+	if err == nil && existing.IsSetup() {
+		return apierror.Conflict("TOTP is already active for this account.", c.Path()).Send(c)
+	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
@@ -51,7 +70,7 @@ func (h *MFAHandler) totpSetup(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	_, provisioningURI, err := h.totpSvc.Generate(c.Context(), userID, u.Email, h.cfg.BaseURL)
+	_, provisioningURI, err := h.totpSvc.Generate(c.Context(), userID, u.Email, h.cfg.TOTPIssuer)
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}

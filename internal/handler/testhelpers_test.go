@@ -75,6 +75,7 @@ func newTestApp(t *testing.T) *testApp {
 	cfg := &config.Config{
 		Environment:   "test",
 		BaseURL:       "http://localhost",
+		TOTPIssuer:    "http://localhost",
 		Port:          "8000",
 		RSAPrivateKey: privateKey,
 		PublicKeyKID:  "test-kid",
@@ -109,7 +110,8 @@ func newTestApp(t *testing.T) *testApp {
 	if err != nil {
 		t.Fatalf("creating webauthn: %v", err)
 	}
-	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, disabledCache)
+	passkeyCache := cache.NewInMemory()
+	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, passkeyCache)
 
 	noop := &noopTOTPService{}
 
@@ -124,8 +126,8 @@ func newTestApp(t *testing.T) *testApp {
 	app.Use(recover.New())
 
 	v1 := app.Group("/v1.0")
-	handler.NewAuthHandler(userSvc, sessionSvc, noop, disabledCache, cfg, nil).Register(v1)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterAuth(v1.Group("/auth"))
+	handler.NewAuthHandler(userSvc, sessionSvc, noop, passkeySvc, disabledCache, cfg, nil).Register(v1)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
@@ -133,7 +135,7 @@ func newTestApp(t *testing.T) *testApp {
 	handler.NewSessionsHandler(sessionSvc).Register(account)
 	handler.NewAPIKeysHandler(apiKeySvc).Register(account)
 	handler.NewMFAHandler(noop, userSvc, cfg).Register(account)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc).RegisterManagement(account)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache).RegisterManagement(account)
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
 	handler.NewInternalHandler(userSvc, cfg.InternalToken).Register(app)
@@ -286,6 +288,15 @@ func (m *memSessionRepo) GetByID(_ context.Context, userID, sessionID string) (*
 		return nil, sessionDomain.ErrNotFound
 	}
 	return s, nil
+}
+
+func (m *memSessionRepo) GetByTokenHash(_ context.Context, tokenHash string) (*sessionDomain.Session, error) {
+	for _, s := range m.sessions {
+		if s.RefreshTokenHash == tokenHash {
+			return s, nil
+		}
+	}
+	return nil, sessionDomain.ErrNotFound
 }
 
 func (m *memSessionRepo) UpdateRefreshToken(_ context.Context, userID, sessionID, newHash string) error {

@@ -96,23 +96,28 @@ func main() {
 
 	// Handlers
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
-	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, valkeyClient, cfg, emailCli)
+	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, passkeySvc, valkeyClient, cfg, emailCli)
 	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg)
-	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.BaseURL)
+	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.AppURL)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL, cfg)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc)
 	profileH := handler.NewProfileHandler(userSvc)
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc)
 	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg)
-	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc)
+	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient)
 	internalH := handler.NewInternalHandler(userSvc, cfg.InternalToken)
 
 	app := fiber.New(fiber.Config{
-		AppName:      "ctech-account",
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		AppName:                 "ctech-account",
+		ReadTimeout:             15 * time.Second,
+		WriteTimeout:            15 * time.Second,
+		IdleTimeout:             60 * time.Second,
+		ProxyHeader: fiber.HeaderXForwardedFor,
+		TrustProxy:  len(cfg.TrustedProxies) > 0,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: cfg.TrustedProxies,
+		},
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			// RFC 7807 Problem Details as the single error format.
 			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
@@ -121,6 +126,7 @@ func main() {
 			if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
 				return apierror.NewFromFiber(fiberErr, c.Path()).Send(c)
 			}
+			log.Printf("internal server error request_id=%s path=%s: %v", requestid.FromContext(c), c.Path(), err)
 			return apierror.ServerError(c.Path()).Send(c)
 		},
 	})
@@ -128,7 +134,7 @@ func main() {
 	app.Use(recover.New())
 	app.Use(requestid.New())
 	app.Use(logger.New(logger.Config{
-		Format: `{"time":"${time}","method":"${method}","path":"${path}","status":${status},"latency":"${latency}","request_id":"${locals:requestid}"}` + "\n",
+		Format: `{"time":"${time}","method":"${method}","path":"${path}","status":${status},"latency":"${latency}","request_id":"${requestid}"}` + "\n",
 	}))
 
 	allowedOrigins := make([]string, 1, 1+len(cfg.AllowedOrigins))

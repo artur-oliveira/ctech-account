@@ -71,7 +71,9 @@
   },
   "mfa": {
     "title": "Two-factor authentication",
-    "description": "Enter the 6-digit code from your authenticator app.",
+    "description": "Verify your identity to continue.",
+    "passkey": "Verify with passkey",
+    "passkeyPending": "Authenticating…",
     "code": "Verification code",
     "submit": "Verify",
     "submitting": "Verifying…"
@@ -170,6 +172,7 @@
       "title": "Authenticator app (TOTP)",
       "description": "Use a time-based one-time password (TOTP) app for extra login security.",
       "setup": "Set up",
+      "enabled": "Enabled",
       "remove": "Remove",
       "removing": "Removing…",
       "confirmRemove": "Remove TOTP authentication? Your account will be less secure."
@@ -205,6 +208,7 @@
     "backup": {
       "title": "TOTP activated",
       "description": "Save these backup codes somewhere safe. Each can only be used once.",
+      "download": "Download codes",
       "back": "Back to security"
     }
   },

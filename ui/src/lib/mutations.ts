@@ -131,3 +131,18 @@ export async function completePasskeyAuthAPI(sessionToken: string, credential: u
   )
   return data
 }
+
+export async function beginMFAPasskeyAPI(mfaToken: string) {
+  const { data } = await api.post<{ session_token: string; options: string }>(
+    '/v1.0/auth/mfa/passkey/begin',
+    { mfa_token: mfaToken },
+  )
+  return data
+}
+
+export async function completeMFAPasskeyAPI(mfaToken: string, sessionToken: string, credential: unknown) {
+  await api.post(
+    `/v1.0/auth/mfa/passkey/complete?mfa_token=${encodeURIComponent(mfaToken)}&session_token=${encodeURIComponent(sessionToken)}`,
+    credential,
+  )
+}

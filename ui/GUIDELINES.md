@@ -23,6 +23,7 @@ src/
 ```
 
 **Data flow:**
+
 - Reads: Server Components call `lib/api.ts` → Bearer token from `ctech_at` cookie → Go API
 - Mutations: Client Components call Server Actions in `lib/actions.ts` → Go API
 - Auth: Route Handlers in `app/api/auth/` handle token exchange, store in httpOnly cookies
@@ -34,22 +35,22 @@ src/
 
 These are breaking changes from Next.js 14/15:
 
-| API | Correct |
-|-----|---------|
-| Route protection | `proxy.ts` (not `middleware.ts`) |
-| `cookies()` / `headers()` | `await cookies()` — they return Promises |
-| `params` in page props | `const { id } = await params` |
-| `searchParams` in page props | `const { q } = await searchParams` |
-| Caching | No default cache — opt in with `use cache` directive |
-| Cache invalidation | `revalidatePath(path)` inside Server Actions |
+| API                          | Correct                                              |
+|------------------------------|------------------------------------------------------|
+| Route protection             | `proxy.ts` (not `middleware.ts`)                     |
+| `cookies()` / `headers()`    | `await cookies()` — they return Promises             |
+| `params` in page props       | `const { id } = await params`                        |
+| `searchParams` in page props | `const { q } = await searchParams`                   |
+| Caching                      | No default cache — opt in with `use cache` directive |
+| Cache invalidation           | `revalidatePath(path)` inside Server Actions         |
 
 `useSearchParams()` requires a `<Suspense>` boundary around the component that calls it. Pattern:
 
 ```tsx
 export default function Page() {
   return (
-    <Suspense fallback={<div className="animate-pulse h-8 bg-muted rounded" />}>
-      <InnerForm />  {/* InnerForm calls useSearchParams() */}
+    <Suspense fallback={<div className="animate-pulse h-8 bg-muted rounded"/>}>
+      <InnerForm/> {/* InnerForm calls useSearchParams() */}
     </Suspense>
   )
 }
@@ -60,6 +61,7 @@ export default function Page() {
 ## React 19 Patterns
 
 **Server Actions with `useActionState`:**
+
 ```tsx
 const [state, action] = useActionState(myServerAction, null)
 // state is the return value of myServerAction
@@ -67,15 +69,19 @@ const [state, action] = useActionState(myServerAction, null)
 ```
 
 **Never copy action state into separate `useState` via `useEffect`:**
+
 ```tsx
 // WRONG — triggers react-hooks/set-state-in-effect
-useEffect(() => { setX(state.x) }, [state])
+useEffect(() => {
+  setX(state.x)
+}, [state])
 
 // CORRECT — derive directly
 const x = state?.success ? state.x : null
 ```
 
 **`useEffect` in action components is for side effects only** (toasts, focus, navigation):
+
 ```tsx
 useEffect(() => {
   if (state?.success) toast.success('Done.')
@@ -84,9 +90,10 @@ useEffect(() => {
 ```
 
 **Submit button pending state via `useFormStatus`:**
+
 ```tsx
 function SubmitButton() {
-  const { pending } = useFormStatus()
+  const {pending} = useFormStatus()
   return <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
 }
 ```
@@ -105,8 +112,8 @@ Use `render` prop instead:
 <DialogTrigger asChild><Button>Open</Button></DialogTrigger>
 
 // CORRECT
-<Button render={<Link href="/foo" />}>Go</Button>
-<DialogTrigger render={<Button />}>Open</DialogTrigger>
+<Button render={<Link href="/foo"/>}>Go</Button>
+<DialogTrigger render={<Button/>}>Open</DialogTrigger>
 ```
 
 ---
@@ -114,6 +121,7 @@ Use `render` prop instead:
 ## Tailwind v4
 
 Import via CSS only — no `tailwind.config.js`:
+
 ```css
 @import "tailwindcss";
 ```
@@ -134,12 +142,14 @@ Use `size-*` instead of `w-* h-*` for square elements. Use `text-muted-foregroun
 ## Fetch Patterns
 
 **Server-side reads (Server Components):**
+
 ```ts
 // lib/api.ts — always use these helpers, never raw fetch in page files
 const profile = await getProfile()  // returns null on 404, redirects on 401
 ```
 
 **Client-side mutations (Server Actions):**
+
 ```ts
 // lib/actions.ts
 'use server'
@@ -147,12 +157,14 @@ const profile = await getProfile()  // returns null on 404, redirects on 401
 ```
 
 **Client-side imperative fetch (Route Handlers):**
+
 ```ts
 // Used for auth flows where cookie-setting is required
-const res = await fetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) })
+const res = await fetch('/api/auth/login', {method: 'POST', body: JSON.stringify(data)})
 ```
 
-Never call `API_URL` directly from browser code. All external API calls go through Server Components, Server Actions, or Route Handlers.
+Never call `API_URL` directly from browser code. All external API calls go through Server Components, Server Actions, or
+Route Handlers.
 
 ---
 
@@ -163,11 +175,12 @@ Backend returns RFC 7807 `application/problem+json`. Check `res.ok` first, then 
 ```ts
 if (!res.ok) {
   const problem: ProblemDetail = await res.json()
-  return { error: problem.detail }
+  return {error: problem.detail}
 }
 ```
 
 Surface errors in UI via:
+
 1. Inline `<Alert variant="destructive">` for form validation errors
 2. `toast.error(message)` from `sonner` for transient errors
 
@@ -175,13 +188,13 @@ Surface errors in UI via:
 
 ## File Naming Conventions
 
-| Pattern | Use |
-|---------|-----|
-| `page.tsx` | Route page (Server or Client Component) |
-| `layout.tsx` | Layout (usually Server Component) |
-| `*-actions.tsx` | Client Component with action buttons for a page |
-| `route.ts` | Route Handler (BFF — token/cookie management) |
-| `components/*.tsx` | Shared components, kebab-case filenames |
+| Pattern            | Use                                             |
+|--------------------|-------------------------------------------------|
+| `page.tsx`         | Route page (Server or Client Component)         |
+| `layout.tsx`       | Layout (usually Server Component)               |
+| `*-actions.tsx`    | Client Component with action buttons for a page |
+| `route.ts`         | Route Handler (BFF — token/cookie management)   |
+| `components/*.tsx` | Shared components, kebab-case filenames         |
 
 ---
 

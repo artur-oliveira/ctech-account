@@ -1,7 +1,7 @@
 'use client'
 
-import { FormEvent } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import {SyntheticEvent, SyntheticEvent} from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,16 +10,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { updateProfileAPI, changePasswordAPI } from '@/lib/mutations'
+import { fetchProfile } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 
 function ProfileForm() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
   const { mutate: update, isPending, error } = useMutation({
     mutationFn: updateProfileAPI,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] })
+      void queryClient.invalidateQueries({ queryKey: ['profile'] })
       toast.success(t('toast.profileUpdated'))
     },
     onError: (err) => {
@@ -27,7 +29,7 @@ function ProfileForm() {
     },
   })
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     update({
@@ -40,7 +42,7 @@ function ProfileForm() {
   const errorMsg = isAxiosError(error) ? (error.response?.data?.detail ?? t('errors.updateFailed')) : null
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form key={profile?.user_id} onSubmit={handleSubmit} className="space-y-4">
       {errorMsg && (
         <Alert variant="destructive">
           <AlertDescription>{errorMsg}</AlertDescription>
@@ -49,16 +51,16 @@ function ProfileForm() {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="first_name">{t('profile.firstName')}</Label>
-          <Input id="first_name" name="first_name" required />
+          <Input id="first_name" name="first_name" required defaultValue={profile?.first_name ?? ''} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="last_name">{t('profile.lastName')}</Label>
-          <Input id="last_name" name="last_name" />
+          <Input id="last_name" name="last_name" defaultValue={profile?.last_name ?? ''} />
         </div>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="display_name">{t('profile.displayName')}</Label>
-        <Input id="display_name" name="display_name" placeholder={t('profile.displayNamePlaceholder')} />
+        <Input id="display_name" name="display_name" placeholder={t('profile.displayNamePlaceholder')} defaultValue={profile?.display_name ?? ''} />
       </div>
       <Button type="submit" disabled={isPending}>{isPending ? t('profile.saving') : t('profile.save')}</Button>
     </form>
@@ -75,7 +77,7 @@ function PasswordForm() {
     },
   })
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     changePassword({

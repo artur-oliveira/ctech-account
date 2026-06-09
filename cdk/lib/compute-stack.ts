@@ -165,7 +165,7 @@ export class ComputeStack extends cdk.Stack {
       `        server_name _;`,
       `        access_log /var/log/nginx/access.log json_log;`,
       ``,
-      `        location = /health {`,
+      `        location = /healthz {`,
       `            proxy_pass http://app;`,
       `            proxy_http_version 1.1;`,
       `            proxy_set_header Connection "";`,
@@ -223,19 +223,27 @@ export class ComputeStack extends cdk.Stack {
       `TABLE_PREFIX=${environment}_`,
       `AWS_REGION=${this.region}`,
       `AWS_USE_DUALSTACK_ENDPOINT=true`,
-      `BASE_URL=https://accounts.arturocarvalho.com`,
       `PORT=8000`,
       `ENV`,
 
       // start.sh: fetches secrets from SSM then execs the Go binary
       `cat > /opt/app/start.sh << 'START'`,
       `#!/bin/bash`,
+      `TRUSTED_PROXIES=127.0.0.1`,
       `RSA_PRIVATE_KEY_PEM=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/rsa-private-key" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `INTERNAL_TOKEN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/internal-token" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
+      `PUBLIC_KEY_KID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/public-key-kid" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
+      `BASE_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/base-url" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
+      `ALLOWED_ORIGINS=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/allowed-origins" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
+      `APP_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
       ...(valkeyUrlSsmPath ? [
         `VALKEY_URL=$(aws ssm get-parameter --name "${valkeyUrlSsmPath}" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
         `export VALKEY_URL`,
       ] : []),
+      `export TRUSTED_PROXIES`,
+      `export BASE_URL`,
+      `export ALLOWED_ORIGINS`,
+      `export APP_URL`,
       `export RSA_PRIVATE_KEY_PEM`,
       `export INTERNAL_TOKEN`,
       `exec /opt/app/current/bootstrap >> /var/log/app/app.log 2>&1`,
@@ -282,7 +290,7 @@ export class ComputeStack extends cdk.Stack {
       `ln -sfT "$RELEASE_DIR" /opt/app/current`,
       `systemctl restart app 2>/dev/null || systemctl start app`,
       `for i in {1..60}; do`,
-      `  if curl -sf http://127.0.0.1:8080/health >/dev/null; then`,
+      `  if curl -sf http://127.0.0.1:8080/healthz >/dev/null; then`,
       `    echo "Health check passed"`,
       `    break`,
       `  fi`,
@@ -293,7 +301,7 @@ export class ComputeStack extends cdk.Stack {
       `  fi`,
       `  sleep 2`,
       `done`,
-      `curl -sf http://127.0.0.1:8080/health >/dev/null || { echo "Timed out"; exit 1; }`,
+      `curl -sf http://127.0.0.1:8080/healthz >/dev/null || { echo "Timed out"; exit 1; }`,
       `ls -dt /opt/app/releases/*/ 2>/dev/null | tail -n +2 | xargs rm -rf 2>/dev/null || true`,
       `echo "Deployment successful"`,
       `DEPLOY`,
@@ -382,7 +390,7 @@ export class ComputeStack extends cdk.Stack {
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
       healthCheck: {
-        path: '/health',
+        path: '/healthz',
         interval: cdk.Duration.seconds(15),
         timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
@@ -420,6 +428,9 @@ export class ComputeStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'AsgName', {value: this.asgName, exportName: `${id}-asg-name`});
     new cdk.CfnOutput(this, 'AppLogGroupName', {value: appLogGroup.logGroupName, exportName: `${id}-app-log-group`});
-    new cdk.CfnOutput(this, 'NginxLogGroupName', {value: nginxLogGroup.logGroupName, exportName: `${id}-nginx-log-group`});
+    new cdk.CfnOutput(this, 'NginxLogGroupName', {
+      value: nginxLogGroup.logGroupName,
+      exportName: `${id}-nginx-log-group`
+    });
   }
 }

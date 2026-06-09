@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
@@ -28,13 +28,25 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
     },
   })
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     mutate(fd.get('code') as string)
   }
 
   const errorMsg = isAxiosError(error) ? (error.response?.data?.detail ?? t('errors.invalidCode')) : null
+
+  function downloadBackupCodes() {
+    if (!backupCodes) return
+    const content = `TOTP Backup Codes\nGenerated: ${new Date().toISOString()}\n\n${backupCodes.join('\n')}\n\nEach code can only be used once.`
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'totp-backup-codes.txt'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (backupCodes?.length) {
     return (
@@ -51,9 +63,14 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
               </code>
             ))}
           </div>
-          <Button render={<a href="/account/security" />} variant="outline">
-            {t('totp.backup.back')}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={downloadBackupCodes} variant="outline">
+              {t('totp.backup.download')}
+            </Button>
+            <Button render={<a href="/account/security" />} nativeButton={false} variant="outline">
+              {t('totp.backup.back')}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )

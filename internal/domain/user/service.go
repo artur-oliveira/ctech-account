@@ -46,6 +46,7 @@ func (s *Service) Register(ctx context.Context, email, password, firstName, last
 		EmailVerified: false,
 		IsEnabled:     true,
 	}
+	u.DisplayName = u.FirstName + " " + u.LastName
 
 	if err := s.repo.Create(ctx, u); err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)

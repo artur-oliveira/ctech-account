@@ -21,6 +21,11 @@ export async function fetchPasskeys(): Promise<Passkey[]> {
   return data.passkeys ?? []
 }
 
+export async function fetchTOTPStatus(): Promise<{ enabled: boolean }> {
+  const { data } = await api.get<{ enabled: boolean }>('/v1.0/account/mfa/totp')
+  return data
+}
+
 export async function fetchTOTPSetup(): Promise<{ provisioning_uri: string } | null> {
   try {
     const { data } = await api.get<{ provisioning_uri: string }>('/v1.0/account/mfa/totp/setup')

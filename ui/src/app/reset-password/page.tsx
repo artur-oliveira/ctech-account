@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, FormEvent } from 'react'
+import { Suspense, useState, SyntheticEvent } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
@@ -27,7 +27,7 @@ function ResetPasswordForm() {
     )
   }
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     const fd = new FormData(e.currentTarget)

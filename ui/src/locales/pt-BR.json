@@ -71,7 +71,9 @@
   },
   "mfa": {
     "title": "Autenticação em dois fatores",
-    "description": "Insira o código de 6 dígitos do seu app autenticador.",
+    "description": "Verifique sua identidade para continuar.",
+    "passkey": "Verificar com chave de acesso",
+    "passkeyPending": "Autenticando…",
     "code": "Código de verificação",
     "submit": "Verificar",
     "submitting": "Verificando…"
@@ -170,6 +172,7 @@
       "title": "App autenticador (TOTP)",
       "description": "Use um app de senha única baseada em tempo (TOTP) para maior segurança no login.",
       "setup": "Configurar",
+      "enabled": "Ativo",
       "remove": "Remover",
       "removing": "Removendo…",
       "confirmRemove": "Remover a autenticação TOTP? Sua conta ficará menos segura."
@@ -205,6 +208,7 @@
     "backup": {
       "title": "TOTP ativado",
       "description": "Salve esses códigos de backup em um lugar seguro. Cada um pode ser usado apenas uma vez.",
+      "download": "Baixar códigos",
       "back": "Voltar para segurança"
     }
   },

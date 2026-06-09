@@ -11,22 +11,20 @@ import { verifyEmailAPI } from '@/lib/mutations'
 function VerifyEmailInner() {
   const { t } = useTranslation()
   const params = useSearchParams()
-  const [state, setState] = useState<'pending' | 'success' | 'error'>('pending')
+  const token = params.get('token')
+  const [state, setState] = useState<'pending' | 'success' | 'error'>(token ? 'pending' : 'error')
   const ran = useRef(false)
 
   useEffect(() => {
     if (ran.current) return
     ran.current = true
-
-    const token = params.get('token')
     if (!token) {
-      setState('error')
-      return
+      return;
     }
     void verifyEmailAPI(token)
       .then(() => setState('success'))
       .catch(() => setState('error'))
-  }, [params])
+  }, [token])
 
   if (state === 'pending') {
     return <p className="text-muted-foreground text-sm animate-pulse">{t('common.loading')}</p>

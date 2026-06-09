@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
@@ -12,9 +13,22 @@ import (
 
 var ErrNotFound = errors.New("key not found")
 
+type memEntry struct {
+	data    []byte
+	expires time.Time
+}
+
 type Client struct {
-	client  valkey.Client
-	enabled bool
+	client   valkey.Client
+	enabled  bool
+	inMemory bool
+	mu       sync.RWMutex
+	mem      map[string]memEntry
+}
+
+// NewInMemory returns an in-memory cache client suitable for testing.
+func NewInMemory() *Client {
+	return &Client{enabled: true, inMemory: true, mem: make(map[string]memEntry)}
 }
 
 func New(url string) (*Client, error) {
@@ -49,6 +63,13 @@ func (c *Client) Set(ctx context.Context, key string, value any, ttl time.Durati
 		return fmt.Errorf("marshaling value: %w", err)
 	}
 
+	if c.inMemory {
+		c.mu.Lock()
+		c.mem[key] = memEntry{data: data, expires: time.Now().Add(ttl)}
+		c.mu.Unlock()
+		return nil
+	}
+
 	cmd := c.client.B().Set().Key(key).Value(string(data)).Ex(ttl).Build()
 	return c.client.Do(ctx, cmd).Error()
 }
@@ -56,6 +77,16 @@ func (c *Client) Set(ctx context.Context, key string, value any, ttl time.Durati
 func (c *Client) Get(ctx context.Context, key string, dest any) error {
 	if !c.enabled {
 		return ErrNotFound
+	}
+
+	if c.inMemory {
+		c.mu.RLock()
+		entry, ok := c.mem[key]
+		c.mu.RUnlock()
+		if !ok || time.Now().After(entry.expires) {
+			return ErrNotFound
+		}
+		return json.Unmarshal(entry.data, dest)
 	}
 
 	cmd := c.client.B().Get().Key(key).Build()
@@ -81,6 +112,12 @@ func (c *Client) Get(ctx context.Context, key string, dest any) error {
 
 func (c *Client) Delete(ctx context.Context, key string) error {
 	if !c.enabled {
+		return nil
+	}
+	if c.inMemory {
+		c.mu.Lock()
+		delete(c.mem, key)
+		c.mu.Unlock()
 		return nil
 	}
 	cmd := c.client.B().Del().Key(key).Build()

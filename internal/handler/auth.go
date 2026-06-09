@@ -10,6 +10,7 @@ import (
 	"github.com/artur-oliveira/ctech-account/internal/cache"
 	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/crypto"
+	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/passkey"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/totp"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
@@ -39,13 +40,14 @@ type AuthHandler struct {
 	userSvc    *user.Service
 	sessionSvc *session.Service
 	totpSvc    TOTPService
+	passkeySvc *passkey.Service
 	cache      *cache.Client
 	cfg        *config.Config
 	emailCli   *email.Client // nil when FROM_EMAIL is not set
 }
 
-func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config, emailCli *email.Client) *AuthHandler {
-	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg, emailCli: emailCli}
+func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, passkeySvc *passkey.Service, valkeyCache *cache.Client, cfg *config.Config, emailCli *email.Client) *AuthHandler {
+	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, passkeySvc: passkeySvc, cache: valkeyCache, cfg: cfg, emailCli: emailCli}
 }
 
 func (h *AuthHandler) Register(v1 fiber.Router) {
@@ -54,6 +56,8 @@ func (h *AuthHandler) Register(v1 fiber.Router) {
 	auth.Post("/login", h.login)
 	auth.Post("/logout", h.logout)
 	auth.Post("/mfa/challenge", h.mfaChallenge)
+	auth.Post("/mfa/passkey/begin", h.mfaPasskeyBegin)
+	auth.Post("/mfa/passkey/complete", h.mfaPasskeyComplete)
 	auth.Post("/verify-email", h.verifyEmail)
 	auth.Post("/resend-verification", h.resendVerification)
 	auth.Post("/forgot-password", h.forgotPassword)
@@ -114,17 +118,25 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		return apierror.InvalidCredentials(c.Path()).Send(c)
 	}
 
-	totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID())
-	if totpErr == nil && totpSecret.IsSetup() {
-		return h.issueMFAToken(c, u)
+	var methods []string
+	if hasKeys, _ := h.passkeySvc.HasPasskeys(c.Context(), u.ID()); hasKeys {
+		methods = append(methods, "passkey")
+	}
+	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID()); totpErr == nil && totpSecret.IsSetup() {
+		methods = append(methods, "totp")
+	}
+
+	if len(methods) > 0 {
+		return issueMFAToken(c, h.cache, u.ID(), parseDeviceName(c.Get("User-Agent")), c.IP(), c.Get("User-Agent"), methods)
 	}
 
 	return h.issueSession(c, u)
 }
 
-// issueMFAToken stores a short-lived token in Valkey and returns it to the client for MFA completion.
-func (h *AuthHandler) issueMFAToken(c fiber.Ctx, u *user.User) error {
-	if h.cache == nil || !h.cache.Enabled() {
+// issueMFAToken stores a short-lived MFA token in Valkey and sends the challenge response.
+// Shared by AuthHandler (password login) and PasskeyHandler (passkey login with TOTP required).
+func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, ip, userAgent string, methods []string) error {
+	if cacheClient == nil || !cacheClient.Enabled() {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
@@ -134,20 +146,20 @@ func (h *AuthHandler) issueMFAToken(c fiber.Ctx, u *user.User) error {
 	}
 
 	payload := mfaTokenPayload{
-		UserID:     u.ID(),
-		DeviceName: parseDeviceName(c.Get("User-Agent")),
-		IP:         c.IP(),
-		UserAgent:  c.Get("User-Agent"),
+		UserID:     userID,
+		DeviceName: deviceName,
+		IP:         ip,
+		UserAgent:  userAgent,
 	}
 
-	if err := h.cache.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
+	if err := cacheClient.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"requires_mfa": true,
 		"mfa_token":    rawToken,
-		"mfa_methods":  []string{"totp"},
+		"mfa_methods":  methods,
 	})
 }
 
@@ -161,7 +173,7 @@ func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
-		Value:    session.BuildCookieValue(u.ID(), sess.ID(), rawToken),
+		Value:    rawToken,
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",
@@ -217,7 +229,111 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
-		Value:    session.BuildCookieValue(u.ID(), sess.ID(), rawToken),
+		Value:    rawToken,
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+		Path:     "/",
+		MaxAge:   int(session.SessionTTL.Seconds()),
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"user_id":    u.ID(),
+		"email":      u.Email,
+		"first_name": u.FirstName,
+		"last_name":  u.LastName,
+		"session_id": sess.ID(),
+	})
+}
+
+type mfaPasskeyBeginRequest struct {
+	MFAToken string `json:"mfa_token" validate:"required"`
+}
+
+// mfaPasskeyBegin peeks at the mfa_token (does not consume it) and returns a
+// user-specific WebAuthn challenge. The mfa_token is consumed in mfaPasskeyComplete.
+func (h *AuthHandler) mfaPasskeyBegin(c fiber.Ctx) error {
+	var req mfaPasskeyBeginRequest
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+
+	if h.cache == nil || !h.cache.Enabled() {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	hashHex := crypto.HashToken(req.MFAToken)
+	var payload mfaTokenPayload
+	if err := h.cache.Get(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
+		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+	}
+
+	optionsJSON, sessionToken, err := h.passkeySvc.BeginUserAuthentication(c.Context(), payload.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, passkey.ErrCacheRequired):
+			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).Send(c)
+		case errors.Is(err, passkey.ErrNoCredentials):
+			return apierror.InvalidRequest("No passkeys registered for this account.", c.Path()).Send(c)
+		default:
+			return apierror.ServerError(c.Path()).Send(c)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"session_token": sessionToken,
+		"options":       string(optionsJSON),
+	})
+}
+
+// mfaPasskeyComplete consumes the mfa_token, validates the passkey assertion, and issues a session.
+// Query params: mfa_token, session_token. Body: raw WebAuthn assertion JSON.
+func (h *AuthHandler) mfaPasskeyComplete(c fiber.Ctx) error {
+	mfaToken := c.Query("mfa_token")
+	sessionToken := c.Query("session_token")
+
+	if mfaToken == "" || sessionToken == "" {
+		return apierror.InvalidRequest("mfa_token and session_token query params are required.", c.Path()).Send(c)
+	}
+	if len(c.Body()) == 0 {
+		return apierror.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
+	}
+
+	if h.cache == nil || !h.cache.Enabled() {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	hashHex := crypto.HashToken(mfaToken)
+	var payload mfaTokenPayload
+	if err := h.cache.Get(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
+		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), "mfa_token:"+hashHex)
+
+	if err := h.passkeySvc.FinishUserAuthentication(c.Context(), payload.UserID, sessionToken, c.Body()); err != nil {
+		switch {
+		case errors.Is(err, passkey.ErrSessionExpired):
+			return apierror.InvalidToken("Passkey session expired. Please try again.", c.Path()).Send(c)
+		case errors.Is(err, passkey.ErrInvalidResponse):
+			return apierror.InvalidRequest("Invalid passkey response.", c.Path()).Send(c)
+		default:
+			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).Send(c)
+		}
+	}
+
+	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent)
+	if err != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "ctech_session",
+		Value:    rawToken,
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",

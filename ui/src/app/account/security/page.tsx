@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fetchPasskeys } from '@/lib/queries'
+import { fetchPasskeys, fetchTOTPStatus } from '@/lib/queries'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Fingerprint, KeyRound, Lock } from 'lucide-react'
 import { RemoveTOTPButton } from './security-actions'
 
@@ -15,6 +16,12 @@ export default function SecurityPage() {
     queryKey: ['passkeys'],
     queryFn: fetchPasskeys,
   })
+  const { data: totpStatus } = useQuery({
+    queryKey: ['totp-status'],
+    queryFn: fetchTOTPStatus,
+  })
+
+  const totpEnabled = totpStatus?.enabled ?? false
 
   return (
     <div className="space-y-6">
@@ -29,12 +36,17 @@ export default function SecurityPage() {
             <div className="flex items-center gap-2">
               <KeyRound className="size-5" />
               <CardTitle className="text-base">{t('security.totp.title')}</CardTitle>
+              {totpEnabled && (
+                <Badge variant="secondary">{t('security.totp.enabled')}</Badge>
+              )}
             </div>
             <div className="flex gap-2">
-              <Button render={<Link href="/account/security/totp" />} size="sm" variant="outline">
-                {t('security.totp.setup')}
-              </Button>
-              <RemoveTOTPButton />
+              {!totpEnabled && (
+                <Button render={<Link href="/account/security/totp" />} nativeButton={false} size="sm" variant="outline">
+                  {t('security.totp.setup')}
+                </Button>
+              )}
+              {totpEnabled && <RemoveTOTPButton />}
             </div>
           </div>
           <CardDescription>{t('security.totp.description')}</CardDescription>
@@ -48,7 +60,7 @@ export default function SecurityPage() {
               <Fingerprint className="size-5" />
               <CardTitle className="text-base">{t('security.passkeys.title')}</CardTitle>
             </div>
-            <Button render={<Link href="/account/security/passkeys" />} size="sm" variant="outline">
+            <Button render={<Link href="/account/security/passkeys" />} nativeButton={false} size="sm" variant="outline">
               {t('security.passkeys.manage')}
             </Button>
           </div>
@@ -72,7 +84,7 @@ export default function SecurityPage() {
           <CardDescription>{t('security.password.description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button render={<Link href="/account/profile" />} variant="outline" size="sm">
+          <Button render={<Link href="/account/profile" />} nativeButton={false} variant="outline" size="sm">
             {t('security.password.change')}
           </Button>
         </CardContent>

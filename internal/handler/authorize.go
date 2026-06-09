@@ -82,10 +82,13 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 
 	cookieValue := c.Cookies("ctech_session")
 	if cookieValue == "" {
+		cookieValue = c.Cookies("ctech_rt")
+	}
+	if cookieValue == "" {
 		return c.Redirect().To(h.loginURL(c.OriginalURL()))
 	}
 
-	sess, err := h.sessionSvc.ValidateCookie(c.Context(), cookieValue)
+	sess, err := h.sessionSvc.ValidateToken(c.Context(), cookieValue)
 	if err != nil {
 		c.Cookie(&fiber.Cookie{Name: "ctech_session", Value: "", MaxAge: -1, Path: "/"})
 		return c.Redirect().To(h.loginURL(c.OriginalURL()))

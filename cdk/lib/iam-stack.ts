@@ -59,7 +59,7 @@ export class IAMStack extends cdk.Stack {
     }));
     appRole.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:PutObject'],
-      resources: [`${logsBucketArn}/ctech-account/*`],
+      resources: [`${logsBucketArn}/*`],
     }));
 
     this.instanceProfileName = `${environment}-ctech-account-instance-profile`;

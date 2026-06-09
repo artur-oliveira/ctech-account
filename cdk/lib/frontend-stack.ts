@@ -3,7 +3,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import {GeoRestriction} from 'aws-cdk-lib/aws-cloudfront';
 import {Construct} from 'constructs';
 import {Environment} from './types';
@@ -63,7 +62,7 @@ function handler(event) {
       originAccessControl: oac,
     });
 
-    const behaviors: cloudfront.BehaviorOptions = {
+    const behaviors: cloudfront.AddBehaviorOptions = {
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
@@ -124,6 +123,9 @@ function handler(event) {
 
     new cdk.CfnOutput(this, 'BucketName', {value: this.bucket.bucketName, exportName: `${id}-bucket-name`});
     new cdk.CfnOutput(this, 'DistributionId', {value: this.distribution.distributionId, exportName: `${id}-dist-id`});
-    new cdk.CfnOutput(this, 'DistributionDomain', {value: this.distribution.distributionDomainName, exportName: `${id}-dist-domain`});
+    new cdk.CfnOutput(this, 'DistributionDomain', {
+      value: this.distribution.distributionDomainName,
+      exportName: `${id}-dist-domain`
+    });
   }
 }

@@ -144,3 +144,7 @@ func AccountDisabled(instance string) *Problem {
 	return newProblem("account-disabled", "Account Disabled", http.StatusForbidden,
 		"This account has been disabled. Contact support if you believe this is an error.", instance)
 }
+
+func ServiceUnavailable(detail, instance string) *Problem {
+	return newProblem("service-unavailable", "Service Unavailable", http.StatusServiceUnavailable, detail, instance)
+}

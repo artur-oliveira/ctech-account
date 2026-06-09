@@ -4,7 +4,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -12,6 +11,8 @@ import (
 	"os"
 	"strings"
 )
+
+const TOTPIssuer = "CTech"
 
 type Config struct {
 	Environment    string
@@ -21,6 +22,7 @@ type Config struct {
 	RSAPrivateKey  *rsa.PrivateKey
 	PublicKeyKID   string
 	BaseURL        string
+	TOTPIssuer     string
 	AllowedOrigins []string
 	Port           string
 	InternalToken  string
@@ -39,6 +41,11 @@ type Config struct {
 	// Google OAuth
 	GoogleClientID     string
 	GoogleClientSecret string
+
+	// Reverse proxy
+	// TrustedProxies is a list of IPs/CIDRs whose X-Forwarded-For header is trusted.
+	// Set TRUSTED_PROXIES to a comma-separated list (e.g. "10.0.0.0/8,172.16.0.0/12").
+	TrustedProxies []string
 }
 
 func Load() (*Config, error) {
@@ -56,9 +63,18 @@ func Load() (*Config, error) {
 		}
 	}
 
+	var trustedProxies []string
+	if raw := os.Getenv("TRUSTED_PROXIES"); raw != "" {
+		for _, p := range strings.Split(raw, ",") {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				trustedProxies = append(trustedProxies, trimmed)
+			}
+		}
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8000"
+		port = "8080"
 	}
 
 	tablePrefix := os.Getenv("TABLE_PREFIX")
@@ -81,39 +97,40 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Environment:    getEnv("ENVIRONMENT", "dev"),
-		TablePrefix:    tablePrefix,
-		AWSRegion:      getEnv("AWS_REGION", "us-east-1"),
-		ValkeyURL:      os.Getenv("VALKEY_URL"),
-		RSAPrivateKey:  privateKey,
-		PublicKeyKID:   kid,
-		BaseURL:        baseURL,
-		AllowedOrigins: origins,
-		Port:           port,
-		InternalToken:  os.Getenv("INTERNAL_TOKEN"),
-		CookieSecure:   getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
-		CookieDomain:   os.Getenv("COOKIE_DOMAIN"),
-		RPID:           rpid,
-		RPOrigins:      rpOrigins,
-		FromEmail:      os.Getenv("FROM_EMAIL"),
-		AppURL:         getEnv("APP_URL", baseURL),
+		Environment:   getEnv("ENVIRONMENT", "dev"),
+		TablePrefix:   tablePrefix,
+		AWSRegion:     getEnv("AWS_REGION", "us-east-1"),
+		ValkeyURL:     os.Getenv("VALKEY_URL"),
+		RSAPrivateKey: privateKey,
+
+		PublicKeyKID:       kid,
+		BaseURL:            baseURL,
+		AllowedOrigins:     origins,
+		Port:               port,
+		InternalToken:      os.Getenv("INTERNAL_TOKEN"),
+		CookieSecure:       getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
+		CookieDomain:       os.Getenv("COOKIE_DOMAIN"),
+		RPID:               rpid,
+		RPOrigins:          rpOrigins,
+		FromEmail:          os.Getenv("FROM_EMAIL"),
+		AppURL:             getEnv("APP_URL", baseURL),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		TrustedProxies:     trustedProxies,
+		TOTPIssuer:         TOTPIssuer,
 	}, nil
 }
 
 func loadRSAKey() (*rsa.PrivateKey, string, error) {
-	pemStr, err := base64.StdEncoding.DecodeString(
-		os.Getenv("RSA_PRIVATE_KEY_B64"),
-	)
-	if pemStr == nil || len(pemStr) == 0 || err != nil {
-		return nil, "", fmt.Errorf("RSA_PRIVATE_KEY_B64 is required")
+	pemStr := os.Getenv("RSA_PRIVATE_KEY")
+	if pemStr == "" {
+		return nil, "", fmt.Errorf("RSA_PRIVATE_KEY is required")
 	}
-	block, _ := pem.Decode(pemStr)
+	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, "", fmt.Errorf("failed to decode PEM block")
 	}
-
+	var err error
 	var privateKey *rsa.PrivateKey
 
 	switch block.Type {

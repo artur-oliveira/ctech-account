@@ -53,7 +53,11 @@ function CallbackHandler() {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         })
         useAuthStore.getState().setAccessToken(data.access_token)
-        router.replace(continueURL)
+        if (continueURL.startsWith('/v1.0/')) {
+          window.location.href = `${API_URL}${continueURL}`
+        } else {
+          router.replace(continueURL)
+        }
       } catch {
         setError(t('callback.tokenError'))
       }

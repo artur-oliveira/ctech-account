@@ -1,13 +1,13 @@
-import axios, { isAxiosError as _isAxiosError } from 'axios'
-import { useAuthStore } from '@/store/auth'
+import axios, {isAxiosError as _isAxiosError} from 'axios'
+import {useAuthStore} from '@/store/auth'
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-export const CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? 'accounts-ui'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
+export const CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? 'accounts'
 
 export const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {'Content-Type': 'application/json'},
 })
 
 api.interceptors.request.use((config) => {
@@ -21,7 +21,7 @@ let isRefreshing = false
 let refreshQueue: QueueItem[] = []
 
 function processQueue(error: unknown, token: string | null) {
-  refreshQueue.forEach(({ resolve, reject }) => {
+  refreshQueue.forEach(({resolve, reject}) => {
     if (error) reject(error)
     else resolve(token!)
   })
@@ -32,10 +32,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config
-    if (_isAxiosError(error) && error.response?.status === 401 && !original._retry) {
+    const url: string = original?.url ?? ''
+    const isAuthEndpoint = url.includes('/auth/') || url.includes('/token')
+    if (_isAxiosError(error) && error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise<string>((resolve, reject) => {
-          refreshQueue.push({ resolve, reject })
+          refreshQueue.push({resolve, reject})
         }).then((token) => {
           original.headers.Authorization = `Bearer ${token}`
           return api(original)
@@ -44,10 +46,10 @@ api.interceptors.response.use(
       original._retry = true
       isRefreshing = true
       try {
-        const params = new URLSearchParams({ grant_type: 'refresh_token', client_id: CLIENT_ID })
-        const { data } = await axios.post(`${API_URL}/v1.0/token`, params, {
+        const params = new URLSearchParams({grant_type: 'refresh_token', client_id: CLIENT_ID})
+        const {data} = await axios.post(`${API_URL}/v1.0/token`, params, {
           withCredentials: true,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         })
         useAuthStore.getState().setAccessToken(data.access_token)
         processQueue(null, data.access_token)
@@ -66,4 +68,4 @@ api.interceptors.response.use(
   },
 )
 
-export { _isAxiosError as isAxiosError }
+export {_isAxiosError as isAxiosError}

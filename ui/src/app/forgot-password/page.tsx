@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     setLoading(true)

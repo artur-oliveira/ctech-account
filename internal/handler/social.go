@@ -165,7 +165,7 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 
 func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, c.IP(), c.Get("User-Agent"))
+	_, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -173,7 +173,7 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 	secure := strings.HasPrefix(h.cfg.BaseURL, "https")
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
-		Value:    session.BuildCookieValue(u.ID(), sess.ID(), rawToken),
+		Value:    rawToken,
 		HTTPOnly: true,
 		Secure:   secure,
 		SameSite: "Lax",

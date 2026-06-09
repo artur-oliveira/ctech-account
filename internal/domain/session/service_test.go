@@ -51,6 +51,15 @@ func (m *mockRepo) Delete(_ context.Context, userID, sessionID string) error {
 	return nil
 }
 
+func (m *mockRepo) GetByTokenHash(_ context.Context, tokenHash string) (*session.Session, error) {
+	for _, s := range m.sessions {
+		if s.RefreshTokenHash == tokenHash {
+			return s, nil
+		}
+	}
+	return nil, session.ErrNotFound
+}
+
 func (m *mockRepo) ListByUserID(_ context.Context, userID string) ([]*session.Session, error) {
 	pk := session.BuildPK(userID)
 	var result []*session.Session
@@ -78,9 +87,9 @@ func TestCreate(t *testing.T) {
 
 func TestRotate_Success(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, raw, _ := svc.Create(context.Background(), "user2", "Chrome", "1.2.3.4", "UA")
+	_, raw, _ := svc.Create(context.Background(), "user2", "Chrome", "1.2.3.4", "UA")
 
-	newRaw, err := svc.Rotate(context.Background(), "user2", sess.ID(), raw)
+	_, newRaw, err := svc.Rotate(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("rotate failed: %v", err)
 	}
@@ -91,22 +100,21 @@ func TestRotate_Success(t *testing.T) {
 
 func TestRotate_TokenReuse(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, raw, _ := svc.Create(context.Background(), "user3", "Chrome", "1.2.3.4", "UA")
+	_, raw, _ := svc.Create(context.Background(), "user3", "Chrome", "1.2.3.4", "UA")
 	// First rotate succeeds.
-	_, _ = svc.Rotate(context.Background(), "user3", sess.ID(), raw)
-	// Reusing the old raw token should detect reuse and revoke the session.
-	_, err := svc.Rotate(context.Background(), "user3", sess.ID(), raw)
+	_, _, _ = svc.Rotate(context.Background(), raw)
+	// Reusing the old raw token should detect reuse.
+	_, _, err := svc.Rotate(context.Background(), raw)
 	if !errors.Is(err, session.ErrTokenReuse) {
 		t.Errorf("expected ErrTokenReuse, got %v", err)
 	}
 }
 
-func TestValidateCookie_Success(t *testing.T) {
+func TestValidateToken_Success(t *testing.T) {
 	svc := session.NewService(newMockRepo())
 	sess, raw, _ := svc.Create(context.Background(), "user4", "Chrome", "1.2.3.4", "UA")
 
-	cookie := session.BuildCookieValue("user4", sess.ID(), raw)
-	validated, err := svc.ValidateCookie(context.Background(), cookie)
+	validated, err := svc.ValidateToken(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,20 +123,11 @@ func TestValidateCookie_Success(t *testing.T) {
 	}
 }
 
-func TestValidateCookie_InvalidFormat(t *testing.T) {
+func TestValidateToken_WrongToken(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	_, err := svc.ValidateCookie(context.Background(), "badformat")
-	if err == nil {
-		t.Error("expected error for invalid cookie format")
-	}
-}
+	_, _, _ = svc.Create(context.Background(), "user5", "Chrome", "1.2.3.4", "UA")
 
-func TestValidateCookie_WrongToken(t *testing.T) {
-	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user5", "Chrome", "1.2.3.4", "UA")
-
-	cookie := session.BuildCookieValue("user5", sess.ID(), "wrongtoken")
-	_, err := svc.ValidateCookie(context.Background(), cookie)
+	_, err := svc.ValidateToken(context.Background(), "wrongtoken")
 	if err == nil {
 		t.Error("expected error for wrong token")
 	}
@@ -181,10 +180,9 @@ func TestReplaceRefreshToken(t *testing.T) {
 		t.Error("expected a different token after replace")
 	}
 
-	// Old cookie should no longer be valid.
-	oldCookie := session.BuildCookieValue("user8", sess.ID(), oldRaw)
-	_, err = svc.ValidateCookie(context.Background(), oldCookie)
+	// Old token should no longer be valid.
+	_, err = svc.ValidateToken(context.Background(), oldRaw)
 	if err == nil {
-		t.Error("old cookie should be invalid after replace")
+		t.Error("old token should be invalid after replace")
 	}
 }

@@ -51,6 +51,13 @@ export class DynamoDBStack extends cdk.Stack {
         pointInTimeRecoveryEnabled: pitr,
       },
       removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'token-hash-index',
+          partitionKey: {name: 'refresh_token_hash', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+        },
+      ],
     });
     this.tables.set('ctech_sessions', sessionsTable);
 
@@ -107,12 +114,23 @@ export class DynamoDBStack extends cdk.Stack {
       removalPolicy,
     });
     this.tables.set('ctech_mfa', mfaTable);
+    const passkeysTable = new dynamodb.TableV2(this, 'PassKeyTable', {
+      tableName: `${environment}_ctech_passkeys`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand(),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+    });
+    this.tables.set('ctech_passkeys', passkeysTable);
 
     // ── Outputs ────────────────────────────────────────────────────────────────
     for (const [name, table] of this.tables) {
-      new cdk.CfnOutput(this, `${name}-arn`, {
-        value: table.tableArn,
-        exportName: `${id}-${name}-arn`,
+      new cdk.CfnOutput(this, `${name}_TableName`, {
+        value: table.tableName,
+        exportName: `${id}-${name.replace(/_/g, "-")}`,
       });
     }
   }

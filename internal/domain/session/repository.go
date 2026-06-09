@@ -16,6 +16,7 @@ var ErrNotFound = errors.New("session not found")
 // Repository is the data-access interface for sessions.
 type Repository interface {
 	GetByID(ctx context.Context, userID, sessionID string) (*Session, error)
+	GetByTokenHash(ctx context.Context, tokenHash string) (*Session, error)
 	Create(ctx context.Context, s *Session) error
 	UpdateRefreshToken(ctx context.Context, userID, sessionID, newHash string) error
 	Delete(ctx context.Context, userID, sessionID string) error
@@ -59,6 +60,21 @@ func (r *dynamoRepository) GetByID(ctx context.Context, userID, sessionID string
 
 	var s Session
 	if err := attributevalue.UnmarshalMap(item, &s); err != nil {
+		return nil, fmt.Errorf("unmarshaling session: %w", err)
+	}
+	return &s, nil
+}
+
+func (r *dynamoRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*Session, error) {
+	items, err := r.db.QueryGSI(ctx, r.table, "token-hash-index", "refresh_token_hash", tokenHash, 1)
+	if err != nil {
+		return nil, fmt.Errorf("querying token hash index: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, ErrNotFound
+	}
+	var s Session
+	if err := attributevalue.UnmarshalMap(items[0], &s); err != nil {
 		return nil, fmt.Errorf("unmarshaling session: %w", err)
 	}
 	return &s, nil

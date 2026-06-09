@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
+	"github.com/artur-oliveira/ctech-account/internal/cache"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/passkey"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
@@ -15,10 +16,12 @@ type PasskeyHandler struct {
 	passkeySvc *passkey.Service
 	userSvc    *user.Service
 	sessionSvc *session.Service
+	totpSvc    TOTPService
+	cache      *cache.Client
 }
 
-func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service) *PasskeyHandler {
-	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc}
+func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client) *PasskeyHandler {
+	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache}
 }
 
 // RegisterManagement registers the authenticated passkey management routes under /account/mfa.
@@ -91,6 +94,9 @@ func (h *PasskeyHandler) registerBegin(c fiber.Ctx) error {
 
 	optionsJSON, sessionToken, err := h.passkeySvc.BeginRegistration(c.Context(), waUser)
 	if err != nil {
+		if errors.Is(err, passkey.ErrCacheRequired) {
+			return apierror.ServiceUnavailable("Passkey registration is temporarily unavailable.", c.Path()).Send(c)
+		}
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
@@ -166,6 +172,9 @@ func (h *PasskeyHandler) delete(c fiber.Ctx) error {
 func (h *PasskeyHandler) authenticateBegin(c fiber.Ctx) error {
 	optionsJSON, sessionToken, err := h.passkeySvc.BeginAuthentication(c.Context())
 	if err != nil {
+		if errors.Is(err, passkey.ErrCacheRequired) {
+			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).Send(c)
+		}
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
@@ -177,6 +186,7 @@ func (h *PasskeyHandler) authenticateBegin(c fiber.Ctx) error {
 
 // authenticateComplete receives session_token as a query param and the raw
 // PublicKeyCredential assertion JSON (from navigator.credentials.get()) as the body.
+// If the authenticated user has TOTP enabled, returns an mfa_token instead of a session.
 func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 	sessionToken := c.Query("session_token")
 	if sessionToken == "" {
@@ -207,6 +217,11 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		return apierror.AccountDisabled(c.Path()).Send(c)
 	}
 
+	// Passkey is the first factor; TOTP (if configured) is required as the second.
+	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), userID); totpErr == nil && totpSecret.IsSetup() {
+		return issueMFAToken(c, h.cache, userID, "Passkey", c.IP(), c.Get("User-Agent"), []string{"totp"})
+	}
+
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
@@ -214,7 +229,7 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
-		Value:    session.BuildCookieValue(u.ID(), sess.ID(), rawToken),
+		Value:    rawToken,
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",

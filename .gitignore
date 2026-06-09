@@ -3,3 +3,4 @@ cmd/bin/
 node_modules/
 key.pem
 key.pub
+.env

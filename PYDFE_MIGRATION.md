@@ -8,6 +8,7 @@
 ## Estado Atual (AS-IS)
 
 ### `prod_users` (DynamoDB)
+
 ```
 pk            STRING   "USER_{uuid}"  — PK
 email         STRING   GSI: email-index
@@ -25,6 +26,7 @@ updated_at    STRING
 ```
 
 ### Auth no py-dfe-api
+
 - `POST /v1.0/auth/token` → login local → JWT HS256 24h (sem refresh token)
 - `POST /v1.0/auth/register` → cria usuário
 - `GET /v1.0/auth/me` → retorna user + orgs
@@ -38,6 +40,7 @@ updated_at    STRING
 ## Estado Final (TO-BE)
 
 ### `prod_users` (DynamoDB) — apenas membership
+
 ```
 pk            STRING   "USER_{ctech_user_id}"  — PK alinhado com ctech
 organizations LIST     [{pk, role, permissions}]
@@ -46,6 +49,7 @@ updated_at    STRING
 ```
 
 ### Auth no py-dfe-api
+
 - Não há mais endpoints de auth locais
 - JWT RS256 emitido pelo ctech-account, verificado usando JWKS público
 - `get_current_user_id` → lê `sub` claim do JWT RS256
@@ -88,6 +92,7 @@ updated_at    STRING
 4. Adicionar `ctech_user_id` como campo opcional na tabela `users` (sem quebrar nada).
 
 **Testes necessários:**
+
 - [ ] Token HS256 existente continua funcionando
 - [ ] Token RS256 do ctech-account também funciona
 - [ ] Token inválido → 401
@@ -111,17 +116,20 @@ updated_at    STRING
 ```
 
 **Endpoint interno no ctech-account** (`POST /internal/v1.0/users/migrate`):
+
 - Autenticado via shared secret (header `X-Internal-Token`)
 - Aceita `{email, password_hash, first_name, last_name}`
 - Cria user com `email_verified=true` (já eram verificados no py-dfe)
 - Idempotente: se email já existe, retorna o user_id existente
 
 **Considerações:**
+
 - O PK em `prod_users` é `USER_{py-dfe-uuid}`. Após migração, o ctech emite seu próprio UUID.
 - O campo `ctech_user_id` é adicionado como atributo extra — o PK ainda é o UUID antigo nesta fase.
 - A troca de PK acontece na Fase 4.
 
 **Checklist:**
+
 - [ ] Implementar endpoint `/internal/v1.0/users/migrate` no ctech-account
 - [ ] Implementar e testar script de migração em dev
 - [ ] Rodar em staging com todos os usuários de staging
@@ -133,6 +141,7 @@ updated_at    STRING
 ### FASE 2 — py-dfe-client Switch (coordenado)
 
 **py-dfe-client:**
+
 - Remover formulário de login local (`/login`)
 - Implementar redirect OAuth 2.0:
   ```typescript
@@ -156,14 +165,17 @@ updated_at    STRING
 - Silent refresh: antes de request com token expirado → POST ao ctech `/v1.0/token?grant_type=refresh_token`
 
 **py-dfe-api (nesta fase):**
+
 - Dual-auth ainda ativo (Fase 0 permanece)
 - Sem mudanças de código nesta fase
 
 **Deploy:**
+
 - Deploy simultâneo do py-dfe-client (novo) + garantir que ctech-account está estável
 - Monitorar: taxa de 401s, login errors no CloudWatch
 
 **Checklist:**
+
 - [ ] py-dfe-client: implementar redirect OAuth
 - [ ] py-dfe-client: implementar `/callback` com PKCE
 - [ ] py-dfe-client: implementar silent refresh
@@ -175,26 +187,30 @@ updated_at    STRING
 
 ### FASE 3 — Cutover Completo
 
-**Pré-condição:** 100% das sessões ativas estão usando RS256 (verificar no CloudWatch — métrica de tokens HS256 usados = 0 por 48h).
+**Pré-condição:** 100% das sessões ativas estão usando RS256 (verificar no CloudWatch — métrica de tokens HS256 usados =
+0 por 48h).
 
 **py-dfe-api:**
+
 - Remover suporte HS256 de `security.py` (apenas RS256 daqui em diante)
 - Remover endpoints:
-  - `POST /v1.0/auth/token`
-  - `POST /v1.0/auth/register`
-  - `PUT /v1.0/auth/profile` (agora em contas.arturocarvalho.com)
-  - `PUT /v1.0/auth/change-password`
+    - `POST /v1.0/auth/token`
+    - `POST /v1.0/auth/register`
+    - `PUT /v1.0/auth/profile` (agora em contas.arturocarvalho.com)
+    - `PUT /v1.0/auth/change-password`
 - Manter (read-only):
-  - `GET /v1.0/auth/me` — retorna apenas organizações do user (dados de perfil vêm do ctech via userinfo)
+    - `GET /v1.0/auth/me` — retorna apenas organizações do user (dados de perfil vêm do ctech via userinfo)
 - Remover:
-  - `app/services/auth.py` — `AuthService` completo
-  - `app/repositories/users.py` — métodos `get_by_email`, `get_by_username`, `create_user`
-  - `app/core/security.py` — `hash_password`, `verify_password`, `create_access_token` (manter só `get_current_user_id` com RS256)
-  - `app/dependencies/` — remover factory `AuthService`
+    - `app/services/auth.py` — `AuthService` completo
+    - `app/repositories/users.py` — métodos `get_by_email`, `get_by_username`, `create_user`
+    - `app/core/security.py` — `hash_password`, `verify_password`, `create_access_token` (manter só
+      `get_current_user_id` com RS256)
+    - `app/dependencies/` — remover factory `AuthService`
 - Remover env var `SECRET_KEY` do py-dfe-api (manter apenas `CTECH_JWKS_URL`)
 - Atualizar tests
 
 **Checklist:**
+
 - [ ] Confirmar que nenhuma sessão HS256 ativa existe (monitorar por 48h)
 - [ ] Remover código auth local do py-dfe-api
 - [ ] Atualizar `tests/unit/test_auth_service.py` → deletar
@@ -211,20 +227,24 @@ updated_at    STRING
 **Objetivo:** Trocar o PK de `USER_{py-dfe-uuid}` para `USER_{ctech_user_id}` e remover campos de identidade.
 
 **Processo (sem downtime):**
+
 1. Script de migração:
-   - Para cada item em `prod_users`:
-     - Lê `ctech_user_id`
-     - Cria novo item com PK = `USER_{ctech_user_id}` e apenas `organizations`, `joined_at`, `updated_at`
-     - Deleta item antigo
+    - Para cada item em `prod_users`:
+        - Lê `ctech_user_id`
+        - Cria novo item com PK = `USER_{ctech_user_id}` e apenas `organizations`, `joined_at`, `updated_at`
+        - Deleta item antigo
 2. Remover GSIs `email-index` e `username-index` da tabela
-3. Remover campos `email`, `username`, `hashed_password`, `first_name`, `last_name`, `email_verified`, `is_enabled`, `last_login_at`, `sid`, `ctech_user_id` (agora é o PK)
+3. Remover campos `email`, `username`, `hashed_password`, `first_name`, `last_name`, `email_verified`, `is_enabled`,
+   `last_login_at`, `sid`, `ctech_user_id` (agora é o PK)
 
 **py-dfe-api após Fase 4:**
+
 - `UserRepository.build_pk(user_id)` usa diretamente o `sub` do JWT (= ctech_user_id)
 - Sem mais `get_by_email`, `get_by_username`
 - A tabela `users` passa a ser conceitualmente a tabela de `memberships`
 
 **Checklist:**
+
 - [ ] Confirmar que `ctech_user_id` está preenchido para 100% dos registros
 - [ ] Rodar script de migração em dev → staging → prod
 - [ ] Remover GSIs obsoletos da tabela
@@ -237,28 +257,28 @@ updated_at    STRING
 
 ## Impacto por Componente
 
-| Componente | Fase 0 | Fase 1 | Fase 2 | Fase 3 | Fase 4 |
-|---|---|---|---|---|---|
-| py-dfe-api `security.py` | Adiciona RS256 | — | — | Remove HS256 | — |
-| py-dfe-api `auth.py` | — | — | — | Deletar | — |
-| py-dfe-api `users.py` | — | Adiciona `ctech_user_id` | — | Remove métodos auth | Remove campos identidade |
-| py-dfe-client | — | — | OAuth redirect | — | — |
-| DynamoDB `prod_users` | — | Adiciona campo | — | — | Troca PK + remove campos |
-| SSM `SECRET_KEY` | Mantém | Mantém | Mantém | Remove | — |
-| SSM `CTECH_JWKS_URL` | Adiciona | Mantém | Mantém | Mantém | Mantém |
+| Componente               | Fase 0         | Fase 1                   | Fase 2         | Fase 3              | Fase 4                   |
+|--------------------------|----------------|--------------------------|----------------|---------------------|--------------------------|
+| py-dfe-api `security.py` | Adiciona RS256 | —                        | —              | Remove HS256        | —                        |
+| py-dfe-api `auth.py`     | —              | —                        | —              | Deletar             | —                        |
+| py-dfe-api `users.py`    | —              | Adiciona `ctech_user_id` | —              | Remove métodos auth | Remove campos identidade |
+| py-dfe-client            | —              | —                        | OAuth redirect | —                   | —                        |
+| DynamoDB `prod_users`    | —              | Adiciona campo           | —              | —                   | Troca PK + remove campos |
+| SSM `SECRET_KEY`         | Mantém         | Mantém                   | Mantém         | Remove              | —                        |
+| SSM `CTECH_JWKS_URL`     | Adiciona       | Mantém                   | Mantém         | Mantém              | Mantém                   |
 
 ---
 
 ## Riscos e Mitigações
 
-| Risco | Probabilidade | Mitigação |
-|---|---|---|
-| Usuário já logado perde sessão no cutover | Média | Dual-auth na Fase 0 garante que tokens antigos continuam válidos até expirar (24h) |
-| Divergência de password_hash entre py-dfe e ctech | Baixa | Argon2id é compatível — mesma biblioteca em ambos |
-| Performance do JWKS fetch | Média | Cache das chaves no Valkey (TTL 1h), background refresh |
-| Falha no script de migração (Fase 1) | Baixa | Script é idempotente, pode ser reexecutado; dual-auth garante continuidade |
-| Usuários com email duplicado (edge case) | Muito baixa | Script verifica duplicatas antes de criar |
-| `prod_users` PK incompatível após Fase 4 | Baixa | Rodar em dev/staging primeiro, ter rollback script |
+| Risco                                             | Probabilidade | Mitigação                                                                          |
+|---------------------------------------------------|---------------|------------------------------------------------------------------------------------|
+| Usuário já logado perde sessão no cutover         | Média         | Dual-auth na Fase 0 garante que tokens antigos continuam válidos até expirar (24h) |
+| Divergência de password_hash entre py-dfe e ctech | Baixa         | Argon2id é compatível — mesma biblioteca em ambos                                  |
+| Performance do JWKS fetch                         | Média         | Cache das chaves no Valkey (TTL 1h), background refresh                            |
+| Falha no script de migração (Fase 1)              | Baixa         | Script é idempotente, pode ser reexecutado; dual-auth garante continuidade         |
+| Usuários com email duplicado (edge case)          | Muito baixa   | Script verifica duplicatas antes de criar                                          |
+| `prod_users` PK incompatível após Fase 4          | Baixa         | Rodar em dev/staging primeiro, ter rollback script                                 |
 
 ---
 
@@ -285,14 +305,46 @@ async def get_jwks() -> dict:
 
 Ou via Valkey se disponível (melhor para múltiplas réplicas).
 
+### Formato opaco do refresh token
+
+O `refresh_token` retornado pelo endpoint `/v1.0/token` e o cookie `ctech_session` são agora tokens opacos (string
+aleatória). O formato antigo `userID:sessionID:rawToken` foi removido. O py-dfe-client não precisa parsear o valor —
+armazene e reenvie como está. A revogação acontece automaticamente quando o token é apresentado ao endpoint
+`/v1.0/token/revoke`.
+
+---
+
+### MFA na autenticação — métodos suportados
+
+O campo `mfa_methods` na resposta de login (`POST /v1.0/auth/login`) pode agora conter `"passkey"` além de `"totp"`. Os
+fluxos possíveis são:
+
+| Cenário                          | `mfa_methods` retornado | Próximo passo                                    |
+|----------------------------------|-------------------------|--------------------------------------------------|
+| Usuário com TOTP                 | `["totp"]`              | `POST /v1.0/auth/mfa/challenge` com código TOTP  |
+| Usuário com passkey              | `["passkey"]`           | `POST /v1.0/auth/mfa/passkey/begin` → `complete` |
+| Usuário com TOTP + passkey       | `["passkey", "totp"]`   | Cliente escolhe o método                         |
+| Login via passkey com TOTP ativo | `["totp"]`              | Passkey é 1º fator; TOTP exigido como 2º         |
+
+**Endpoints do fluxo passkey-como-2º-fator:**
+
+1. `POST /v1.0/auth/mfa/passkey/begin` — body: `{"mfa_token": "<token>"}` → retorna `{session_token, options}`
+2. `POST /v1.0/auth/mfa/passkey/complete?mfa_token=<token>&session_token=<token>` — body: WebAuthn assertion JSON →
+   emite `ctech_session` cookie
+
+Esses endpoints são chamados pelo frontend de `accounts.arturocarvalho.com` — py-dfe-client não precisa implementá-los.
+
+---
+
 ### O `GET /v1.0/auth/me` após Fase 3
 
-Mantido como conveniência, mas apenas retorna as organizações do usuário (sem dados de perfil — esses vêm do ctech via `/v1.0/userinfo`). O py-dfe-client pode combinar os dois:
+Mantido como conveniência, mas apenas retorna as organizações do usuário (sem dados de perfil — esses vêm do ctech via
+`/v1.0/userinfo`). O py-dfe-client pode combinar os dois:
 
 ```typescript
 const [me, profile] = await Promise.all([
-  api.get('/v1.0/auth/me'),
-  ctechApi.get('/v1.0/userinfo'),
+    api.get('/v1.0/auth/me'),
+    ctechApi.get('/v1.0/userinfo'),
 ]);
 ```
 

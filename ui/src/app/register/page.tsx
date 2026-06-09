@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     setLoading(true)

@@ -14,6 +14,7 @@ export function RemoveTOTPButton() {
     mutationFn: removeTOTPAPI,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['totp-setup'] })
+      queryClient.invalidateQueries({ queryKey: ['totp-status'] })
       toast.success(t('toast.totpRemoved'))
     },
     onError: (err) => {

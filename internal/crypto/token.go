@@ -44,23 +44,23 @@ func hashBytes(b []byte) string {
 }
 
 // GenerateOpaqueToken generates a 256-bit opaque token in base62 format
-// prefixed with "ctk_", along with its SHA-256 hex hash.
+// prefixed with "ak_", along with its SHA-256 hex hash.
 func GenerateOpaqueToken() (token, hashHex string, err error) {
 	b, err := generateRandom(256)
 	if err != nil {
 		return "", "", err
 	}
-	raw := "ctk_" + toBase62(b)
+	raw := "ak_" + toBase62(b)
 	return raw, hashBytes([]byte(raw)), nil
 }
 
-// GenerateRefreshToken generates a 256-bit refresh token.
+// GenerateRefreshToken generates a 256-bit opaque refresh token prefixed with "rt_".
 func GenerateRefreshToken() (token, hashHex string, err error) {
 	b, err := generateRandom(256)
 	if err != nil {
 		return "", "", err
 	}
-	raw := toBase62(b)
+	raw := "rt_" + toBase62(b)
 	return raw, hashBytes([]byte(raw)), nil
 }
 

@@ -70,6 +70,8 @@ ctech-account/
 | `POST`   | `/v1.0/account/api-keys`                       | Bearer   | Create API key                             |
 | `DELETE` | `/v1.0/account/api-keys/:id`                   | Bearer   | Revoke API key                             |
 | `POST`   | `/v1.0/auth/mfa/challenge`                     | —        | Exchange MFA token + TOTP code for session |
+| `POST`   | `/v1.0/auth/mfa/passkey/begin`                 | —        | Begin passkey assertion as 2nd factor      |
+| `POST`   | `/v1.0/auth/mfa/passkey/complete`              | —        | Complete passkey assertion → session cookie|
 | `POST`   | `/v1.0/auth/passkeys/authenticate/begin`       | —        | WebAuthn discoverable login challenge      |
 | `POST`   | `/v1.0/auth/passkeys/authenticate/complete`    | —        | Validate assertion → session cookie        |
 | `GET`    | `/v1.0/account/mfa/totp/setup`                 | Bearer   | Generate TOTP provisioning URI             |
@@ -111,7 +113,8 @@ All configuration is read from environment variables at startup.
 | Variable            | Required | Description                                                 |
 |---------------------|----------|-------------------------------------------------------------|
 | `ENVIRONMENT`       | Yes      | `production`, `staging`, or `development`                   |
-| `BASE_URL`          | Yes      | Public base URL, e.g. `https://accounts.arturocarvalho.com` |
+| `BASE_URL`          | Yes      | Go API public URL, e.g. `https://accountsapi.arturocarvalho.com` |
+| `APP_URL`           | No       | Frontend URL for login redirects (defaults to `BASE_URL`)         |
 | `PORT`              | No       | HTTP port (default `8080`)                                  |
 | `DYNAMO_TABLE`      | Yes      | DynamoDB table name                                         |
 | `RSA_PRIVATE_KEY`   | Yes      | PEM-encoded RSA private key for JWT signing (RS256)         |
@@ -119,6 +122,7 @@ All configuration is read from environment variables at startup.
 | `VALKEY_URL`        | No       | Redis-compatible URL; cache disabled when absent or invalid |
 | `ACCESS_TOKEN_TTL`  | No       | Access token lifetime in seconds (default `900`)            |
 | `REFRESH_TOKEN_TTL` | No       | Refresh token lifetime in seconds (default `2592000`)       |
+| `TRUSTED_PROXIES`   | No       | Comma-separated IPs/CIDRs whose `X-Forwarded-For` is trusted (e.g. `10.0.0.0/8`) |
 
 ---
 
