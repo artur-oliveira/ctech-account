@@ -86,14 +86,18 @@ func TestMigrateUser_Idempotent_200(t *testing.T) {
 	if resp1.StatusCode != http.StatusOK {
 		t.Fatalf("first call: expected 200, got %d: %s", resp1.StatusCode, bodyString(resp1))
 	}
-	var body1 struct{ UserID string `json:"user_id"` }
+	var body1 struct {
+		UserID string `json:"user_id"`
+	}
 	readJSON(t, resp1, &body1)
 
 	resp2 := ta.do(http.MethodPost, "/internal/v1.0/users/migrate", payload, headers)
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("second call: expected 200, got %d: %s", resp2.StatusCode, bodyString(resp2))
 	}
-	var body2 struct{ UserID string `json:"user_id"` }
+	var body2 struct {
+		UserID string `json:"user_id"`
+	}
 	readJSON(t, resp2, &body2)
 
 	if body1.UserID != body2.UserID {

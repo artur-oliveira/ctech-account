@@ -3,8 +3,8 @@ package totp
 import "strings"
 
 type TOTPSecret struct {
-	PK          string   `dynamodbav:"pk"` // USER_{user_id}
-	SK          string   `dynamodbav:"sk"` // TOTP_default
+	PK          string   `dynamodbav:"pk"`     // USER_{user_id}
+	SK          string   `dynamodbav:"sk"`     // TOTP_default
 	Secret      string   `dynamodbav:"secret"` // base32 TOTP secret
 	Verified    bool     `dynamodbav:"verified"`
 	BackupCodes []string `dynamodbav:"backup_codes"` // argon2id hashes

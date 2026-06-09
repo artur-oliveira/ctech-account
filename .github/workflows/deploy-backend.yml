@@ -42,6 +42,8 @@ jobs:
           BRANCH="${GITHUB_REF#refs/heads/}"
           if [ "$BRANCH" = "main" ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+          elif [ "$BRANCH" = "stage" ]; then
+            echo "ENVIRONMENT=stage" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi

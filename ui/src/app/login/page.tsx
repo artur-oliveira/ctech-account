@@ -28,9 +28,7 @@ function LoginForm() {
     // Other callers (e.g. account layout) pass a plain path starting with '/'.
     if (rawContinue.startsWith('/')) return rawContinue
     try {
-      const url = atob(rawContinue.replace(/-/g, '+').replace(/_/g, '/'))
-      console.log(url);
-      return url;
+      return atob(rawContinue.replace(/-/g, '+').replace(/_/g, '/'))
     } catch {
       return rawContinue
     }
