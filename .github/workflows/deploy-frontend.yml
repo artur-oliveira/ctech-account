@@ -2,7 +2,7 @@ name: Deploy Frontend
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - 'ui/**'
       - '.github/workflows/deploy-frontend.yml'
@@ -10,6 +10,10 @@ on:
 permissions:
   id-token: write
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   AWS_REGION: us-east-1
