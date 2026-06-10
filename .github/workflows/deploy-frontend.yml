@@ -44,9 +44,9 @@ jobs:
           if [ "$BRANCH" = "main" ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
             echo "NEXT_PUBLIC_API_URL=https://accounts-api.arturocarvalho.com" >> $GITHUB_ENV
-          elif [ "$BRANCH" = "stage" ]; then
+          elif [ "$BRANCH" = "staging" ]; then
             echo "ENVIRONMENT=stage" >> $GITHUB_ENV
-            echo "NEXT_PUBLIC_API_URL=https://accounts-api-stage.arturocarvalho.com" >> $GITHUB_ENV   
+            echo "NEXT_PUBLIC_API_URL=https://accounts-api-staging.arturocarvalho.com" >> $GITHUB_ENV   
           else
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
             echo "NEXT_PUBLIC_API_URL=https://accounts-api-dev.arturocarvalho.com" >> $GITHUB_ENV

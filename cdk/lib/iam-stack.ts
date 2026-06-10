@@ -52,14 +52,14 @@ export class IAMStack extends cdk.Stack {
       ],
     }));
 
-    // S3 — deployments (read) + logs (write)
+    // S3 — deployments (read) + logs (write), scoped to this app's prefix
     appRole.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:GetObject'],
-      resources: [`${deploymentsBucketArn}/*`],
+      resources: [`${deploymentsBucketArn}/ctech-account/*`],
     }));
     appRole.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:PutObject'],
-      resources: [`${logsBucketArn}/*`],
+      resources: [`${logsBucketArn}/ctech-account/*`],
     }));
 
     this.instanceProfileName = `${environment}-ctech-account-instance-profile`;

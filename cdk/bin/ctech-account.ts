@@ -6,7 +6,6 @@ import {ComputeStack} from '../lib/compute-stack';
 import {FrontendStack} from '../lib/frontend-stack';
 import {IAMStack} from '../lib/iam-stack';
 import {OidcStack} from '../lib/oidc-stack';
-import {S3Stack} from '../lib/s3-stack';
 import {Environment} from '../lib/types';
 
 const app = new cdk.App();
@@ -22,6 +21,11 @@ const CERT_ARN = 'arn:aws:acm:us-east-1:868899309401:certificate/eb8aa9cd-f7c0-4
 const ENVIRONMENT = (process.env.ENVIRONMENT || 'dev') as Environment;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'artur-oliveira/ctech-account';
 const CTECH_VPC_ID = process.env.CTECH_VPC_ID || 'vpc-0adfd86727d17445b';
+// Shared S3 buckets owned by ctech-cdk. CI reads these from SSM
+// (/ctech/{env}/s3/deployments-bucket and /ctech/{env}/s3/logs-bucket)
+// and sets them as env vars before running cdk deploy.
+const CTECH_DEPLOYMENTS_BUCKET = process.env.CTECH_DEPLOYMENTS_BUCKET || `${ENVIRONMENT}-ctech-deployments`;
+const CTECH_LOGS_BUCKET = process.env.CTECH_LOGS_BUCKET || `${ENVIRONMENT}-ctech-application-logs`;
 
 const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 
@@ -59,27 +63,18 @@ const dynamodbStack = new DynamoDBStack(app, id('DynamoDB'), {
 });
 
 // =====================
-// S3 (deployments + logs — owned by this CDK)
-// =====================
-const s3Stack = new S3Stack(app, id('S3'), {
-  env,
-  environment: ENVIRONMENT,
-  description: `ctech-account S3 (deployments + logs) - ${ENVIRONMENT}`,
-});
-
-// =====================
 // IAM (instance profile for EC2)
+// Shared S3 bucket ARNs are derived from the bucket names read via env vars.
 // =====================
 const iamStack = new IAMStack(app, id('IAM'), {
   env,
   environment: ENVIRONMENT,
   dynamoDBTables: dynamodbStack.tables,
-  deploymentsBucketArn: s3Stack.deploymentsBucketArn,
-  logsBucketArn: s3Stack.logsBucketArn,
+  deploymentsBucketArn: `arn:aws:s3:::${CTECH_DEPLOYMENTS_BUCKET}`,
+  logsBucketArn: `arn:aws:s3:::${CTECH_LOGS_BUCKET}`,
   description: `ctech-account IAM - ${ENVIRONMENT}`,
 });
 iamStack.addDependency(dynamodbStack);
-iamStack.addDependency(s3Stack);
 
 // =====================
 // Compute (EC2 + ASG, shared ALB from ctech-cdk)
@@ -90,8 +85,8 @@ const computeStack = new ComputeStack(app, id('Compute'), {
   vpcId: CTECH_VPC_ID,
   domainName: domainForEnv(ENVIRONMENT, 'accountsapi'), // accounts-api.arturocarvalho.com → ALB
   instanceProfileName: iamStack.instanceProfileName,
-  deploymentsBucketName: s3Stack.deploymentsBucketName,
-  logsBucketName: s3Stack.logsBucketName,
+  deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
+  logsBucketName: CTECH_LOGS_BUCKET,
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
   listenerRulePriority: 20, // py-dfe-api uses 10
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
