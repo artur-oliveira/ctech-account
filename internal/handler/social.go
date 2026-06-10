@@ -107,7 +107,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 
 	// Resolve relative continueURLs against AppURL so callers can pass e.g. "/dashboard".
 	if strings.HasPrefix(continueURL, "/") {
-		continueURL = h.cfg.AppURL + continueURL
+		continueURL = h.cfg.BaseURL + continueURL
 	}
 	return c.Redirect().Status(fiber.StatusFound).To(continueURL)
 }
