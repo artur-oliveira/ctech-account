@@ -238,6 +238,7 @@ export class ComputeStack extends cdk.Stack {
       `APP_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
       `GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-id" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-secret" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
+      `COOKIE_DOMAIN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/cookie-domain" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       ...(valkeyUrlSsmPath ? [
         `VALKEY_URL=$(aws ssm get-parameter --name "${valkeyUrlSsmPath}" --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
         `export VALKEY_URL`,
@@ -250,6 +251,7 @@ export class ComputeStack extends cdk.Stack {
       `export INTERNAL_TOKEN`,
       `export GOOGLE_CLIENT_ID`,
       `export GOOGLE_CLIENT_SECRET`,
+      `export COOKIE_DOMAIN`,
       `exec /opt/app/current/bootstrap >> /var/log/app/app.log 2>&1`,
       `START`,
       `chmod +x /opt/app/start.sh`,

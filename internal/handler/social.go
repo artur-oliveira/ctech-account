@@ -182,14 +182,14 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	secure := strings.HasPrefix(h.cfg.BaseURL, "https")
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
-		Secure:   secure,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 	return nil
