@@ -37,7 +37,7 @@ type healthResponse struct {
 }
 
 func healthHandler(db *database.Client, valkeyClient *cache.Client) fiber.Handler {
-	pingTable := db.TableName("ctech_users")
+	pingTable := db.TableName("account_users")
 
 	return func(c fiber.Ctx) error {
 		now := time.Now().UTC().Format(time.RFC3339Nano)

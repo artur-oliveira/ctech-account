@@ -2,8 +2,6 @@ package user
 
 import "strings"
 
-const tablePrefix = "ctech_users"
-
 type User struct {
 	PK            string `dynamodbav:"pk"`
 	Email         string `dynamodbav:"email"`
