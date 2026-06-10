@@ -100,14 +100,14 @@ func main() {
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
 	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, passkeySvc, valkeyClient, cfg, emailCli)
 	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg)
-	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.AppURL)
+	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, cfg.AppURL, cfg.CookieDomain)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, jwtSvc, cfg.BaseURL, cfg)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc)
 	profileH := handler.NewProfileHandler(userSvc)
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc)
 	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg)
-	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient)
+	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg)
 	internalH := handler.NewInternalHandler(userSvc, cfg.InternalToken)
 
 	app := fiber.New(fiber.Config{

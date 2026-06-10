@@ -17,10 +17,11 @@ import (
 )
 
 type AuthorizeHandler struct {
-	clientRepo oauthclient.Repository
-	codeRepo   *authcode.Repository
-	sessionSvc *session.Service
-	baseURL    string
+	clientRepo   oauthclient.Repository
+	codeRepo     *authcode.Repository
+	sessionSvc   *session.Service
+	baseURL      string
+	cookieDomain string
 }
 
 func NewAuthorizeHandler(
@@ -28,12 +29,14 @@ func NewAuthorizeHandler(
 	codeRepo *authcode.Repository,
 	sessionSvc *session.Service,
 	baseURL string,
+	cookieDomain string,
 ) *AuthorizeHandler {
 	return &AuthorizeHandler{
-		clientRepo: clientRepo,
-		codeRepo:   codeRepo,
-		sessionSvc: sessionSvc,
-		baseURL:    baseURL,
+		clientRepo:   clientRepo,
+		codeRepo:     codeRepo,
+		sessionSvc:   sessionSvc,
+		baseURL:      baseURL,
+		cookieDomain: cookieDomain,
 	}
 }
 
@@ -90,7 +93,7 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 
 	sess, err := h.sessionSvc.ValidateToken(c.Context(), cookieValue)
 	if err != nil {
-		c.Cookie(&fiber.Cookie{Name: "ctech_session", Value: "", MaxAge: -1, Path: "/"})
+		c.Cookie(&fiber.Cookie{Name: "ctech_session", Value: "", MaxAge: -1, Path: "/", Domain: h.cookieDomain})
 		return c.Redirect().To(h.loginURL(c.OriginalURL()))
 	}
 

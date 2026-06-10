@@ -175,9 +175,10 @@ func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
@@ -231,9 +232,10 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
@@ -335,9 +337,10 @@ func (h *AuthHandler) mfaPasskeyComplete(c fiber.Ctx) error {
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
@@ -362,9 +365,10 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 		Name:     "ctech_session",
 		Value:    "",
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   -1,
 	})
 

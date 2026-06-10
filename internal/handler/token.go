@@ -157,9 +157,10 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 			Name:     "ctech_session",
 			Value:    newRefreshToken,
 			HTTPOnly: true,
-			Secure:   true,
+			Secure:   h.cfg.CookieSecure,
 			SameSite: "Lax",
 			Path:     "/",
+			Domain:   h.cfg.CookieDomain,
 			MaxAge:   refreshTokenMaxAge,
 		})
 	}

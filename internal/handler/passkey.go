@@ -5,6 +5,7 @@ import (
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
 	"github.com/artur-oliveira/ctech-account/internal/cache"
+	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/domain/mfa/passkey"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/domain/user"
@@ -18,10 +19,11 @@ type PasskeyHandler struct {
 	sessionSvc *session.Service
 	totpSvc    TOTPService
 	cache      *cache.Client
+	cfg        *config.Config
 }
 
-func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client) *PasskeyHandler {
-	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache}
+func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config) *PasskeyHandler {
+	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg}
 }
 
 // RegisterManagement registers the authenticated passkey management routes under /account/mfa.
@@ -231,9 +233,10 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
