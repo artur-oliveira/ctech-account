@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -109,12 +111,12 @@ func main() {
 	internalH := handler.NewInternalHandler(userSvc, cfg.InternalToken)
 
 	app := fiber.New(fiber.Config{
-		AppName:                 "ctech-account",
-		ReadTimeout:             15 * time.Second,
-		WriteTimeout:            15 * time.Second,
-		IdleTimeout:             60 * time.Second,
-		ProxyHeader: fiber.HeaderXForwardedFor,
-		TrustProxy:  len(cfg.TrustedProxies) > 0,
+		AppName:      "ctech-account",
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		ProxyHeader:  fiber.HeaderXForwardedFor,
+		TrustProxy:   len(cfg.TrustedProxies) > 0,
 		TrustProxyConfig: fiber.TrustProxyConfig{
 			Proxies: cfg.TrustedProxies,
 		},
@@ -137,9 +139,22 @@ func main() {
 		Format: `{"time":"${time}","method":"${method}","path":"${path}","status":${status},"latency":"${latency}","request_id":"${requestid}"}` + "\n",
 	}))
 
-	allowedOrigins := make([]string, 1, 1+len(cfg.AllowedOrigins))
-	allowedOrigins[0] = cfg.BaseURL
-	allowedOrigins = append(allowedOrigins, cfg.AllowedOrigins...)
+	rawOrigins := append([]string{cfg.AppURL}, cfg.AllowedOrigins...)
+	allowedOrigins := rawOrigins[:0]
+	for _, o := range rawOrigins {
+		if strings.HasPrefix(o, "http://") || strings.HasPrefix(o, "https://") {
+			if !slices.Contains(allowedOrigins, o) {
+				allowedOrigins = append(allowedOrigins, o)
+			} else {
+				log.Printf("WARN: origins %s already present", o)
+			}
+		} else {
+			log.Printf("WARN: skipping invalid CORS origin %q (missing http/https scheme)", o)
+		}
+	}
+	if len(allowedOrigins) == 0 {
+		log.Fatal("FATAL: no valid CORS origins configured — check BASE_URL and ALLOWED_ORIGINS SSM parameters")
+	}
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
