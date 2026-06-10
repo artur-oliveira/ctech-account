@@ -164,59 +164,7 @@ func main() {
 		MaxAge:           3600,
 	}))
 
-	// Health check — RFC health check response format (draft-inadarei-api-health-check)
-	app.Get("/healthz", func(c fiber.Ctx) error {
-		type checkResult struct {
-			ComponentID string `json:"componentId"`
-			Status      string `json:"status"`
-			Time        string `json:"time"`
-		}
-		type healthResponse struct {
-			Status      string                   `json:"status"`
-			Version     string                   `json:"version"`
-			ServiceID   string                   `json:"serviceId"`
-			Description string                   `json:"description"`
-			Checks      map[string][]checkResult `json:"checks"`
-		}
-
-		now := time.Now().UTC().Format(time.RFC3339)
-		overallStatus := "pass"
-		checks := map[string][]checkResult{}
-
-		// DynamoDB ping
-		dynStatus := "pass"
-		if pingErr := db.Ping(c.Context()); pingErr != nil {
-			dynStatus = "fail"
-			overallStatus = "fail"
-		}
-		checks["dynamodb:ping"] = []checkResult{{ComponentID: "dynamodb", Status: dynStatus, Time: now}}
-
-		// Valkey ping (only if enabled)
-		if valkeyClient.Enabled() {
-			vkStatus := "pass"
-			if pingErr := valkeyClient.Ping(c.Context()); pingErr != nil {
-				vkStatus = "warn"
-				if overallStatus == "pass" {
-					overallStatus = "warn"
-				}
-			}
-			checks["valkey:ping"] = []checkResult{{ComponentID: "valkey", Status: vkStatus, Time: now}}
-		}
-
-		httpStatus := fiber.StatusOK
-		if overallStatus == "fail" {
-			httpStatus = fiber.StatusServiceUnavailable
-		}
-
-		c.Set(fiber.HeaderContentType, "application/health+json")
-		return c.Status(httpStatus).JSON(healthResponse{
-			Status:      overallStatus,
-			Version:     "1",
-			ServiceID:   "ctech-account",
-			Description: "ctech-account Identity Provider",
-			Checks:      checks,
-		})
-	})
+	app.Get("/healthz", healthHandler(db, valkeyClient))
 
 	wellknownH.Register(app)
 	internalH.Register(app)

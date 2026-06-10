@@ -160,10 +160,9 @@ func (c *Client) RawClient() *dynamodb.Client {
 	return c.svc
 }
 
-// Ping verifies connectivity by calling ListTables with a limit of 1.
-func (c *Client) Ping(ctx context.Context) error {
-	limit := int32(1)
-	_, err := c.svc.ListTables(ctx, &dynamodb.ListTablesInput{Limit: &limit})
+// Ping verifies connectivity by calling DescribeTable on a known table.
+func (c *Client) Ping(ctx context.Context, table string) error {
+	_, err := c.svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(table)})
 	if err != nil {
 		return fmt.Errorf("dynamodb ping: %w", err)
 	}
