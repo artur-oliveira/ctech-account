@@ -83,7 +83,7 @@ const computeStack = new ComputeStack(app, id('Compute'), {
   env,
   environment: ENVIRONMENT,
   vpcId: CTECH_VPC_ID,
-  domainName: domainForEnv(ENVIRONMENT, 'accountsapi'), // accounts-api.arturocarvalho.com → ALB
+  domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.arturocarvalho.com → ALB
   instanceProfileName: iamStack.instanceProfileName,
   deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
   logsBucketName: CTECH_LOGS_BUCKET,

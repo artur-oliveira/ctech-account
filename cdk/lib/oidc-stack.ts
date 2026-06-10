@@ -32,13 +32,25 @@ export class OidcStack extends cdk.Stack {
       description: 'Role assumed by GitHub Actions for ctech-account deploys',
     });
 
-    // S3 — upload artifacts to the ctech-account-owned deployments bucket
+    // S3 — upload artifacts to shared deployments bucket under ctech-account/ prefix
     deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['s3:PutObject', 's3:GetObject', 's3:ListBucket'],
-      resources: [
-        'arn:aws:s3:::*-ctech-account-deployments',
-        'arn:aws:s3:::*-ctech-account-deployments/*',
-      ],
+      actions: ['s3:ListBucket'],
+      resources: ['arn:aws:s3:::*-ctech-deployments'],
+      conditions: {StringLike: {'s3:prefix': 'ctech-account/*'}},
+    }));
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject', 's3:GetObject'],
+      resources: ['arn:aws:s3:::*-ctech-deployments/ctech-account/*'],
+    }));
+
+    // S3 — sync frontend assets to S3 static hosting bucket
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: ['arn:aws:s3:::*-ctech-account-frontend'],
+    }));
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
+      resources: ['arn:aws:s3:::*-ctech-account-frontend/*'],
     }));
 
     // SSM — read VPC ID and ALB listener ARN at synth time
