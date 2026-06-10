@@ -79,7 +79,6 @@ func HashToken(token string) string {
 	return hashBytes([]byte(token))
 }
 
-// GenerateMFAToken generates a short-lived MFA continuation token.
 func GenerateMFAToken() (token, hashHex string, err error) {
 	b, err := generateRandom(128)
 	if err != nil {

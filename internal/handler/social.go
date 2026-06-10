@@ -192,5 +192,17 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 		Domain:   h.cfg.CookieDomain,
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
+	// Also set ctech_rt so the /token refresh_token grant can rotate the session
+	// without needing JS access to the HttpOnly ctech_session cookie.
+	c.Cookie(&fiber.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    rawToken,
+		HTTPOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		SameSite: "Lax",
+		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
+		MaxAge:   refreshTokenMaxAge,
+	})
 	return nil
 }
