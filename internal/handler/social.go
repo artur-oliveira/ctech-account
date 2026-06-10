@@ -42,7 +42,7 @@ func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	continueURL := c.Query("continue", "/")
+	continueURL := c.Query("continue", h.cfg.AppURL)
 	rawState, stateHash, err := crypto.GenerateMFAToken()
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
@@ -75,7 +75,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		return apierror.InvalidRequest("Missing code or state.", c.Path()).Send(c)
 	}
 
-	continueURL := "/"
+	continueURL := h.cfg.AppURL
 	stateHash := crypto.HashToken(rawState)
 	if h.cache != nil && h.cache.Enabled() {
 		if err := h.cache.Get(c.Context(), "gs:"+stateHash, &continueURL); err != nil {
@@ -105,8 +105,10 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		return err
 	}
 
-	// If there's a pending OAuth authorize flow, redirect back to it.
-	// Otherwise go to the continueURL (app's landing page).
+	// Resolve relative continueURLs against AppURL so callers can pass e.g. "/dashboard".
+	if strings.HasPrefix(continueURL, "/") {
+		continueURL = h.cfg.AppURL + continueURL
+	}
 	return c.Redirect().Status(fiber.StatusFound).To(continueURL)
 }
 
@@ -134,7 +136,12 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
@@ -151,7 +158,12 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("userinfo fetch: %w", err)
 	}
-	defer uiResp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(uiResp.Body)
 
 	var profile googleUserInfo
 	if err := json.NewDecoder(uiResp.Body).Decode(&profile); err != nil {
