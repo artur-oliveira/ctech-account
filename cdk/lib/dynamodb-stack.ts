@@ -21,9 +21,8 @@ export class DynamoDBStack extends cdk.Stack {
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
     const pitr = isProd;
 
-    // ── ctech_users ────────────────────────────────────────────────────────────
-    const usersTable = new dynamodb.TableV2(this, 'UsersTable', {
-      tableName: `${environment}_ctech_users`,
+    const usersTable = new dynamodb.TableV2(this, 'UsersTableV2', {
+      tableName: `${environment}_account_users`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
       billing: dynamodb.Billing.onDemand(),
       pointInTimeRecoverySpecification: {
@@ -38,11 +37,10 @@ export class DynamoDBStack extends cdk.Stack {
         },
       ],
     });
-    this.tables.set('ctech_users', usersTable);
+    this.tables.set('account_users', usersTable);
 
-    // ── ctech_sessions ─────────────────────────────────────────────────────────
-    const sessionsTable = new dynamodb.TableV2(this, 'SessionsTable', {
-      tableName: `${environment}_ctech_sessions`,
+    const sessionsTable = new dynamodb.TableV2(this, 'SessionsTableV2', {
+      tableName: `${environment}_account_sessions`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
       sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
       billing: dynamodb.Billing.onDemand(),
@@ -59,11 +57,10 @@ export class DynamoDBStack extends cdk.Stack {
         },
       ],
     });
-    this.tables.set('ctech_sessions', sessionsTable);
+    this.tables.set('account_sessions', sessionsTable);
 
-    // ── ctech_oauth_clients ────────────────────────────────────────────────────
-    const oauthClientsTable = new dynamodb.TableV2(this, 'OAuthClientsTable', {
-      tableName: `${environment}_ctech_oauth_clients`,
+    const oauthClientsTable = new dynamodb.TableV2(this, 'OAuthClientsTableV2', {
+      tableName: `${environment}_account_oauth_clients`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
       billing: dynamodb.Billing.onDemand(),
       pointInTimeRecoverySpecification: {
@@ -78,11 +75,10 @@ export class DynamoDBStack extends cdk.Stack {
         },
       ],
     });
-    this.tables.set('ctech_oauth_clients', oauthClientsTable);
+    this.tables.set('account_oauth_clients', oauthClientsTable);
 
-    // ── ctech_api_keys ─────────────────────────────────────────────────────────
-    const apiKeysTable = new dynamodb.TableV2(this, 'APIKeysTable', {
-      tableName: `${environment}_ctech_api_keys`,
+    const apiKeysTable = new dynamodb.TableV2(this, 'APIKeysTableV2', {
+      tableName: `${environment}_account_api_keys`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
       sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
       billing: dynamodb.Billing.onDemand(),
@@ -99,12 +95,11 @@ export class DynamoDBStack extends cdk.Stack {
         },
       ],
     });
-    this.tables.set('ctech_api_keys', apiKeysTable);
+    this.tables.set('account_api_keys', apiKeysTable);
 
-    // ── ctech_mfa ──────────────────────────────────────────────────────────────
     // Stores TOTP secrets (sk=TOTP_default) and PassKey credentials (sk=PASSKEY_{id})
-    const mfaTable = new dynamodb.TableV2(this, 'MFATable', {
-      tableName: `${environment}_ctech_mfa`,
+    const mfaTable = new dynamodb.TableV2(this, 'MFATableV2', {
+      tableName: `${environment}_account_mfa`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
       sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
       billing: dynamodb.Billing.onDemand(),
@@ -113,24 +108,24 @@ export class DynamoDBStack extends cdk.Stack {
       },
       removalPolicy,
     });
-    this.tables.set('ctech_mfa', mfaTable);
-    const passkeysTable = new dynamodb.TableV2(this, 'PassKeyTable', {
-      tableName: `${environment}_ctech_passkeys`,
-      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
-      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
-      billing: dynamodb.Billing.onDemand(),
-      pointInTimeRecoverySpecification: {
-        pointInTimeRecoveryEnabled: pitr,
-      },
-      removalPolicy,
-    });
-    this.tables.set('ctech_passkeys', passkeysTable);
+    this.tables.set('account_mfa', mfaTable);
 
-    // ── Outputs ────────────────────────────────────────────────────────────────
+    const passkeysTable = new dynamodb.TableV2(this, 'PassKeyTableV2', {
+      tableName: `${environment}_account_passkeys`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand(),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+    });
+    this.tables.set('account_passkeys', passkeysTable);
+
     for (const [name, table] of this.tables) {
       new cdk.CfnOutput(this, `${name}_TableName`, {
         value: table.tableName,
-        exportName: `${id}-${name.replace(/_/g, "-")}`,
+        exportName: `${id}-${name.replace(/_/g, '-')}`,
       });
     }
   }

@@ -28,7 +28,7 @@ type dynamoRepository struct {
 }
 
 func NewRepository(db *database.Client) Repository {
-	return &dynamoRepository{db: db, table: "ctech_passkeys"}
+	return &dynamoRepository{db: db, table: "account_passkeys"}
 }
 
 func (r *dynamoRepository) Create(ctx context.Context, c *Credential) error {

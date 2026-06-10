@@ -27,7 +27,7 @@ type dynamoRepository struct {
 
 // NewRepository returns a DynamoDB-backed Repository.
 func NewRepository(db *database.Client) Repository {
-	return &dynamoRepository{db: db, table: "ctech_oauth_clients"}
+	return &dynamoRepository{db: db, table: "account_oauth_clients"}
 }
 
 func (r *dynamoRepository) GetByID(ctx context.Context, clientID string) (*OAuthClient, error) {

@@ -31,7 +31,7 @@ type dynamoRepository struct {
 
 // NewRepository returns a DynamoDB-backed Repository.
 func NewRepository(db *database.Client) Repository {
-	return &dynamoRepository{db: db, table: "ctech_sessions"}
+	return &dynamoRepository{db: db, table: "account_sessions"}
 }
 
 func (r *dynamoRepository) Create(ctx context.Context, s *Session) error {

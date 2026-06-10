@@ -24,7 +24,7 @@ type Service struct {
 }
 
 func NewService(db *database.Client) *Service {
-	return &Service{db: db, table: "ctech_mfa"}
+	return &Service{db: db, table: "account_mfa"}
 }
 
 // Generate creates an unverified TOTP secret and returns the provisioning URI for QR code display.
