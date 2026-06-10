@@ -221,13 +221,15 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 
 	// Passkey is the first factor; TOTP (if configured) is required as the second.
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), userID); totpErr == nil && totpSecret.IsSetup() {
-		return issueMFAToken(c, h.cache, userID, "Passkey", c.IP(), c.Get("User-Agent"), []string{"totp"})
+		return issueMFAToken(c, h.cache, userID, "Passkey", clientIP(c), c.Get("User-Agent"), []string{"totp"})
 	}
 
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", c.IP(), c.Get("User-Agent"))
+	ip := clientIP(c)
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", ip, c.Get("User-Agent"))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",

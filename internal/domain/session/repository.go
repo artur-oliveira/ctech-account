@@ -19,6 +19,7 @@ type Repository interface {
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Session, error)
 	Create(ctx context.Context, s *Session) error
 	UpdateRefreshToken(ctx context.Context, userID, sessionID, newHash string) error
+	UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error
 	Delete(ctx context.Context, userID, sessionID string) error
 	ListByUserID(ctx context.Context, userID string) ([]*Session, error)
 }
@@ -108,6 +109,28 @@ func (r *dynamoRepository) Delete(ctx context.Context, userID, sessionID string)
 		return fmt.Errorf("marshaling key: %w", err)
 	}
 	return r.db.DeleteItem(ctx, r.table, key)
+}
+
+func (r *dynamoRepository) UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error {
+	key, err := attributevalue.MarshalMap(map[string]string{
+		"pk": BuildPK(userID),
+		"sk": BuildSK(sessionID),
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling key: %w", err)
+	}
+
+	updates := map[string]types.AttributeValue{}
+	for field, val := range map[string]any{
+		"geo_city":      city,
+		"geo_region":    region,
+		"geo_latitude":  lat,
+		"geo_longitude": lon,
+	} {
+		av, _ := attributevalue.Marshal(val)
+		updates[field] = av
+	}
+	return r.db.UpdateItem(ctx, r.table, key, updates)
 }
 
 func (r *dynamoRepository) UpdateRefreshToken(ctx context.Context, userID, sessionID, newHash string) error {

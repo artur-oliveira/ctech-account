@@ -127,7 +127,7 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 	}
 
 	if len(methods) > 0 {
-		return issueMFAToken(c, h.cache, u.ID(), parseDeviceName(c.Get("User-Agent")), c.IP(), c.Get("User-Agent"), methods)
+		return issueMFAToken(c, h.cache, u.ID(), parseDeviceName(c.Get("User-Agent")), clientIP(c), c.Get("User-Agent"), methods)
 	}
 
 	return h.issueSession(c, u)
@@ -166,10 +166,12 @@ func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, i
 // issueSession creates a session, sets the cookie, and returns user info.
 func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, c.IP(), c.Get("User-Agent"))
+	ip := clientIP(c)
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
@@ -227,6 +229,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), payload.IP)
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",
@@ -332,6 +335,7 @@ func (h *AuthHandler) mfaPasskeyComplete(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), payload.IP)
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",

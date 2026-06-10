@@ -127,7 +127,7 @@ func newTestApp(t *testing.T) *testApp {
 
 	v1 := app.Group("/v1.0")
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, passkeySvc, disabledCache, cfg, nil).Register(v1)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache).RegisterAuth(v1.Group("/auth"))
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
@@ -135,7 +135,7 @@ func newTestApp(t *testing.T) *testApp {
 	handler.NewSessionsHandler(sessionSvc).Register(account)
 	handler.NewAPIKeysHandler(apiKeySvc).Register(account)
 	handler.NewMFAHandler(noop, userSvc, cfg).Register(account)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache).RegisterManagement(account)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg).RegisterManagement(account)
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
 	handler.NewInternalHandler(userSvc, cfg.InternalToken).Register(app)
@@ -306,6 +306,19 @@ func (m *memSessionRepo) UpdateRefreshToken(_ context.Context, userID, sessionID
 		return sessionDomain.ErrNotFound
 	}
 	s.RefreshTokenHash = newHash
+	return nil
+}
+
+func (m *memSessionRepo) UpdateGeoData(_ context.Context, userID, sessionID, city, region string, lat, lon float64) error {
+	k := sessionDomain.BuildPK(userID) + "|" + sessionDomain.BuildSK(sessionID)
+	s, ok := m.sessions[k]
+	if !ok {
+		return sessionDomain.ErrNotFound
+	}
+	s.GeoCity = city
+	s.GeoRegion = region
+	s.GeoLatitude = lat
+	s.GeoLongitude = lon
 	return nil
 }
 

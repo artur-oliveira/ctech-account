@@ -113,6 +113,11 @@ func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*Session,
 	return sess, nil
 }
 
+// UpdateGeoData writes geo-location fields onto an existing session.
+func (s *Service) UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error {
+	return s.repo.UpdateGeoData(ctx, userID, sessionID, city, region, lat, lon)
+}
+
 func (s *Service) List(ctx context.Context, userID string) ([]*Session, error) {
 	return s.repo.ListByUserID(ctx, userID)
 }

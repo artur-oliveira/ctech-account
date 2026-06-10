@@ -177,10 +177,12 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 
 func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
-	_, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, c.IP(), c.Get("User-Agent"))
+	ip := clientIP(c)
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "ctech_session",

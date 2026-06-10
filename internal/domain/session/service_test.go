@@ -45,6 +45,10 @@ func (m *mockRepo) UpdateRefreshToken(_ context.Context, userID, sessionID, newH
 	return nil
 }
 
+func (m *mockRepo) UpdateGeoData(_ context.Context, _, _ string, _, _ string, _, _ float64) error {
+	return nil
+}
+
 func (m *mockRepo) Delete(_ context.Context, userID, sessionID string) error {
 	k := session.BuildPK(userID) + "|" + session.BuildSK(sessionID)
 	delete(m.sessions, k)

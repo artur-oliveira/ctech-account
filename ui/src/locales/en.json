@@ -139,7 +139,8 @@
     "revoke": "Revoke",
     "noSessions": "No active sessions found.",
     "lastActive": "Last active {{time}}",
-    "created": "Created {{date}}"
+    "created": "Created {{date}}",
+    "location": "{{city}}, {{region}}"
   },
   "apiKeys": {
     "title": "API Keys",

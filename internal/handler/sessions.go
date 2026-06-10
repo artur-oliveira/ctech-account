@@ -33,12 +33,16 @@ func (h *SessionsHandler) list(c fiber.Ctx) error {
 	result := make([]fiber.Map, 0, len(sessions))
 	for _, s := range sessions {
 		result = append(result, fiber.Map{
-			"session_id":   s.ID(),
-			"device_name":  s.DeviceName,
-			"ip_address":   s.IPAddress,
-			"created_at":   s.CreatedAt,
-			"last_used_at": s.LastUsedAt,
-			"is_current":   s.ID() == currentSessionID,
+			"session_id":    s.ID(),
+			"device_name":   s.DeviceName,
+			"ip_address":    s.IPAddress,
+			"created_at":    s.CreatedAt,
+			"last_used_at":  s.LastUsedAt,
+			"is_current":    s.ID() == currentSessionID,
+			"geo_city":      s.GeoCity,
+			"geo_region":    s.GeoRegion,
+			"geo_latitude":  s.GeoLatitude,
+			"geo_longitude": s.GeoLongitude,
 		})
 	}
 

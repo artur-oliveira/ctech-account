@@ -7,7 +7,7 @@ import { formatDistanceToNow, formatDate } from '@/lib/format'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { RevokeSessionButton, RevokeAllButton } from './session-actions'
-import { MonitorSmartphone } from 'lucide-react'
+import { MonitorSmartphone, MapPin } from 'lucide-react'
 
 export default function SessionsPage() {
   const { t } = useTranslation()
@@ -37,30 +37,44 @@ export default function SessionsPage() {
       </div>
 
       <div className="space-y-3">
-        {sessions.map((session) => (
-          <Card key={session.session_id}>
-            <CardContent className="flex items-center gap-4 py-4">
-              <MonitorSmartphone className="size-8 shrink-0 text-muted-foreground" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium truncate">{session.device_name}</p>
-                  {session.is_current && (
-                    <Badge variant="secondary" className="text-xs shrink-0">{t('sessions.current')}</Badge>
+        {sessions.map((session) => {
+          const hasGeo = !!(session.geo_city || session.geo_region)
+          const locationParts = [session.geo_city, session.geo_region].filter(Boolean)
+          const location = locationParts.length === 2
+            ? t('sessions.location', { city: session.geo_city, region: session.geo_region })
+            : locationParts[0] ?? ''
+
+          return (
+            <Card key={session.session_id}>
+              <CardContent className="flex items-center gap-4 py-4">
+                <MonitorSmartphone className="size-8 shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{session.device_name}</p>
+                    {session.is_current && (
+                      <Badge variant="secondary" className="text-xs shrink-0">{t('sessions.current')}</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {session.ip_address} · {t('sessions.lastActive', { time: formatDistanceToNow(session.last_used_at) })}
+                  </p>
+                  {hasGeo && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <MapPin className="size-3 shrink-0" />
+                      {location}
+                    </p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    {t('sessions.created', { date: formatDate(session.created_at) })}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {session.ip_address} · {t('sessions.lastActive', { time: formatDistanceToNow(session.last_used_at) })}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('sessions.created', { date: formatDate(session.created_at) })}
-                </p>
-              </div>
-              {!session.is_current && (
-                <RevokeSessionButton sessionId={session.session_id} />
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                {!session.is_current && (
+                  <RevokeSessionButton sessionId={session.session_id} />
+                )}
+              </CardContent>
+            </Card>
+          )
+        })}
         {sessions.length === 0 && (
           <p className="text-muted-foreground text-sm">{t('sessions.noSessions')}</p>
         )}

@@ -16,6 +16,10 @@ export type Session = {
   created_at: string
   last_used_at: string
   is_current: boolean
+  geo_city: string
+  geo_region: string
+  geo_latitude: number
+  geo_longitude: number
 }
 
 export type APIKey = {

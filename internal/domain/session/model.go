@@ -6,15 +6,19 @@ import (
 )
 
 type Session struct {
-	PK               string `dynamodbav:"pk"`
-	SK               string `dynamodbav:"sk"`
-	RefreshTokenHash string `dynamodbav:"refresh_token_hash"`
-	DeviceName       string `dynamodbav:"device_name"`
-	IPAddress        string `dynamodbav:"ip_address"`
-	UserAgent        string `dynamodbav:"user_agent"`
-	CreatedAt        string `dynamodbav:"created_at"`
-	LastUsedAt       string `dynamodbav:"last_used_at"`
-	ExpiresAt        int64  `dynamodbav:"expires_at"` // Unix epoch — DynamoDB TTL attribute
+	PK               string  `dynamodbav:"pk"`
+	SK               string  `dynamodbav:"sk"`
+	RefreshTokenHash string  `dynamodbav:"refresh_token_hash"`
+	DeviceName       string  `dynamodbav:"device_name"`
+	IPAddress        string  `dynamodbav:"ip_address"`
+	UserAgent        string  `dynamodbav:"user_agent"`
+	CreatedAt        string  `dynamodbav:"created_at"`
+	LastUsedAt       string  `dynamodbav:"last_used_at"`
+	ExpiresAt        int64   `dynamodbav:"expires_at"` // Unix epoch — DynamoDB TTL attribute
+	GeoCity          string  `dynamodbav:"geo_city,omitempty"`
+	GeoRegion        string  `dynamodbav:"geo_region,omitempty"`
+	GeoLatitude      float64 `dynamodbav:"geo_latitude,omitempty"`
+	GeoLongitude     float64 `dynamodbav:"geo_longitude,omitempty"`
 }
 
 const SessionTTL = 90 * 24 * time.Hour
