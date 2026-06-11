@@ -112,9 +112,14 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		return err
 	}
 
-	// Resolve relative continueURLs against AppURL so callers can pass e.g. "/dashboard".
+	// Resolve relative continueURLs: API paths (/v1.0/...) belong on BaseURL,
+	// all other paths (frontend routes) belong on AppURL.
 	if strings.HasPrefix(continueURL, "/") {
-		continueURL = h.cfg.AppURL + continueURL
+		if strings.HasPrefix(continueURL, "/v1.0/") {
+			continueURL = h.cfg.BaseURL + continueURL
+		} else {
+			continueURL = h.cfg.AppURL + continueURL
+		}
 	}
 	return c.Redirect().Status(fiber.StatusFound).To(continueURL)
 }
@@ -126,7 +131,9 @@ func (h *SocialHandler) isAllowedContinueURL(u string) bool {
 	if strings.HasPrefix(u, "/") {
 		return true
 	}
-	allowed := append([]string{h.cfg.AppURL}, h.cfg.AllowedOrigins...)
+	// BaseURL (backend API) is included so that OAuth authorize redirects from other clients
+	// (e.g. continue=/v1.0/authorize?client_id=dfe&...) survive the validation.
+	allowed := append([]string{h.cfg.AppURL, h.cfg.BaseURL}, h.cfg.AllowedOrigins...)
 	for _, origin := range allowed {
 		if u == origin || strings.HasPrefix(u, origin+"/") {
 			return true
