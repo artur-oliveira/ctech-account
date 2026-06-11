@@ -83,6 +83,10 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 		return h.redirectError(c, redirectURI, state, "invalid_scope", "no valid scopes requested for this client")
 	}
 
+	if oauthClient.IsPublic() && codeChallenge == "" {
+		return h.redirectError(c, redirectURI, state, "invalid_request", "PKCE code_challenge is required for public clients")
+	}
+
 	cookieValue := c.Cookies("ctech_session")
 	if cookieValue == "" {
 		cookieValue = c.Cookies("ctech_rt")

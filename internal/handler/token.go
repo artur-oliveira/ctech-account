@@ -129,7 +129,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, ac.Scopes, h.baseURL)
+	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.baseURL, oauthClient.EffectiveAudience())
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -187,6 +187,14 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		return apierror.InvalidRequest("refresh_token and client_id are required.", c.Path()).Send(c)
 	}
 
+	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
+	if err != nil {
+		if errors.Is(err, oauthclient.ErrNotFound) {
+			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+		}
+		return apierror.ServerError(c.Path()).Send(c)
+	}
+
 	sess, newRawToken, err := h.sessionSvc.Rotate(c.Context(), rawRefreshToken)
 	if err != nil {
 		if errors.Is(err, session.ErrTokenReuse) {
@@ -199,7 +207,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	}
 
 	scopes := []string{"openid", "profile", "email"}
-	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), scopes, h.baseURL)
+	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), clientID, scopes, h.baseURL, oauthClient.EffectiveAudience())
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}

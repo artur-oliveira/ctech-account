@@ -13,9 +13,10 @@ import (
 )
 
 type JWTService struct {
-	privateKey *rsa.PrivateKey
-	publicKey  *rsa.PublicKey
-	kid        string
+	privateKey   *rsa.PrivateKey
+	publicKey    *rsa.PublicKey
+	kid          string
+	selfAudience string // Verify() rejects tokens whose aud doesn't contain this value
 }
 
 func NewJWTService(cfg *config.Config) (*JWTService, error) {
@@ -23,21 +24,25 @@ func NewJWTService(cfg *config.Config) (*JWTService, error) {
 		return nil, fmt.Errorf("RSA private key is nil")
 	}
 	return &JWTService{
-		privateKey: cfg.RSAPrivateKey,
-		publicKey:  &cfg.RSAPrivateKey.PublicKey,
-		kid:        cfg.PublicKeyKID,
+		privateKey:   cfg.RSAPrivateKey,
+		publicKey:    &cfg.RSAPrivateKey.PublicKey,
+		kid:          cfg.PublicKeyKID,
+		selfAudience: cfg.BaseURL,
 	}, nil
 }
 
 // SignAccessToken creates a 15-minute RS256 JWT access token.
-func (j *JWTService) SignAccessToken(userID, sessionID string, scopes []string, issuer string) (string, error) {
+// audience identifies the resource server(s) (backend API URLs).
+// clientID is the OAuth client_id; set as azp (authorized party) claim.
+func (j *JWTService) SignAccessToken(userID, sessionID, clientID string, scopes []string, issuer string, audience []string) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub":   userID,
 		"sid":   sessionID,
 		"scope": strings.Join(scopes, " "),
 		"iss":   issuer,
-		"aud":   []string{"ctech-account"},
+		"aud":   audience,
+		"azp":   clientID,
 		"iat":   now.Unix(),
 		"exp":   now.Add(15 * time.Minute).Unix(),
 	}
@@ -70,13 +75,14 @@ func (j *JWTService) sign(claims jwt.MapClaims) (string, error) {
 }
 
 // Verify validates an RS256 JWT and returns its claims.
+// It rejects tokens whose aud claim does not contain j.selfAudience.
 func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 	parsed, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return j.publicKey, nil
-	})
+	}, jwt.WithAudience(j.selfAudience))
 	if err != nil {
 		return nil, fmt.Errorf("verifying token: %w", err)
 	}

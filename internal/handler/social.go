@@ -41,15 +41,20 @@ func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 	if h.cfg.GoogleClientID == "" {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
+	if h.cache == nil || !h.cache.Enabled() {
+		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).Send(c)
+	}
 
 	continueURL := c.Query("continue", h.cfg.AppURL)
+	if !h.isAllowedContinueURL(continueURL) {
+		continueURL = h.cfg.AppURL
+	}
+
 	rawState, stateHash, err := crypto.GenerateMFAToken()
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	if h.cache != nil && h.cache.Enabled() {
-		_ = h.cache.Set(c.Context(), "gs:"+stateHash, continueURL, googleStateTTL)
-	}
+	_ = h.cache.Set(c.Context(), "gs:"+stateHash, continueURL, googleStateTTL)
 
 	redirectURI := h.cfg.BaseURL + "/v1.0/auth/google/callback"
 	params := url.Values{
@@ -75,14 +80,16 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		return apierror.InvalidRequest("Missing code or state.", c.Path()).Send(c)
 	}
 
-	continueURL := h.cfg.AppURL
-	stateHash := crypto.HashToken(rawState)
-	if h.cache != nil && h.cache.Enabled() {
-		if err := h.cache.Get(c.Context(), "gs:"+stateHash, &continueURL); err != nil {
-			return apierror.InvalidToken("OAuth state is invalid or has expired.", c.Path()).Send(c)
-		}
-		_ = h.cache.Delete(c.Context(), "gs:"+stateHash)
+	if h.cache == nil || !h.cache.Enabled() {
+		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).Send(c)
 	}
+
+	stateHash := crypto.HashToken(rawState)
+	var continueURL string
+	if err := h.cache.Get(c.Context(), "gs:"+stateHash, &continueURL); err != nil {
+		return apierror.InvalidToken("OAuth state is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), "gs:"+stateHash)
 
 	googleProfile, err := h.exchangeGoogleCode(code)
 	if err != nil {
@@ -107,9 +114,25 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 
 	// Resolve relative continueURLs against AppURL so callers can pass e.g. "/dashboard".
 	if strings.HasPrefix(continueURL, "/") {
-		continueURL = h.cfg.BaseURL + continueURL
+		continueURL = h.cfg.AppURL + continueURL
 	}
 	return c.Redirect().Status(fiber.StatusFound).To(continueURL)
+}
+
+// isAllowedContinueURL returns true when continueURL is safe to redirect to after social login.
+// Relative paths (starting with "/") are always safe — they get prepended with AppURL.
+// Absolute URLs must match AppURL or one of AllowedOrigins.
+func (h *SocialHandler) isAllowedContinueURL(u string) bool {
+	if strings.HasPrefix(u, "/") {
+		return true
+	}
+	allowed := append([]string{h.cfg.AppURL}, h.cfg.AllowedOrigins...)
+	for _, origin := range allowed {
+		if u == origin || strings.HasPrefix(u, origin+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 type googleUserInfo struct {

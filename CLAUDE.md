@@ -2,7 +2,7 @@
 
 OAuth 2.0 + OpenID Connect Identity Provider — Go 1.26, Fiber v3, DynamoDB, Valkey.
 
-**Before any task:** Read `README.md` and `PLAN.md`. If the task touches JWT or auth integration with ctech-dfe, also read `PYDFE_MIGRATION.md`.
+**Before any task:** Read `README.md` and `PLAN.md`.
 
 ---
 

@@ -173,7 +173,7 @@ func (ta *testApp) doWithToken(method, path string, body any, token string) *htt
 
 func (ta *testApp) issueToken(t *testing.T, userID string) string {
 	t.Helper()
-	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", []string{"openid", "profile"}, "http://localhost")
+	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", []string{"openid", "profile"}, "http://localhost", []string{"http://localhost"})
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}

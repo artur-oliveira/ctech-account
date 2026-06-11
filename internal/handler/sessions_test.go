@@ -10,7 +10,7 @@ func TestListSessions_ReturnsCurrentSession(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess@example.com", "pass1234", "S")
 	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA")
-	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), []string{"openid"}, "http://localhost")
+	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), "test-client", []string{"openid"}, "http://localhost", []string{"http://localhost"})
 
 	resp := app.doWithToken(http.MethodGet, "/v1.0/account/sessions", nil, token)
 	if resp.StatusCode != http.StatusOK {
@@ -30,7 +30,7 @@ func TestRevokeSession_OtherSession(t *testing.T) {
 	u := app.registerUser(t, "sess2@example.com", "pass1234", "T")
 	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA1")
 	sess2, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.4", "UA2")
-	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), []string{"openid"}, "http://localhost")
+	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), "test-client", []string{"openid"}, "http://localhost", []string{"http://localhost"})
 
 	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions/"+sess2.ID(), nil, token)
 	if resp.StatusCode != http.StatusNoContent {
@@ -42,7 +42,7 @@ func TestRevokeSession_CurrentSession_400(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess3@example.com", "pass1234", "U")
 	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA")
-	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), []string{"openid"}, "http://localhost")
+	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), "test-client", []string{"openid"}, "http://localhost", []string{"http://localhost"})
 
 	// Revoking the current session via DELETE /sessions/:id should be rejected.
 	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions/"+sess.ID(), nil, token)
@@ -57,7 +57,7 @@ func TestRevokeAllSessions(t *testing.T) {
 	u := app.registerUser(t, "sess4@example.com", "pass1234", "V")
 	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA")
 	_, _, _ = app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.5", "UA2")
-	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), []string{"openid"}, "http://localhost")
+	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), "test-client", []string{"openid"}, "http://localhost", []string{"http://localhost"})
 
 	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions", nil, token)
 	if resp.StatusCode != http.StatusNoContent {
