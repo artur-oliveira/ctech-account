@@ -160,7 +160,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 			Secure:   h.cfg.CookieSecure,
 			SameSite: "Lax",
 			Path:     "/",
-			Domain:   h.cfg.CookieDomain,
+			Domain:   effectiveCookieDomain(c, h.cfg),
 			MaxAge:   refreshTokenMaxAge,
 		})
 	}
@@ -216,7 +216,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 			Secure:   h.cfg.CookieSecure,
 			SameSite: "Lax",
 			Path:     "/",
-			Domain:   h.cfg.CookieDomain,
+			Domain:   effectiveCookieDomain(c, h.cfg),
 			MaxAge:   refreshTokenMaxAge,
 		})
 	}
@@ -253,7 +253,7 @@ func (h *TokenHandler) setRefreshCookie(c fiber.Ctx, value string, maxAge int) {
 		HTTPOnly: true,
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		Path:     "/",
 		Expires:  time.Now().Add(time.Duration(maxAge) * time.Second),
 	})
@@ -267,7 +267,7 @@ func (h *TokenHandler) clearRefreshCookie(c fiber.Ctx) {
 		HTTPOnly: true,
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		Path:     "/",
 	})
 }

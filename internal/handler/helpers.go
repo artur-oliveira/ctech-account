@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/artur-oliveira/ctech-account/internal/apierror"
+	"github.com/artur-oliveira/ctech-account/internal/config"
 	"github.com/artur-oliveira/ctech-account/internal/domain/session"
 	"github.com/artur-oliveira/ctech-account/internal/geo"
 	"github.com/artur-oliveira/ctech-account/internal/validate"
@@ -35,6 +36,18 @@ func enrichSessionAsync(svc *session.Service, userID, sessionID, ip string) {
 		}
 		_ = svc.UpdateGeoData(ctx, userID, sessionID, loc.City, loc.Region, loc.Latitude, loc.Longitude)
 	}()
+}
+
+// effectiveCookieDomain returns cfg.CookieDomain for production hosts, or ""
+// for localhost/127.x requests so that browsers don't reject the cookie.
+// Browsers ignore Set-Cookie Domain attributes that don't match the request host,
+// and localhost is never a registerable domain.
+func effectiveCookieDomain(c fiber.Ctx, cfg *config.Config) string {
+	host := c.Hostname()
+	if host == "localhost" || strings.HasPrefix(host, "127.") || host == "::1" {
+		return ""
+	}
+	return cfg.CookieDomain
 }
 
 // parseBody decodes JSON from the request body and validates the struct.

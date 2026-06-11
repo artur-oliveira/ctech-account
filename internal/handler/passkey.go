@@ -238,7 +238,7 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 

@@ -173,16 +173,17 @@ func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	}
 	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
 
-	c.Cookie(&fiber.Cookie{
+	cookie := &fiber.Cookie{
 		Name:     "ctech_session",
 		Value:    rawToken,
 		HTTPOnly: true,
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   int(session.SessionTTL.Seconds()),
-	})
+	}
+	c.Cookie(cookie)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"user_id":    u.ID(),
@@ -238,7 +239,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
@@ -344,7 +345,7 @@ func (h *AuthHandler) mfaPasskeyComplete(c fiber.Ctx) error {
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 
@@ -372,7 +373,7 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   -1,
 	})
 
@@ -383,7 +384,7 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 		HTTPOnly: true,
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		Path:     "/",
 		MaxAge:   -1,
 	})

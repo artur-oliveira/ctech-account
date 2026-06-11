@@ -191,7 +191,7 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   int(session.SessionTTL.Seconds()),
 	})
 	// Also set ctech_rt so the /token refresh_token grant can rotate the session
@@ -203,7 +203,7 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 		Path:     "/",
-		Domain:   h.cfg.CookieDomain,
+		Domain:   effectiveCookieDomain(c, h.cfg),
 		MaxAge:   refreshTokenMaxAge,
 	})
 	return nil
