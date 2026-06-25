@@ -15,8 +15,8 @@ const app = new cdk.App();
 // =====================
 const AWS_ACCOUNT = '868899309401';
 const AWS_REGION = 'us-east-1';
-// Wildcard ACM cert — same as py-dfe (covers *.arturocarvalho.com)
-const CERT_ARN = 'arn:aws:acm:us-east-1:868899309401:certificate/eb8aa9cd-f7c0-4c5a-bdbe-a25c4d4b20a5';
+// Wildcard ACM cert — same as py-dfe (covers *.aoctech.app)
+const CERT_ARN = 'arn:aws:acm:us-east-1:868899309401:certificate/29678869-bfc3-4688-b81b-55aa5b1d7443';
 
 const ENVIRONMENT = (process.env.ENVIRONMENT || 'dev') as Environment;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'artur-oliveira/ctech-account';
@@ -29,7 +29,7 @@ const CTECH_LOGS_BUCKET = process.env.CTECH_LOGS_BUCKET || `${ENVIRONMENT}-ctech
 
 const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 
-const BASE_DOMAIN = 'arturocarvalho.com';
+const BASE_DOMAIN = 'aoctech.app';
 
 const domainForEnv = (environment: Environment, prefix: string) => {
   switch (environment) {
@@ -83,7 +83,7 @@ const computeStack = new ComputeStack(app, id('Compute'), {
   env,
   environment: ENVIRONMENT,
   vpcId: CTECH_VPC_ID,
-  domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.arturocarvalho.com → ALB
+  domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.aoctech.app → ALB
   instanceProfileName: iamStack.instanceProfileName,
   deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
   logsBucketName: CTECH_LOGS_BUCKET,
@@ -95,13 +95,13 @@ computeStack.addDependency(iamStack);
 
 // =====================
 // Frontend (S3 + CloudFront)
-// accounts.arturocarvalho.com → UI (S3)
-// accounts-api.arturocarvalho.com → API (ALB via compute stack)
+// accounts.aoctech.app → UI (S3)
+// accounts-api.aoctech.app → API (ALB via compute stack)
 // =====================
 new FrontendStack(app, id('Frontend'), {
   env,
   environment: ENVIRONMENT,
   certificateArn: CERT_ARN,
-  domainName: domainForEnv(ENVIRONMENT, 'accounts'), // accounts.arturocarvalho.com → CloudFront → S3
+  domainName: domainForEnv(ENVIRONMENT, 'accounts'), // accounts.aoctech.app → CloudFront → S3
   description: `ctech-account Frontend (S3 + CloudFront) - ${ENVIRONMENT}`,
 });

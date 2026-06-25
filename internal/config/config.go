@@ -29,7 +29,7 @@ type Config struct {
 	CookieSecure   bool
 	CookieDomain   string
 	// WebAuthn Relying on Party settings.
-	// RPID is the registerable domain (e.g. "arturocarvalho.com"). Passkeys registered here
+	// RPID is the registerable domain (e.g. "aoctech.app"). Passkeys registered here
 	// can be used on any subdomain of RPID. Defaults to the host portion of BaseURL.
 	RPID      string
 	RPOrigins []string

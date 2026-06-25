@@ -47,13 +47,13 @@ jobs:
           BRANCH="${GITHUB_REF#refs/heads/}"
           if [ "$BRANCH" = "main" ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-            echo "NEXT_PUBLIC_API_URL=https://accounts-api.arturocarvalho.com" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app" >> $GITHUB_ENV
           elif [ "$BRANCH" = "staging" ]; then
             echo "ENVIRONMENT=stage" >> $GITHUB_ENV
-            echo "NEXT_PUBLIC_API_URL=https://accounts-api-staging.arturocarvalho.com" >> $GITHUB_ENV   
+            echo "NEXT_PUBLIC_API_URL=https://accounts-api-staging.aoctech.app" >> $GITHUB_ENV   
           else
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
-            echo "NEXT_PUBLIC_API_URL=https://accounts-api-dev.arturocarvalho.com" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_API_URL=https://accounts-api-dev.aoctech.app" >> $GITHUB_ENV
           fi
 
       - name: Install dependencies

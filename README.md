@@ -1,6 +1,6 @@
 # ctech-account
 
-Centralized OAuth 2.0 + OpenID Connect Identity Provider for the arturocarvalho.com platform.
+Centralized OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 
 Built with **Go 1.26** and **Fiber v3**. Runs on AWS Lambda via API Gateway or on EC2/ECS.
 
@@ -94,7 +94,7 @@ All errors follow [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807):
 
 ```json
 {
-  "type": "https://accounts.arturocarvalho.com/problems/invalid-credentials",
+  "type": "https://accounts.aoctech.app/problems/invalid-credentials",
   "title": "Invalid Credentials",
   "status": 401,
   "detail": "The email or password is incorrect.",
@@ -113,7 +113,7 @@ All configuration is read from environment variables at startup.
 | Variable            | Required | Description                                                 |
 |---------------------|----------|-------------------------------------------------------------|
 | `ENVIRONMENT`       | Yes      | `production`, `staging`, or `development`                   |
-| `BASE_URL`          | Yes      | Go API public URL, e.g. `https://accountsapi.arturocarvalho.com` |
+| `BASE_URL`          | Yes      | Go API public URL, e.g. `https://accountsapi.aoctech.app` |
 | `APP_URL`           | No       | Frontend URL for login redirects (defaults to `BASE_URL`)         |
 | `PORT`              | No       | HTTP port (default `8080`)                                  |
 | `DYNAMO_TABLE`      | Yes      | DynamoDB table name                                         |
@@ -216,7 +216,7 @@ aws dynamodb put-item --table-name $TABLE --region $REGION --item '{
   "pk":           {"S": "OAUTH_CLIENT#accounts-ui"},
   "sk":           {"S": "OAUTH_CLIENT#accounts-ui"},
   "client_id":    {"S": "accounts-ui"},
-  "redirect_uris":{"SS": ["https://accounts.arturocarvalho.com/api/auth/login"]},
+  "redirect_uris":{"SS": ["https://accounts.aoctech.app/api/auth/login"]},
   "scopes":       {"SS": ["openid", "profile", "email"]},
   "public":       {"BOOL": true}
 }'
@@ -227,7 +227,7 @@ aws dynamodb put-item --table-name $TABLE --region $REGION --item '{
 API_URL=https://api-id.execute-api.eu-west-1.amazonaws.com/prod  # your API GW URL
 NEXT_PUBLIC_API_URL=$API_URL
 OAUTH_CLIENT_ID=accounts-ui
-BASE_URL=https://accounts.arturocarvalho.com
+BASE_URL=https://accounts.aoctech.app
 ```
 Set these in Vercel dashboard → Settings → Environment Variables, or in your ECS task definition.
 
@@ -250,7 +250,7 @@ curl -s https://<api-gw-url>/.well-known/openid-configuration | jq .issuer
 curl -s https://<api-gw-url>/.well-known/jwks.json | jq '.keys[0].kid'
 
 # Frontend
-curl -sI https://accounts.arturocarvalho.com/login  # expect 200
+curl -sI https://accounts.aoctech.app/login  # expect 200
 ```
 
 ### 8 — Post-deploy

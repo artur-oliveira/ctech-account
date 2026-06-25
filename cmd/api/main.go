@@ -69,7 +69,7 @@ func main() {
 	// WebAuthn Relying Party
 	wa, err := webauthn.New(&webauthn.Config{
 		RPID:          cfg.RPID,
-		RPDisplayName: "arturocarvalho.com",
+		RPDisplayName: "aoctech.app",
 		RPOrigins:     cfg.RPOrigins,
 	})
 	if err != nil {

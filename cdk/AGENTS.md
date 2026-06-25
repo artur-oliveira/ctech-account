@@ -23,7 +23,7 @@ cdk/
 │   ├── types.ts                # Shared types / interfaces across stacks
 │   ├── dynamodb-stack.ts       # Single DynamoDB table + GSIs
 │   ├── compute-stack.ts        # EC2 ASG + Launch Template
-│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.arturocarvalho.com)
+│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
 │   ├── iam-stack.ts            # Instance profile + DynamoDB/SSM/S3 permissions
 │   ├── oidc-stack.ts           # GitHub Actions OIDC role
 │   └── s3-stack.ts             # Deployment artifacts bucket

@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-const baseURI = "https://accounts.arturocarvalho.com/problems/"
+const baseURI = "https://accounts.aoctech.app/problems/"
 const ContentType = "application/problem+json"
 
 // Problem implements RFC 7807 Problem Details for HTTP APIs.

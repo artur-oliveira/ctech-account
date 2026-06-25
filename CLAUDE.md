@@ -11,7 +11,7 @@ OAuth 2.0 + OpenID Connect Identity Provider — Go 1.26, Fiber v3, DynamoDB, Va
 | Path   | Role                                           | Full guidelines   |
 |--------|------------------------------------------------|-------------------|
 | root   | Go API — OAuth 2.0 + OIDC backend              | This file         |
-| `ui/`  | Next.js 16 frontend — accounts.arturocarvalho.com | `ui/CLAUDE.md` |
+| `ui/`  | Next.js 16 frontend — accounts.aoctech.app | `ui/CLAUDE.md` |
 | `cdk/` | AWS CDK infrastructure — TypeScript            | `cdk/CLAUDE.md`   |
 
 **Always read the relevant subproject CLAUDE.md before making any change outside the Go API.**

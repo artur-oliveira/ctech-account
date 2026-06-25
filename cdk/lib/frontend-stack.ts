@@ -10,7 +10,7 @@ import {Environment} from './types';
 interface FrontendStackProps extends cdk.StackProps {
   environment: Environment;
   certificateArn: string;
-  domainName: string;       // e.g. accounts.arturocarvalho.com
+  domainName: string;       // e.g. accounts.aoctech.app
   // ALB domain for API routing (the ALB DNS name, not accounts domain)
   albDnsName?: string;
 }

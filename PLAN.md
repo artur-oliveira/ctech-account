@@ -39,7 +39,7 @@
 - [x] `cdk/lib/types.ts`
 - [x] `cdk/lib/dynamodb-stack.ts` — 5 ctech_* tables + GSIs
 - [x] `cdk/lib/compute-stack.ts` — ASG + EC2 t4g.micro (clone of ApiStackV2, Go binary)
-- [x] `cdk/lib/frontend-stack.ts` — S3 + CloudFront (accounts.arturocarvalho.com)
+- [x] `cdk/lib/frontend-stack.ts` — S3 + CloudFront (accounts.aoctech.app)
 - [x] `cdk/lib/iam-stack.ts` — instance profile + DynamoDB/SSM/S3 permissions
 - [x] `cdk/lib/oidc-stack.ts` — GitHub Actions OIDC role
 - [x] `cdk/bin/ctech-account.ts` — CDK app entry point
@@ -82,7 +82,7 @@
 
 ---
 
-## Sprint 3 — Frontend (accounts.arturocarvalho.com)
+## Sprint 3 — Frontend (accounts.aoctech.app)
 
 - [x] Init Next.js app: `npx create-next-app@latest ui --typescript --tailwind --app`
 - [x] Install ShadCN: `npx shadcn@latest init` (v4 with @base-ui/react, Tailwind v4)
@@ -129,7 +129,7 @@ See `PYDFE_MIGRATION.md` for the full plan.
 | Decision                         | Options                                              | Status                                         |
 |----------------------------------|------------------------------------------------------|------------------------------------------------|
 | Domain routing for accounts UI   | Single CloudFront (multi-origin) vs separate domains | Decided: single CF (see CDK)                   |
-| Refresh token storage on client  | httpOnly cookie vs localStorage                      | httpOnly cookie on accounts.arturocarvalho.com |
+| Refresh token storage on client  | httpOnly cookie vs localStorage                      | httpOnly cookie on accounts.aoctech.app |
 | Email verification provider      | AWS SES                                              | Implemented: SESv2, verify + password reset    |
 | Google OAuth                     | google-oauth2 via /v1.0/auth/google                  | Implemented: state in Valkey (gs:, 10min TTL)  |
 | py-dfe OAuth client registration | Manual seed script vs admin UI                       | Manual SSM/direct for now                      |
@@ -144,7 +144,7 @@ See `PYDFE_MIGRATION.md` for the full plan.
 | `/ctech-account/{env}/rsa-private-key`      | SecureString | RSA 2048 PEM private key                                  |
 | `/ctech/{env}/valkey/url`                   | String       | Valkey connection URL (existing, from ctech-cdk)          |
 | `/ctech-account/{env}/from-email`           | String       | SES verified sender address (FROM_EMAIL)                  |
-| `/ctech-account/{env}/app-url`              | String       | Public base URL, e.g. https://accounts.arturocarvalho.com |
+| `/ctech-account/{env}/app-url`              | String       | Public base URL, e.g. https://accounts.aoctech.app |
 | `/ctech-account/{env}/google-client-id`     | String       | Google OAuth 2.0 client ID                                |
 | `/ctech-account/{env}/google-client-secret` | SecureString | Google OAuth 2.0 client secret                            |
 
@@ -157,5 +157,5 @@ See `PYDFE_MIGRATION.md` for the full plan.
 - PKCE mandatory for all public OAuth clients
 - KID rotation: generate new key pair → deploy with both KIDs in JWKS → after 24h, remove old KID from JWKS → after
   another 24h, stop issuing with old KID
-- CORS: `accounts.arturocarvalho.com` whitelisted + any registered OAuth client origin
+- CORS: `accounts.aoctech.app` whitelisted + any registered OAuth client origin
 - Rate limiting: 5 failed logins / 15min per IP (Valkey counter), 100 req/min per authenticated user
