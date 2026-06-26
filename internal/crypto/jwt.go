@@ -27,7 +27,7 @@ func NewJWTService(cfg *config.Config) (*JWTService, error) {
 		privateKey:   cfg.RSAPrivateKey,
 		publicKey:    &cfg.RSAPrivateKey.PublicKey,
 		kid:          cfg.PublicKeyKID,
-		selfAudience: cfg.BaseURL,
+		selfAudience: cfg.Audience,
 	}, nil
 }
 

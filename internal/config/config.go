@@ -22,6 +22,7 @@ type Config struct {
 	RSAPrivateKey  *rsa.PrivateKey
 	PublicKeyKID   string
 	BaseURL        string
+	Audience       string
 	TOTPIssuer     string
 	AllowedOrigins []string
 	Port           string
@@ -105,6 +106,7 @@ func Load() (*Config, error) {
 
 		PublicKeyKID:       kid,
 		BaseURL:            baseURL,
+		Audience:           getEnv("AUDIENCE", baseURL),
 		AllowedOrigins:     origins,
 		Port:               port,
 		InternalToken:      os.Getenv("INTERNAL_TOKEN"),
