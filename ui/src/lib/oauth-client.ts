@@ -21,3 +21,8 @@ export function hasAuthHint(): boolean {
 export function clearAuthHint(): void {
   oauthClient.clearAuthHint()
 }
+
+/** Closes the OAuth client's BroadcastChannel to prevent memory/event-loop leaks in tests. */
+export function close(): void {
+  oauthClient.close()
+}
