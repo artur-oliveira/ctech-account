@@ -59,9 +59,7 @@ jobs:
               - 'cdk/**'
               - '.github/workflows/infra.yml'
             api:
-              - '**.go'
-              - 'go.mod'
-              - 'go.sum'
+              - 'api/**'
               - '.github/workflows/api.yml'
             frontend:
               - 'ui/**'

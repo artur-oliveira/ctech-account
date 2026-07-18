@@ -8,7 +8,7 @@ export const CONTINUE_URL_KEY = 'continue_url'
 export const MFA_METHOD_TOTP = 'totp'
 export const MFA_METHOD_PASSKEY = 'passkey'
 
-// KYC — must stay in step with internal/domain/kyc/model.go.
+// KYC — must stay in step with api/internal/domain/kyc/model.go.
 export const CPF_DIGITS = 11
 export const ZIP_CODE_DIGITS = 8
 

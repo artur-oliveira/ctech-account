@@ -25,27 +25,29 @@ Built with **Go 1.26** and **Fiber v3**. Runs on AWS Lambda via API Gateway or o
 
 ```
 ctech-account/
-├── cmd/api/          # Entry point — Fiber app wiring
-├── cdk/              # AWS CDK infrastructure
-└── internal/
-    ├── apierror/     # RFC 7807 Problem Details types + constructors
-    ├── cache/        # Valkey client wrapper
-    ├── config/       # Environment-driven configuration
-    ├── crypto/       # JWT signing (RS256), bcrypt, PKCE helpers
-    ├── database/     # DynamoDB client wrapper
-    ├── domain/       # Core business logic
-    │   ├── apikey/   # API key entity, repository interface, service
-    │   ├── mfa/
-    │   │   ├── passkey/ # WebAuthn credential model, repository, service
-    │   │   └── totp/    # TOTP secret management
-    │   ├── oauth/    # OAuth client entity + repository interface
-    │   │   ├── client/
-    │   │   └── code/
-    │   ├── session/  # Session entity, repository interface, service
-    │   └── user/     # User entity, repository interface, service
-    ├── handler/      # HTTP handlers (one file per route group)
-    ├── middleware/   # RequireAuth JWT middleware
-    └── validate/     # go-playground/validator singleton
+├── api/              # Go module — all commands below assume `cd api` first
+│   ├── cmd/api/      # Entry point — Fiber app wiring
+│   └── internal/
+│       ├── apierror/     # RFC 7807 Problem Details types + constructors
+│       ├── cache/        # Valkey client wrapper
+│       ├── config/       # Environment-driven configuration
+│       ├── crypto/       # JWT signing (RS256), bcrypt, PKCE helpers
+│       ├── database/     # DynamoDB client wrapper
+│       ├── domain/       # Core business logic
+│       │   ├── apikey/   # API key entity, repository interface, service
+│       │   ├── mfa/
+│       │   │   ├── passkey/ # WebAuthn credential model, repository, service
+│       │   │   └── totp/    # TOTP secret management
+│       │   ├── oauth/    # OAuth client entity + repository interface
+│       │   │   ├── client/
+│       │   │   └── code/
+│       │   ├── session/  # Session entity, repository interface, service
+│       │   └── user/     # User entity, repository interface, service
+│       ├── handler/      # HTTP handlers (one file per route group)
+│       ├── middleware/   # RequireAuth JWT middleware
+│       └── validate/     # go-playground/validator singleton
+├── ui/               # Next.js 16 frontend
+└── cdk/              # AWS CDK infrastructure
 ```
 
 ---
@@ -181,10 +183,10 @@ read through a 5-minute Valkey cache (`scope_catalog` key). No accounts deploy i
 needed to add a scope:
 
 1. Add the `ScopeEntry` (code + English + pt-BR descriptions) to the seed in
-   `internal/scopes/catalog.go` — the seed stays in the repo so scope codes and
+   `api/internal/scopes/catalog.go` — the seed stays in the repo so scope codes and
    descriptions remain code-reviewed — or a new `ServiceScopes` block with the
    service's `Audience` (its `SERVICE_AUDIENCE`).
-2. Run the seeder against the environment:
+2. Run the seeder against the environment (from `api/`):
    `AWS_REGION=... TABLE_PREFIX=production_ VALKEY_URL=... go run ./cmd/seedscopes`
    (writes all services and invalidates the cache). For a one-off addition without
    a checkout, `aws dynamodb put-item` on the service item works too — then
@@ -192,7 +194,7 @@ needed to add a scope:
 3. Keep the scope ↔ RBAC mapping documented in the consuming service
    (`ctech-dfe/INTEGRATION.md` for dfe) in sync.
 4. `TestCatalog` enforces grammar + both descriptions on the seed;
-   run `go test ./internal/scopes/`.
+   run `go test ./internal/scopes/` from `api/`.
 
 Services marked `Internal: true` in the seed are hidden from `GET /v1.0/scopes` and
 rejected by self-service client/API-key creation — their scopes are assigned only via
@@ -246,7 +248,7 @@ always carry a `sid`) can never reach them.
 `POST /v1.0/auth/register` requires `accept_terms: true` (validation `required` on
 a bool — `false`/missing → `422`). On success the account is stamped with
 `tos_version`/`tos_accepted_at`/`privacy_version`/`privacy_accepted_at`
-(`internal/legal` holds the current version constants) and an `auth.terms_accepted`
+(`api/internal/legal` holds the current version constants) and an `auth.terms_accepted`
 audit event is recorded.
 
 Google sign-up never shows the register form, so a brand-new account
@@ -322,10 +324,11 @@ as `not_started` — its documents are still on file, so resubmitting just re-qu
 them). A **rejection clears the uploaded documents**, so resubmission requires a fresh
 upload cycle.
 
-**Manual review — `cmd/kyc`** (no HTTP route; a reviewer runs this locally with a
-DynamoDB-scoped AWS session):
+**Manual review — `cmd/kyc`** (no HTTP route; a reviewer runs this locally from `api/`
+with a DynamoDB-scoped AWS session):
 
 ```bash
+cd api
 AWS_REGION=... TABLE_PREFIX=production_ KYC_DOCUMENTS_BUCKET=... go run ./cmd/kyc list
 ... go run ./cmd/kyc show <user_id>                          # raw CPF + presigned document URLs
 ... go run ./cmd/kyc approve <user_id> [-note "looks good"]
@@ -379,6 +382,7 @@ the 15-min access / 1-h id token lifetimes and any downstream JWKS cache.
 Valkey absent → auto-rotation off; manual rotation always available:
 
 ```bash
+cd api
 go run ./cmd/rotatekeys -env prod -init   # one-time migration: wraps the legacy rsa-private-key (KID preserved)
 go run ./cmd/rotatekeys -env prod         # forced manual rotation
 ```
@@ -414,7 +418,11 @@ All configuration is read from environment variables at startup.
 
 ## Running Locally
 
+All Go commands below assume the working directory is `api/` (`cd api`).
+
 ```bash
+cd api
+
 # Start DynamoDB Local
 docker run -p 8000:8000 amazon/dynamodb-local
 
@@ -434,6 +442,8 @@ go run ./cmd/api
 ## Testing
 
 ```bash
+cd api
+
 # Unit tests — all domain services
 go test ./internal/domain/...
 
@@ -526,6 +536,7 @@ aws dynamodb put-item --table-name $TABLE --region $REGION --item '{
 empty table means no scope can be granted. Seed it once per environment:
 
 ```bash
+cd api
 AWS_REGION=$REGION TABLE_PREFIX=production_ VALKEY_URL=$VALKEY_URL go run ./cmd/seedscopes
 ```
 

@@ -10,8 +10,8 @@ import {Duration} from "aws-cdk-lib";
 /**
  * Request paths CloudFront forwards to the ALB instead of S3.
  *
- * The API is mounted at /v1.0 (cmd/api/main.go: app.Group("/v1.0")) and the OIDC
- * discovery documents at the root (internal/handler/wellknown.go:
+ * The API is mounted at /v1.0 (api/cmd/api/main.go: app.Group("/v1.0")) and the OIDC
+ * discovery documents at the root (api/internal/handler/wellknown.go:
  * app.Group("/.well-known")) — openid-configuration advertises
  * jwks_uri = issuer + "/.well-known/jwks.json", so the issuer host must serve it.
  *

@@ -19,9 +19,17 @@ export class OidcStack extends cdk.Stack {
       this, 'GithubOIDC', providerArn,
     );
 
+    // GitHub emits the sub claim as `repo:owner/repo:*` for older repos, but
+    // as `repo:owner@ownerId/repo@repoId:*` for repos where GitHub has
+    // enabled immutable IDs (e.g. recreated after a delete) — match both so
+    // deleting and recreating this repo doesn't break OIDC trust again.
+    const [owner, repoName] = githubRepo.split('/');
     const trust = new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
       StringLike: {
-        'token.actions.githubusercontent.com:sub': `repo:${githubRepo}:*`,
+        'token.actions.githubusercontent.com:sub': [
+          `repo:${githubRepo}:*`,
+          `repo:${owner}@*/${repoName}@*:*`,
+        ],
       },
       StringEquals: {
         'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',

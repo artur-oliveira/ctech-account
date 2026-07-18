@@ -23,7 +23,8 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
           cache: true
 
       - name: Configure AWS Credentials
@@ -44,6 +45,7 @@ jobs:
           fi
 
       - name: Build arm64 binary
+        working-directory: api
         run: |
           SHORT_SHA="${{ github.sha }}"
           # Format: YYMMDDHHMM:<7-char commit> — consumed by the app via APP_VERSION
@@ -56,6 +58,7 @@ jobs:
           echo "APP_VERSION=${VERSION}" > release.env
 
       - name: Package
+        working-directory: api
         run: zip -j release.zip bootstrap release.env
 
       - name: Read deployment config from SSM
@@ -66,6 +69,7 @@ jobs:
           echo "ASG_NAME=$ASG_NAME" >> $GITHUB_ENV
 
       - name: Upload artifact to S3
+        working-directory: api
         run: |
           aws s3 cp release.zip "s3://$DEPLOYMENTS_BUCKET/ctech-account/current.zip"
           aws s3 cp release.zip "s3://$DEPLOYMENTS_BUCKET/ctech-account/api-${ARTIFACT_VERSION}.zip"

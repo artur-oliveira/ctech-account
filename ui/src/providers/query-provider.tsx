@@ -2,10 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
-import { API_URL, CLIENT_ID } from '@/lib/env'
-import { hasAuthHint, clearAuthHint } from '@/lib/oauth-client'
+import { oauthClient, hasAuthHint, clearAuthHint } from '@/lib/oauth-client'
 import { startOAuthFlow } from '@/lib/auth-flow'
 
 /** Pages where a failed silent refresh must never auto-start an OAuth redirect. */
@@ -51,32 +49,27 @@ function AuthInitializer() {
       return
     }
 
-    const params = new URLSearchParams({ grant_type: 'refresh_token', client_id: CLIENT_ID })
-
-    axios
-      .post(`${API_URL}/v1.0/token`, params, {
-        withCredentials: true,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      })
-      .then(({ data }) => {
-        store.setAccessToken(data.access_token)
+    // oauthClient.refresh() is guarded + single-flight and safe to call at boot
+    // (see its doc comment) — this used to hand-roll the same /v1.0/token POST.
+    oauthClient.refresh().then((result) => {
+      if (result) {
+        store.setAccessToken(result.accessToken)
         store.setInitialized()
-      })
-      .catch((err: unknown) => {
-        store.clearAuth()
-        const status = axios.isAxiosError(err) ? err.response?.status : undefined
-        const pathname = window.location.pathname
-        // An SSO session may exist without a SPA refresh token yet (e.g. right
-        // after social login, or after a login initiated by another app). Let the
-        // /authorize flow bootstrap the tokens — never from auth pages, so a dead
-        // session can't cause a redirect loop.
-        if ((status === 400 || status === 401) && !isAuthPage(pathname)) {
-          void startOAuthFlow(pathname + window.location.search)
-          return
-        }
-        if (status === 400 || status === 401) clearAuthHint()
-        store.setInitialized()
-      })
+        return
+      }
+      store.clearAuth()
+      clearAuthHint()
+      const pathname = window.location.pathname
+      // An SSO session may exist without a SPA refresh token yet (e.g. right
+      // after social login, or after a login initiated by another app). Let the
+      // /authorize flow bootstrap the tokens — never from auth pages, so a dead
+      // session can't cause a redirect loop.
+      if (!isAuthPage(pathname)) {
+        void startOAuthFlow(pathname + window.location.search)
+        return
+      }
+      store.setInitialized()
+    })
   }, [])
 
   return null
