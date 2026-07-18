@@ -584,5 +584,39 @@
   "legal": {
     "backToAccount": "← CTech Account",
     "lastUpdated": "Última atualização: {{date}}"
+  },
+  "home": {
+    "cta": {
+      "login": "Entrar",
+      "dashboard": "Ir para o painel"
+    },
+    "hero": {
+      "eyebrow": "Identidade CTech",
+      "title": "Uma identidade para todo o ecossistema CTech",
+      "subtitle": "Entre uma vez e acesse a Wallet, o DF-e e os próximos produtos CTech com segurança de nível empresarial."
+    },
+    "features": {
+      "title": "Por que usar a CTech Account",
+      "passkeys": {
+        "title": "Passkeys e biometria",
+        "body": "Esqueça senhas fracas: entre com passkey, chave de segurança ou app autenticador."
+      },
+      "mfa": {
+        "title": "MFA e verificação em duas etapas",
+        "body": "TOTP, códigos de recuperação e verificação de identidade (KYC) para proteger sua conta."
+      },
+      "sso": {
+        "title": "Login único (SSO)",
+        "body": "Uma conta CTech Account abre todos os produtos do ecossistema, sem cadastro duplicado."
+      },
+      "oauth": {
+        "title": "OAuth2 e OpenID Connect",
+        "body": "Para desenvolvedores: registre aplicações OAuth e gerencie chaves de API e escopos de acesso."
+      }
+    },
+    "footer": {
+      "terms": "Termos de Uso",
+      "privacy": "Privacidade"
+    }
   }
 }
