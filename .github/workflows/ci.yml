@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    name: Go Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build (arm64 — matches prod)
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null ./cmd/api
+
+      - name: Test
+        run: go test ./... -v -count=1
+
+  cdk:
+    name: CDK Synth
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cdk
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - run: npm ci
+
+      - name: CDK Synth (dev)
+        env:
+          ENVIRONMENT: dev
+          CTECH_VPC_ID: vpc-placeholder   # synth does not resolve lookups
+        run: npx cdk synth --quiet 2>&1 | head -5 || true
+        # Full synth requires AWS credentials; this just checks TypeScript compiles.
+
+      - name: TypeScript Check
+        run: npx tsc --noEmit

@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-14T12:00:00Z",
+  "title": "Design System: CTech Account",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "CTech Cobalt", "canonical": "oklch(0.55 0.22 258)", "tonalRamp": ["oklch(0.15 0.22 258)", "oklch(0.25 0.22 258)", "oklch(0.35 0.22 258)", "oklch(0.45 0.22 258)", "oklch(0.55 0.22 258)", "oklch(0.65 0.22 258)", "oklch(0.78 0.18 258)", "oklch(0.92 0.14 258)"] },
+      "background": { "role": "neutral", "displayName": "Vault White", "canonical": "oklch(0.985 0.01 255)", "tonalRamp": ["oklch(0.15 0.02 258)", "oklch(0.24 0.02 258)", "oklch(0.30 0.02 258)", "oklch(0.55 0.03 255)", "oklch(0.85 0.02 255)", "oklch(0.92 0.02 255)", "oklch(0.97 0.015 255)", "oklch(0.99 0.01 255)"] },
+      "foreground": { "role": "neutral", "displayName": "Ink", "canonical": "oklch(0.18 0.02 255)", "tonalRamp": ["oklch(0.15 0.02 258)", "oklch(0.30 0.02 258)", "oklch(0.45 0.02 255)", "oklch(0.55 0.03 255)", "oklch(0.72 0.02 255)", "oklch(0.85 0.01 255)", "oklch(0.92 0.01 255)", "oklch(0.97 0.01 255)"] },
+      "muted-foreground": { "role": "neutral", "displayName": "Muted Ink", "canonical": "oklch(0.55 0.03 255)", "tonalRamp": ["oklch(0.30 0.02 258)", "oklch(0.45 0.03 255)", "oklch(0.55 0.03 255)", "oklch(0.62 0.03 255)", "oklch(0.72 0.02 255)", "oklch(0.80 0.02 255)", "oklch(0.88 0.01 255)", "oklch(0.95 0.01 255)"] },
+      "destructive": { "role": "semantic", "displayName": "Alert Red", "canonical": "oklch(0.55 0.245 27.325)", "tonalRamp": ["oklch(0.30 0.245 27.325)", "oklch(0.42 0.245 27.325)", "oklch(0.52 0.245 27.325)", "oklch(0.55 0.245 27.325)", "oklch(0.65 0.22 27.325)", "oklch(0.74 0.19 22.216)", "oklch(0.82 0.15 22.216)", "oklch(0.90 0.10 22.216)"] },
+      "ring": { "role": "semantic", "displayName": "Focus Ring", "canonical": "oklch(0.62 0.2 258)", "tonalRamp": ["oklch(0.30 0.2 258)", "oklch(0.45 0.2 258)", "oklch(0.55 0.2 258)", "oklch(0.62 0.2 258)", "oklch(0.68 0.18 258)", "oklch(0.75 0.16 258)", "oklch(0.82 0.13 258)", "oklch(0.90 0.10 258)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page and section titles only." },
+      "title": { "displayName": "Title", "purpose": "Card and dialog titles." },
+      "body": { "displayName": "Body", "purpose": "Default text, table cells, descriptions." },
+      "label": { "displayName": "Label / Button", "purpose": "Form labels, badges, tab triggers, button text." },
+      "mono": { "displayName": "Geist Mono", "purpose": "Secrets, tokens, client IDs, CPF masks." },
+      "caption": { "displayName": "Caption", "purpose": "Compact buttons (sm size) and dense labels; 0.8rem." }
+    },
+    "shadows": [
+      { "name": "none-at-rest", "value": "inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent)", "purpose": "The only 'lift' on cards/popovers: a 1px tonal ring, not a drop shadow." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Default easing for state transitions (150ms)." },
+      { "name": "dialog-open", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Dialog zoom-in-95 + fade on open." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "sm-dialog", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary action — CTech Cobalt fill, white text, 32px tall.",
+      "html": "<button class=\"ds-btn-primary\">Sign in</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:2rem; padding:0 0.625rem; font:500 0.875rem/1 Geist, system-ui, sans-serif; color:var(--primary-foreground); background:var(--primary); border:1px solid transparent; border-radius:var(--radius); cursor:pointer; transition:background .15s ease, transform .1s ease; } .ds-btn-primary:hover { background:oklch(0.55 0.22 258 / 0.8); } .ds-btn-primary:active { transform:translateY(1px); } .ds-btn-primary:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch, var(--ring) 70%, transparent); } .ds-btn-primary:disabled { opacity:.5; pointer-events:none; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action — white fill, hairline border, ink text.",
+      "html": "<button class=\"ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { display:inline-flex; align-items:center; justify-content:center; height:2rem; padding:0 0.625rem; font:500 0.875rem/1 Geist, system-ui, sans-serif; color:var(--foreground); background:var(--background); border:1px solid var(--border); border-radius:var(--radius); cursor:pointer; transition:background .15s ease; } .ds-btn-outline:hover { background:var(--muted); } .ds-btn-outline:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch, var(--ring) 70%, transparent); } .ds-btn-outline:disabled { opacity:.5; pointer-events:none; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-emphasis action — transparent fill, ink text.",
+      "html": "<button class=\"ds-btn-ghost\">Learn more</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; justify-content:center; height:2rem; padding:0 0.625rem; font:500 0.875rem/1 Geist, system-ui, sans-serif; color:var(--foreground); background:transparent; border:1px solid transparent; border-radius:var(--radius); cursor:pointer; transition:background .15s ease; } .ds-btn-ghost:hover { background:var(--muted); } .ds-btn-ghost:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch, var(--ring) 70%, transparent); }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Text field — hairline border, cobalt focus ring.",
+      "html": "<input class=\"ds-input\" type=\"email\" placeholder=\"you@example.com\" />",
+      "css": ".ds-input { height:2rem; width:100%; padding:0.25rem 0.625rem; font:400 0.875rem/1.5 Geist, system-ui, sans-serif; color:var(--foreground); background:transparent; border:1px solid var(--input); border-radius:var(--radius); outline:none; transition:border-color .15s ease, box-shadow .15s ease; } .ds-input::placeholder { color:var(--muted-foreground); } .ds-input:focus-visible { border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch, var(--ring) 70%, transparent); } .ds-input[aria-invalid=\"true\"] { border-color:var(--destructive); box-shadow:0 0 0 3px color-mix(in oklch, var(--destructive) 20%, transparent); } .ds-input:disabled { opacity:.5; cursor:not-allowed; background:color-mix(in oklch, var(--input) 50%, transparent); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Surface container — flat, 1px tonal ring, no drop shadow.",
+      "html": "<div class=\"ds-card\"><strong>Active sessions</strong><span>You are signed in on 2 devices.</span></div>",
+      "css": ".ds-card { display:flex; flex-direction:column; gap:1rem; padding:1rem; background:var(--card); color:var(--card-foreground); border-radius:calc(var(--radius) * 1.4); box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); font:400 0.875rem/1.5 Geist, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Pill status — default cobalt; used for Verified / Pending / Linked / Revoked.",
+      "html": "<span class=\"ds-badge\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\"><path d=\"M5 13l4 4L19 7\"/></svg>Verified</span>",
+      "css": ".ds-badge { display:inline-flex; align-items:center; gap:0.25rem; height:1.25rem; padding:0 0.5rem; font:500 0.75rem/1 Geist, system-ui, sans-serif; color:var(--primary-foreground); background:var(--primary); border:1px solid transparent; border-radius:calc(var(--radius) * 2.6); white-space:nowrap; }"
+    },
+    {
+      "name": "Alert",
+      "kind": "card",
+      "refersTo": "alert",
+      "description": "Inline message — hairline border, Surface fill, icon + text.",
+      "html": "<div class=\"ds-alert\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z\"/></svg><strong>Email verified</strong><span class=\"ds-alert-desc\">You can now sign in with your password.</span></div>",
+      "css": ".ds-alert { display:grid; grid-template-columns:auto 1fr; gap:0.5rem; padding:0.5rem 0.625rem; font:400 0.875rem/1.5 Geist, system-ui, sans-serif; color:var(--card-foreground); background:var(--card); border:1px solid var(--border); border-radius:var(--radius); } .ds-alert svg { width:1rem; height:1rem; grid-row:span 2; transform:translateY(0.125rem); color:var(--primary); } .ds-alert-desc { grid-column:2; color:var(--muted-foreground); }"
+    },
+    {
+      "name": "Account Nav Item",
+      "kind": "nav",
+      "refersTo": "account-nav",
+      "description": "Active sidebar item — cobalt text + cobalt-tinted well.",
+      "html": "<a class=\"ds-nav-item\" href=\"/account/security\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z\"/></svg>Security</a>",
+      "css": ".ds-nav-item { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; font:500 0.875rem/1 Geist, system-ui, sans-serif; color:var(--primary); background:color-mix(in oklch, var(--primary) 10%, transparent); border-radius:calc(var(--radius) * 0.8); text-decoration:none; } .ds-nav-item:hover { background:color-mix(in oklch, var(--primary) 15%, transparent); }"
+    },
+    {
+      "name": "Dialog",
+      "kind": "custom",
+      "refersTo": "dialog",
+      "description": "Modal surface — Surface popover, 1px ring, zoom-in + fade on open.",
+      "html": "<div class=\"ds-dialog-overlay\"></div><div class=\"ds-dialog\"><strong>Revoke session?</strong><span>This device will be signed out immediately.</span></div>",
+      "css": ".ds-dialog-overlay { position:fixed; inset:0; background:rgb(0 0 0 / 0.1); backdrop-filter:blur(2px); } .ds-dialog { position:relative; width:100%; max-width:448px; padding:1rem; background:var(--popover); color:var(--popover-foreground); border-radius:calc(var(--radius) * 1.4); box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); font:400 0.875rem/1.5 Geist, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Confirm Dialog",
+      "kind": "custom",
+      "refersTo": "confirm-dialog",
+      "description": "Signature destructive-action gate — replaces native confirm() across 7 sites. Destructive variant leads with an AlertTriangle icon.",
+      "html": "<div class=\"ds-confirm-overlay\"></div><div class=\"ds-confirm\" role=\"alertdialog\" aria-labelledby=\"ct\" aria-describedby=\"cd\"><div class=\"ds-confirm-head\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z\"/></svg><strong id=\"ct\">Revoke session?</strong></div><span id=\"cd\" class=\"ds-confirm-desc\">This device will be signed out immediately.</span><div class=\"ds-confirm-footer\"><button class=\"ds-confirm-cancel\">Cancel</button><button class=\"ds-confirm-confirm\">Revoke</button></div></div>",
+      "css": ".ds-confirm-overlay { position:fixed; inset:0; background:rgb(0 0 0 / 0.1); backdrop-filter:blur(2px); } .ds-confirm { position:relative; width:100%; max-width:448px; padding:1rem; background:var(--popover); color:var(--popover-foreground); border-radius:calc(var(--radius) * 1.4); box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); font:400 0.875rem/1.5 Geist, system-ui, sans-serif; animation:ds-confirm-in .15s cubic-bezier(0.16,1,0.3,1); } @keyframes ds-confirm-in { from { opacity:0; transform:scale(.95); } to { opacity:1; transform:none; } } .ds-confirm-head { display:flex; align-items:center; gap:.5rem; font:600 1rem/1.25 Geist, system-ui, sans-serif; color:var(--foreground); } .ds-confirm-head svg { color:var(--destructive); } .ds-confirm-desc { display:block; margin-top:.25rem; color:var(--muted-foreground); } .ds-confirm-footer { display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; padding-top:.75rem; border-top:1px solid color-mix(in oklch, var(--foreground) 10%, transparent); } .ds-confirm-cancel { display:inline-flex; align-items:center; justify-content:center; height:2rem; padding:0 .625rem; font:500 .875rem/1 Geist, system-ui, sans-serif; color:var(--foreground); background:var(--background); border:1px solid var(--border); border-radius:var(--radius); cursor:pointer; transition:background .15s ease; } .ds-confirm-cancel:hover { background:var(--muted); } .ds-confirm-cancel:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch, var(--ring) 70%, transparent); } .ds-confirm-confirm { display:inline-flex; align-items:center; justify-content:center; height:2rem; padding:0 .625rem; font:500 .875rem/1 Geist, system-ui, sans-serif; color:var(--destructive); background:color-mix(in oklch, var(--destructive) 10%, transparent); border:1px solid transparent; border-radius:var(--radius); cursor:pointer; transition:background .15s ease; } .ds-confirm-confirm:hover { background:color-mix(in oklch, var(--destructive) 15%, transparent); } .ds-confirm-confirm:focus-visible { outline:none; border-color:var(--destructive); box-shadow:0 0 0 3px color-mix(in oklch, var(--destructive) 30%, transparent); } .ds-confirm-confirm:disabled { opacity:.5; pointer-events:none; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Vault",
+    "overview": "CTech Account is the identity console for the aoctech.app platform — where people sign in, enforce MFA and passkeys, review sessions and consents, verify identity (KYC), and where developers register OAuth apps and API keys. Security is present on every surface but reads as calm competence, never as a wall of warnings. One cobalt accent, flat tonal surfaces, Geist everywhere. The system explicitly rejects Generic pastel SaaS, Gamified consumer, Dense enterprise gray, and Dark-mode hacker aesthetics.",
+    "keyCharacteristics": [
+      "One saturated accent — CTech Cobalt — on ≤10% of any screen.",
+      "Flat by default; depth from 1px tonal rings and a faint blue backdrop, not shadows.",
+      "A single sans (Geist) carries the UI; Geist Mono only for machine-readable strings.",
+      "Security states are always icon + text, never color alone.",
+      "Bilingual (en / pt-BR); layout holds both without truncation."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "CTech Cobalt appears on ≤10% of any given screen — primary actions, the active selection, and security-affirming state only. Never decoration, never a background wash, never a gradient.", "section": "colors" },
+      { "name": "The No-Spread Rule", "body": "Depth is a 1px ring of foreground/10, not a box-shadow. Drop shadows are forbidden on surfaces at rest.", "section": "colors" },
+      { "name": "The One-Family Rule", "body": "Geist everywhere; Geist Mono only for values a machine parses. Never introduce a second display face.", "section": "typography" },
+      { "name": "The Fixed-Scale Rule", "body": "Sizes are fixed rem on a tight 1.125–1.2 ratio. No clamp() fluid headings.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. The only lift is the 1px ring and the dialog's open transition.", "section": "elevation" },
+      { "name": "The Tint-Not-Shadow Rule", "body": "Hover and selected states change background tone (muted wells, selected row), not shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Keep CTech Cobalt to primary actions, the active selection, and security-affirming state (≤10% of screen).",
+      "Convey security state with icon + text (Verified, Pending, Revoked) — never color alone.",
+      "Use Geist Mono for secrets, tokens, client IDs, and CPF masks.",
+      "Respect the fixed rem type scale; let sidebar and tables run dense when the task needs it.",
+      "Keep flat, ring-based elevation; use muted wells for hover/selected, not shadows.",
+      "Hold ≥4.5:1 contrast for body and muted text.",
+      "Support both en and pt-BR without truncation or layout shift."
+    ],
+    "donts": [
+      "Don't build a Generic pastel SaaS look — airy, thin, substanceless.",
+      "Don't make it Gamified consumer — no playful mascots, reward badges, or cartoonish states.",
+      "Don't ship Dense enterprise gray — cramped, flat-gray, legacy back-office density.",
+      "Don't go Dark-mode hacker — no terminal-only dark aesthetic that excludes non-technical users.",
+      "Don't add drop shadows to cards, inputs, or tables at rest.",
+      "Don't invent a second display font or pair Geist with a decorative face.",
+      "Don't use border-left/border-right >1px as a colored stripe on cards, list rows, or alerts.",
+      "Don't use gradient text or a colored gradient wash for the accent.",
+      "Don't reach for a modal as the first response — exhaust inline and progressive disclosure first.",
+      "Don't reinvent standard affordances (custom scrollbars, non-standard modals, weird form controls).",
+      "Don't put heavy full-saturation cobalt on inactive/disabled states."
+    ]
+  }
+}
