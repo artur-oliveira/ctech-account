@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {LegalPageLayout, LegalSection} from '@/components/legal-page-layout'
+import {LegalPageLayout, LegalSection, TERMS_VERSION_HISTORY} from '@/components/legal-page-layout'
 
 export const metadata: Metadata = {
   title: 'Termos de Uso',
@@ -10,10 +10,7 @@ const UPDATED_AT = '15 de julho de 2026'
 
 export default function TermsPage() {
   return (
-    <LegalPageLayout title="Termos de Uso" updatedAt={UPDATED_AT}>
-      <p className="text-xs text-muted-foreground">
-        Versão {TOS_VERSION}
-      </p>
+    <LegalPageLayout title="Termos de Uso" version={TOS_VERSION} updatedAt={UPDATED_AT} versionHistory={TERMS_VERSION_HISTORY}>
 
       <LegalSection heading="1. Quem somos">
         <p>
@@ -97,29 +94,29 @@ export default function TermsPage() {
           A verificação de identidade é feita exclusivamente por análise
           documental humana e exige o envio de: documento de identificação
           (frente e verso), comprovante de endereço quando solicitado, e
-          <strong> quatro vídeos curtos de selfie</strong>, capturados pela
-          câmera do dispositivo, nos quais o usuário vira o rosto para cima,
+          <strong> quatro capturas de selfie</strong>, realizadas pela câmera
+          do dispositivo, nas quais o usuário vira o rosto para cima,
           para baixo, para a esquerda e para a direita conforme instruído na
           tela.
         </p>
 
         <p>
-          Esses vídeos constituem <strong>dado biométrico</strong>, categoria
+          Essas capturas podem constituir <strong>dado biométrico</strong>, categoria
           de dado pessoal sensível nos termos do artigo 5º, II, da LGPD. Eles
           são usados unicamente para que um analista humano confirme que a
           pessoa que envia o documento está presente e ativa no momento do
           envio (prova de vivacidade), reduzindo o risco de fraude com foto ou
-          vídeo estático. Não há reconhecimento facial automatizado nem
+          imagem estática isolada. Não há reconhecimento facial automatizado nem
           decisão automatizada de aprovação ou rejeição — a decisão é sempre
           tomada por um revisor humano.
         </p>
 
         <p>
-          O envio desses vídeos depende do seu consentimento específico,
-          destacado e informado, conforme detalhado na Política de
-          Privacidade. A recusa em fornecer os documentos ou vídeos
-          necessários poderá impedir o acesso a funcionalidades que exigem
-          identidade verificada.
+          O tratamento é realizado para prevenir fraude e garantir a segurança
+          do titular em processos de identificação e autenticação eletrônica,
+          conforme detalhado na Política de Privacidade. A recusa em fornecer
+          os documentos ou capturas necessários poderá impedir o acesso a
+          funcionalidades que exigem identidade verificada.
         </p>
       </LegalSection>
 

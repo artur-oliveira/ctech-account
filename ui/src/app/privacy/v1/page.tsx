@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { LegalPageLayout, LegalSection } from '@/components/legal-page-layout'
+import { LegalPageLayout, LegalSection, PRIVACY_VERSION_HISTORY } from '@/components/legal-page-layout'
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade',
@@ -10,8 +10,7 @@ const UPDATED_AT = '10 de julho de 2026'
 
 export default function PrivacyPage() {
   return (
-    <LegalPageLayout title="Política de Privacidade" updatedAt={UPDATED_AT}>
-      <p className="text-xs text-muted-foreground">Versão {PRIVACY_VERSION}</p>
+    <LegalPageLayout title="Política de Privacidade" version={PRIVACY_VERSION} updatedAt={UPDATED_AT} versionHistory={PRIVACY_VERSION_HISTORY}>
 
       <LegalSection heading="1. Controlador dos dados">
         <p>

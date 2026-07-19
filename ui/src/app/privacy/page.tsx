@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {LegalPageLayout, LegalSection} from '@/components/legal-page-layout'
+import {LegalPageLayout, LegalSection, PRIVACY_VERSION_HISTORY} from '@/components/legal-page-layout'
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade',
@@ -12,12 +12,10 @@ export default function PrivacyPage() {
   return (
     <LegalPageLayout
       title="Política de Privacidade"
+      version={PRIVACY_VERSION}
       updatedAt={UPDATED_AT}
+      versionHistory={PRIVACY_VERSION_HISTORY}
     >
-      <p className="text-xs text-muted-foreground">
-        Versão {PRIVACY_VERSION}
-      </p>
-
       <LegalSection heading="1. Controlador dos dados">
         <p>
           Esta Política de Privacidade descreve como a{' '}
@@ -89,7 +87,7 @@ export default function PrivacyPage() {
           </li>
 
           <li>
-            <strong>Dados biométricos (KYC):</strong> quatro vídeos curtos de
+            <strong>Dados biométricos (KYC):</strong> quatro capturas de
             selfie (rosto virado para cima, para baixo, para a esquerda e
             para a direita), capturados pela câmera do dispositivo durante a
             verificação de identidade. Usados exclusivamente para que um
@@ -149,12 +147,13 @@ export default function PrivacyPage() {
 
         <p>
           Por se tratar de dado pessoal sensível nos termos do artigo 5º, II,
-          da LGPD, o tratamento dos vídeos de selfie (dados biométricos) tem
-          como base legal o <strong>consentimento específico e destacado</strong>
-          do titular, obtido no momento do envio dos vídeos, nos termos do
-          artigo 11, I, da LGPD. O titular pode revogar esse consentimento a
-          qualquer momento, observado que a revogação poderá impedir o acesso
-          a funcionalidades que exigem identidade verificada.
+          da LGPD, o tratamento das capturas de selfie para verificação de
+          identidade fundamenta-se na <strong>prevenção à fraude e na segurança
+          do titular</strong> em processos de identificação e autenticação
+          eletrônica, nos termos do artigo 11, II, &ldquo;g&rdquo;, da LGPD. A CTech
+          limita o tratamento ao estritamente necessário e não utiliza essas
+          capturas para reconhecimento facial automatizado ou finalidade
+          incompatível.
         </p>
       </LegalSection>
 
@@ -249,7 +248,7 @@ export default function PrivacyPage() {
 
             <tr>
               <td className="border p-2">
-                Dados biométricos (vídeos de selfie)
+                Dados biométricos (capturas de selfie)
               </td>
               <td className="border p-2">
                 Até a decisão do analista humano sobre a verificação;

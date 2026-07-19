@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {LegalPageLayout, LegalSection} from '@/components/legal-page-layout'
+import {LegalPageLayout, LegalSection, TERMS_VERSION_HISTORY} from '@/components/legal-page-layout'
 
 export const metadata: Metadata = {
   title: 'Termos de Uso',
@@ -10,10 +10,7 @@ const UPDATED_AT = '12 de julho de 2026'
 
 export default function TermsPage() {
   return (
-    <LegalPageLayout title="Termos de Uso" updatedAt={UPDATED_AT}>
-      <p className="text-xs text-muted-foreground">
-        Versão {TOS_VERSION}
-      </p>
+    <LegalPageLayout title="Termos de Uso" version={TOS_VERSION} updatedAt={UPDATED_AT} versionHistory={TERMS_VERSION_HISTORY}>
 
       <LegalSection heading="1. Quem somos">
         <p>

@@ -50,6 +50,21 @@ ctech-account/
 └── cdk/              # AWS CDK infrastructure
 ```
 
+## Central Jurídica
+
+O frontend publica a documentação jurídica institucional e de produtos em
+`https://accounts.aoctech.app/legal`. Termos gerais e privacidade preservam as rotas
+canônicas `/terms` e `/privacy` e seus históricos; os demais documentos ficam
+centralizados no Accounts:
+
+- gerais: cookies, segurança, uso aceitável, KYC e contrato para desenvolvedores;
+- empresarial: Data Processing Addendum (DPA);
+- produtos: DF-e, Wallet, Wallet para Jogos, Poker, regras do Poker e Billing;
+- confiança: divulgação responsável e relatório de transparência.
+
+Os frontends dos produtos devem apontar para as rotas correspondentes no Accounts,
+mantendo neste repositório a fonte pública de verdade dos textos.
+
 ---
 
 ## API

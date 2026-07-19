@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {LegalPageLayout, LegalSection} from '@/components/legal-page-layout'
+import {LegalPageLayout, LegalSection, PRIVACY_VERSION_HISTORY} from '@/components/legal-page-layout'
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade',
@@ -12,12 +12,10 @@ export default function PrivacyPage() {
   return (
     <LegalPageLayout
       title="Política de Privacidade"
+      version={PRIVACY_VERSION}
       updatedAt={UPDATED_AT}
+      versionHistory={PRIVACY_VERSION_HISTORY}
     >
-      <p className="text-xs text-muted-foreground">
-        Versão {PRIVACY_VERSION}
-      </p>
-
       <LegalSection heading="1. Controlador dos dados">
         <p>
           Esta Política de Privacidade descreve como a{' '}
