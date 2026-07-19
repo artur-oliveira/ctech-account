@@ -242,6 +242,31 @@ plus the audiences of every service named by those scopes (a `dfe:*` scope adds 
 no key lookup, no shared storage. Revoking the key blocks new exchanges immediately;
 outstanding tokens expire within 15 minutes.
 
+### Provisioning confidential M2M clients
+
+Operators create trusted clients for the `client_credentials` grant with the
+`cmd/createclient` CLI (run from `api/`):
+
+```bash
+AWS_REGION=us-east-1 TABLE_PREFIX=production_ go run ./cmd/createclient \
+  -client-id wallet-worker \
+  -name "Wallet worker" \
+  -scopes internal:account:kyc,internal:wallet:credit \
+  -ssm-path-client /ctech/wallet/client-id \
+  -ssm-path-secret /ctech/wallet/client-secret
+```
+
+The client ID, name and scopes are required. The two SSM paths are optional and
+independent. When present, the client ID is stored as `String` and the secret as
+`SecureString`; existing parameters are not overwritten. The command validates
+parameter paths before creating the client. It also validates client ID, scope grammar and registration
+in the runtime catalog, rejects OIDC identity scopes and duplicate client IDs, then
+stores a confidential first-party client with `owner_user_id = "system"`. The client
+secret is printed only when `-ssm-path-secret` is absent or an SSM write fails, so
+the operator can recover a client that was already created. Token audiences are
+derived from the registered scopes' catalog entries rather than configured on the
+client.
+
 ### Service-to-service tokens (`client_credentials`)
 
 First-party **confidential** clients (e.g. ctech-wallet) obtain machine tokens directly:

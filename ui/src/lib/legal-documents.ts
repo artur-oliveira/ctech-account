@@ -13,6 +13,7 @@ export type LegalDocumentId =
   | 'wallet-v1'
   | 'wallet-gaming'
   | 'poker'
+  | 'poker-privacy'
   | 'poker-rules'
   | 'billing'
 
@@ -289,12 +290,30 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     updatedAt: '10 de julho de 2026',
     intro: '',
     sections: [
-      {heading: '1. Sobre este documento', paragraphs: ['Este documento complementa os Termos de Uso e a Política de Privacidade gerais da CTech, que você já aceitou ao criar sua conta. Ele descreve regras específicas do CTech DFe — a emissão e gestão de notas fiscais eletrônicas (NF-e, NFC-e, CT-e, MDF-e).']},
-      {heading: '2. Dados de terceiros nas suas notas', paragraphs: ['Para emitir uma nota fiscal, você informa dados de outras pessoas ou empresas — seus clientes, fornecedores ou destinatários (nome, CPF/CNPJ, endereço). Você é responsável por ter uma base legal válida para tratar esses dados (normalmente, a própria relação comercial) e por garantir que as informações estão corretas. O CTech DFe trata esses dados apenas para gerar e transmitir o documento fiscal correspondente.']},
-      {heading: '3. Certificado digital', paragraphs: ['O certificado digital (A1) que você envia é usado exclusivamente para assinar os documentos fiscais da sua própria empresa. Ele é armazenado de forma criptografada e nunca é compartilhado com outra organização dentro da plataforma.']},
-      {heading: '4. Envio para a SEFAZ', paragraphs: ['Notas fiscais são, por lei, transmitidas à Secretaria da Fazenda (SEFAZ) do seu estado. Esse envio é obrigatório para que o documento tenha validade fiscal — não é um compartilhamento opcional, é parte do próprio serviço.']},
-      {heading: '5. Guarda dos documentos', paragraphs: ['Documentos fiscais autorizados (XML e DANFE) ficam disponíveis para consulta e download na plataforma pelo prazo exigido pela legislação fiscal brasileira (em geral, 5 anos). Após esse período, podem ser arquivados ou removidos.']},
-      {heading: '6. Alterações', paragraphs: ['Alterações materiais a este documento exigem um novo aceite antes de continuar usando o CTech DFe. A versão vigente é sempre a publicada nesta página.']},
+      {
+        heading: '1. Sobre este documento',
+        paragraphs: ['Este documento complementa os Termos de Uso e a Política de Privacidade gerais da CTech, que você já aceitou ao criar sua conta. Ele descreve regras específicas do CTech DFe — a emissão e gestão de notas fiscais eletrônicas (NF-e, NFC-e, CT-e, MDF-e).']
+      },
+      {
+        heading: '2. Dados de terceiros nas suas notas',
+        paragraphs: ['Para emitir uma nota fiscal, você informa dados de outras pessoas ou empresas — seus clientes, fornecedores ou destinatários (nome, CPF/CNPJ, endereço). Você é responsável por ter uma base legal válida para tratar esses dados (normalmente, a própria relação comercial) e por garantir que as informações estão corretas. O CTech DFe trata esses dados apenas para gerar e transmitir o documento fiscal correspondente.']
+      },
+      {
+        heading: '3. Certificado digital',
+        paragraphs: ['O certificado digital (A1) que você envia é usado exclusivamente para assinar os documentos fiscais da sua própria empresa. Ele é armazenado de forma criptografada e nunca é compartilhado com outra organização dentro da plataforma.']
+      },
+      {
+        heading: '4. Envio para a SEFAZ',
+        paragraphs: ['Notas fiscais são, por lei, transmitidas à Secretaria da Fazenda (SEFAZ) do seu estado. Esse envio é obrigatório para que o documento tenha validade fiscal — não é um compartilhamento opcional, é parte do próprio serviço.']
+      },
+      {
+        heading: '5. Guarda dos documentos',
+        paragraphs: ['Documentos fiscais autorizados (XML e DANFE) ficam disponíveis para consulta e download na plataforma pelo prazo exigido pela legislação fiscal brasileira (em geral, 5 anos). Após esse período, podem ser arquivados ou removidos.']
+      },
+      {
+        heading: '6. Alterações',
+        paragraphs: ['Alterações materiais a este documento exigem um novo aceite antes de continuar usando o CTech DFe. A versão vigente é sempre a publicada nesta página.']
+      },
       {heading: '7. Contato', paragraphs: ['Dúvidas sobre este documento: dpo@aoctech.app.']},
     ],
   },
@@ -334,14 +353,38 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     updatedAt: '11 de julho de 2026',
     intro: 'Este aditivo complementa — e não substitui — os Termos de Uso e a Política de Privacidade da CTech. No que for específico da carteira digital, este aditivo prevalece.',
     sections: [
-      {heading: '1. O que é a CTech Wallet', paragraphs: ['A CTech Wallet mantém dois saldos separados na sua conta: o saldo real, movimentado por PIX, e os créditos sandbox, uma moeda virtual usada em aplicações integradas.']},
-      {heading: '2. Quem pode usar', paragraphs: ['Para movimentar saldo real você precisa ter 18 anos ou mais e concluir a verificação de identidade da sua conta CTech. Para sacar, a chave PIX de destino precisa pertencer ao mesmo CPF verificado na conta — saques para chaves de terceiros são recusados.']},
-      {heading: '3. Depósitos', paragraphs: ['Depósitos são recebidos por PIX. O valor entra na carteira somente após o banco parceiro confirmar o pagamento — nunca apenas com base em uma notificação. Se o CPF de quem pagou for diferente do CPF verificado na sua conta, o depósito é recusado e devolvido automaticamente a quem pagou.']},
-      {heading: '4. Saques e taxa', paragraphs: ['Cada saque tem uma taxa, descontada do seu saldo junto com o valor sacado. A taxa padrão é de 2% sobre o valor, com mínimo de R$ 1,00 e máximo de R$ 10,00 por operação, e cobre o custo da transferência PIX. A taxa aplicada à sua carteira é sempre exibida antes de você confirmar o saque.', 'Uma carteira executa uma operação por vez: um novo saque só começa depois que o anterior é concluído.']},
-      {heading: '5. Créditos sandbox', paragraphs: ['Créditos sandbox podem ser comprados com saldo real ou concedidos por aplicações integradas. Eles servem para participar de partidas em jogos de habilidade integrados.', 'Créditos sandbox não têm valor monetário, não são resgatáveis e não podem, em nenhuma hipótese, ser convertidos em saldo real nem sacados. A compra de créditos com saldo real é definitiva e não é reembolsável.']},
-      {heading: '6. Limites de responsabilidade', paragraphs: ['A CTech Wallet não é uma instituição financeira licenciada pelo Banco Central do Brasil. Ela atua como intermediário técnico de custódia e movimentação de valores via PIX, por meio de um banco parceiro. Não garantimos a disponibilidade ininterrupta da infraestrutura PIX de terceiros e não respondemos por atrasos ou falhas causados por ela.']},
-      {heading: '7. Alterações', paragraphs: ['Este aditivo pode ser atualizado. Alterações materiais exigem um novo aceite explícito antes de você continuar usando a carteira.']},
-      {heading: '8. Contato', paragraphs: ['A O CARVALHO TECH — CNPJ 62.787.449/0001-07. Encarregado de dados (DPO): dpo@aoctech.app.']},
+      {
+        heading: '1. O que é a CTech Wallet',
+        paragraphs: ['A CTech Wallet mantém dois saldos separados na sua conta: o saldo real, movimentado por PIX, e os créditos sandbox, uma moeda virtual usada em aplicações integradas.']
+      },
+      {
+        heading: '2. Quem pode usar',
+        paragraphs: ['Para movimentar saldo real você precisa ter 18 anos ou mais e concluir a verificação de identidade da sua conta CTech. Para sacar, a chave PIX de destino precisa pertencer ao mesmo CPF verificado na conta — saques para chaves de terceiros são recusados.']
+      },
+      {
+        heading: '3. Depósitos',
+        paragraphs: ['Depósitos são recebidos por PIX. O valor entra na carteira somente após o banco parceiro confirmar o pagamento — nunca apenas com base em uma notificação. Se o CPF de quem pagou for diferente do CPF verificado na sua conta, o depósito é recusado e devolvido automaticamente a quem pagou.']
+      },
+      {
+        heading: '4. Saques e taxa',
+        paragraphs: ['Cada saque tem uma taxa, descontada do seu saldo junto com o valor sacado. A taxa padrão é de 2% sobre o valor, com mínimo de R$ 1,00 e máximo de R$ 10,00 por operação, e cobre o custo da transferência PIX. A taxa aplicada à sua carteira é sempre exibida antes de você confirmar o saque.', 'Uma carteira executa uma operação por vez: um novo saque só começa depois que o anterior é concluído.']
+      },
+      {
+        heading: '5. Créditos sandbox',
+        paragraphs: ['Créditos sandbox podem ser comprados com saldo real ou concedidos por aplicações integradas. Eles servem para participar de partidas em jogos de habilidade integrados.', 'Créditos sandbox não têm valor monetário, não são resgatáveis e não podem, em nenhuma hipótese, ser convertidos em saldo real nem sacados. A compra de créditos com saldo real é definitiva e não é reembolsável.']
+      },
+      {
+        heading: '6. Limites de responsabilidade',
+        paragraphs: ['A CTech Wallet não é uma instituição financeira licenciada pelo Banco Central do Brasil. Ela atua como intermediário técnico de custódia e movimentação de valores via PIX, por meio de um banco parceiro. Não garantimos a disponibilidade ininterrupta da infraestrutura PIX de terceiros e não respondemos por atrasos ou falhas causados por ela.']
+      },
+      {
+        heading: '7. Alterações',
+        paragraphs: ['Este aditivo pode ser atualizado. Alterações materiais exigem um novo aceite explícito antes de você continuar usando a carteira.']
+      },
+      {
+        heading: '8. Contato',
+        paragraphs: ['A O CARVALHO TECH — CNPJ 62.787.449/0001-07. Encarregado de dados (DPO): dpo@aoctech.app.']
+      },
     ],
   },
   'wallet-gaming': {
@@ -386,7 +429,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: '2. Mesas e resultados',
-        paragraphs: ['As regras publicadas, blinds, limites, buy-in, premiação e eventuais tarifas exibidas antes da entrada integram cada partida. Os registros do servidor prevalecem para reconstruir mãos e resolver divergências.']
+        paragraphs: ['As regras publicadas, blinds, limites, buy-in, premiação e eventuais tarifas exibidas antes da entrada integram cada partida. Os registros do servidor prevalecem para reconstruir mãos e resolver divergências. Mesas sandbox utilizam apenas créditos virtuais, sem valor monetário, resgate ou conversão.']
       },
       {
         heading: '3. Jogo justo',
@@ -397,8 +440,37 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
         paragraphs: ['A publicação de código aumenta transparência, mas não autoriza acesso à produção, engenharia social, manipulação de partidas nem uso fora da licença aplicável. Segredos, controles antifraude e infraestrutura podem permanecer privados.']
       },
       {
-        heading: '5. Dinheiro real e responsabilidade',
-        paragraphs: ['Valores são movimentados pela Wallet. O usuário responde por tributos pessoais e reconhece o risco de perda. Não há garantia de ganho; autoexclusão e limites devem ser respeitados.']
+        heading: '5. Dinheiro real, rake e responsabilidade',
+        paragraphs: ['Valores são movimentados pela Wallet. Nas mesas de dinheiro real, a CTech retém rake de 2,5% do pote elegível, observados os limites mínimo e máximo informados na configuração da mesa antes da entrada; mesas sandbox não têm rake. O usuário responde por tributos pessoais e reconhece o risco de perda. Não há garantia de ganho; autoexclusão e limites devem ser respeitados.']
+      },
+    ],
+  },
+  'poker-privacy': {
+    title: 'Privacidade — CTech Poker',
+    description: 'Tratamento de dados específico das partidas e recursos do CTech Poker.',
+    version: '1.0',
+    updatedAt,
+    intro: 'Este documento complementa a Política de Privacidade da CTech e descreve o tratamento de dados necessário para operar o CTech Poker.',
+    sections: [
+      {
+        heading: '1. Dados tratados',
+        paragraphs: ['Tratamos identificadores da conta, versão dos documentos aceitos, mesas, buy-ins e cashouts, ações e resultados de jogo, mensagens do chat, conquistas, estatísticas, dados técnicos, endereço IP, registros de conexão e sinais necessários à segurança e à prevenção de fraude.']
+      },
+      {
+        heading: '2. Finalidades e bases legais',
+        paragraphs: ['Os dados são usados para operar e reconstruir partidas, calcular resultados e rake, processar movimentações com a Wallet, apresentar progressão, moderar interações, prestar suporte, cumprir obrigações e proteger usuários e a plataforma. O tratamento se fundamenta, conforme o caso, em execução contratual, obrigação legal ou regulatória, exercício regular de direitos, prevenção à fraude, legítimo interesse e consentimento.']
+      },
+      {
+        heading: '3. Compartilhamento e exposição pública',
+        paragraphs: ['Dados podem ser compartilhados com Account, Wallet, provedores essenciais e autoridades competentes, limitados à finalidade e ao fundamento aplicáveis. Rankings e perfis públicos não exibem valores monetários ganhos, perdidos, depositados ou sacados.']
+      },
+      {
+        heading: '4. Retenção e segurança',
+        paragraphs: ['Registros de jogo, transações e segurança são mantidos pelo prazo necessário para auditoria, prevenção à fraude, obrigações aplicáveis e defesa de direitos. Aplicamos controles de acesso, criptografia em trânsito, privilégios mínimos, registros de auditoria e monitoramento. Dados sandbox poderão ser reiniciados ou eliminados conforme a operação do produto.']
+      },
+      {
+        heading: '5. Direitos e contato',
+        paragraphs: ['O titular pode exercer os direitos previstos na LGPD pelos canais indicados na Política de Privacidade da CTech. O Poker não é destinado a menores de 18 anos; atualizações materiais deste documento poderão exigir novo aceite.']
       },
     ],
   },
@@ -505,6 +577,11 @@ export const legalGroups = [
         description: legalDocuments['wallet-gaming'].description
       },
       {href: '/products/poker', label: 'CTech Poker', description: legalDocuments.poker.description},
+      {
+        href: '/products/poker-privacy',
+        label: 'Privacidade do Poker',
+        description: legalDocuments['poker-privacy'].description
+      },
       {href: '/products/poker-rules', label: 'Regras do Poker', description: legalDocuments['poker-rules'].description},
       {href: '/products/billing', label: 'CTech Billing', description: legalDocuments.billing.description},
     ]
