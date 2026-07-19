@@ -5,14 +5,14 @@ import {
   LegalSection,
   WALLET_VERSION_HISTORY,
 } from '@/components/legal-page-layout'
-import {type LegalDocumentId, legalDocuments} from '@/lib/legal-documents'
+import {legalDocuments, type LegalDocumentId} from '@/lib/legal-documents'
 
 export function LegalDocumentPage({documentId}: { documentId: LegalDocumentId }) {
   const document = legalDocuments[documentId]
   const versionHistory = documentId.toString().startsWith('dfe')
     ? DFE_VERSION_HISTORY
     : documentId.toString().startsWith('wallet')
-      ? <WALLET_VERSI></WALLET_VERSI>ON_HISTORY
+      ? WALLET_VERSION_HISTORY
       : undefined
 
   return (
