@@ -43,6 +43,6 @@ yarn-error.log*
 next-env.d.ts
 
 .impeccable/cache/
-impeccable/live/server.json
+.impeccable/live/server.json
 impeccable-live.json
-
+.impeccable/hook.cache.json

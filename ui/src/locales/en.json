@@ -590,30 +590,8 @@
       "login": "Sign in",
       "dashboard": "Go to dashboard"
     },
-    "hero": {
-      "eyebrow": "CTech Identity",
-      "title": "One identity for the entire CTech ecosystem",
-      "subtitle": "Sign in once and access Wallet, DF-e, and upcoming CTech products with enterprise-grade security."
-    },
-    "features": {
-      "title": "Why use CTech Account",
-      "passkeys": {
-        "title": "Passkeys and biometrics",
-        "body": "Skip weak passwords: sign in with a passkey, security key, or authenticator app."
-      },
-      "mfa": {
-        "title": "MFA and two-step verification",
-        "body": "TOTP, recovery codes, and identity verification (KYC) to keep your account protected."
-      },
-      "sso": {
-        "title": "Single sign-on (SSO)",
-        "body": "One CTech Account unlocks every product in the ecosystem — no duplicate signups."
-      },
-      "oauth": {
-        "title": "OAuth2 and OpenID Connect",
-        "body": "For developers: register OAuth applications and manage API keys and access scopes."
-      }
-    },
+    "title": "One identity for the entire CTech ecosystem",
+    "description": "Sign in once and access Wallet, DF-e, and upcoming CTech products with enterprise-grade security.",
     "footer": {
       "terms": "Terms of Use",
       "privacy": "Privacy"
