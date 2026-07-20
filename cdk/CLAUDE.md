@@ -8,8 +8,19 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: DynamoDB table,
-EC2 ASG (Go API), S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, and S3 for deployment artifacts.
+Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
+DynamoDB tables, an EC2 ASG (Go API) behind a **shared** Application Load Balancer,
+S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, a private KYC documents
+bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
+
+There is **no Lambda and no API Gateway** — the API is a long-running Go binary on the
+ASG, and KYC review is a CLI (`api/cmd/kyc`), not an HTTP route. See `README.md`
+(§Tables, §Compute) for the authoritative layout.
+
+> **Stale-doc correction:** older text here said "single-table design /
+> `ctech-account-{environment}`" and referenced `/rsa-private-key` + "Lambda + SQS".
+> All three are wrong — verify against `lib/dynamodb-stack.ts`, `lib/compute-stack.ts`,
+> and `bin/ctech-account.ts`.
 
 ---
 
@@ -18,17 +29,21 @@ EC2 ASG (Go API), S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, an
 ```
 cdk/
 ├── bin/
-│   └── ctech-account.ts        # CDK app entry point
+│   └── ctech-account.ts        # CDK app entry point — instantiates the 7 stacks
 ├── lib/
-│   ├── types.ts                # Shared types / interfaces across stacks
-│   ├── dynamodb-stack.ts       # Single DynamoDB table + GSIs
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template (clone of ApiStackV2 pattern)
+│   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
+│   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
+│   ├── compute-stack.ts        # EC2 ASG + Launch Template behind the SHARED ALB
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
-│   ├── iam-stack.ts            # Instance profile + DynamoDB/SSM/S3 permissions
-│   ├── oidc-stack.ts           # GitHub Actions OIDC role
-│   └── s3-stack.ts             # Deployment artifacts bucket
-└── test/
+│   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
+│   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
+│   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
+│   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets used instead)
+└── test/                       # ABSENT — `test: jest` exists but no tests are written
 ```
+
+> `S3Stack` (`lib/s3-stack.ts`) is defined but **not instantiated** in
+> `bin/ctech-account.ts`. Treat it as dead code.
 
 ---
 
@@ -46,11 +61,27 @@ cdk/
 
 ## Engineering Rules
 
-### DRY
+### DRY (cross-project context)
 
-- Never duplicate stack constructs. Extract shared patterns (e.g., Lambda + SQS) into a construct class.
-- Table name, bucket names, and function names follow a single naming convention derived from `ENVIRONMENT`.
-- Stack-to-stack references use CDK exports/imports — never hardcoded ARNs.
+This repo is TypeScript/CDK, so the Go-layer DRY rules (reuse `ctech-go-common`
+helpers, RFC 7807 `problem` helpers, conditional DynamoDB writes, Valkey-required)
+live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalents:
+
+- **Reuse shared `@aoctech/cdk` constructs** (`PrivateIpv4Ec2Service`, OIDC provider
+  import, dual-stack helpers) instead of re-implementing EC2/ASG/ALB wiring. This is
+  the CDK analogue of "reuse `ctech-go-common`" — one pattern across ctech-dfe,
+  ctech-wallet, ctech-account.
+- **No duplicate stack constructs.** If two stacks need the same resource shape, extract
+  a construct class — don't paste the same `new …` block twice.
+- **No magic strings / numbers.** Environment name, table/bucket/role names, listener
+  priorities, SSM paths, and the ACM cert ARN all derive from a single source
+  (`bin/ctech-account.ts` constants / `ENVIRONMENT`) — never hardcoded inline.
+- **Stack-to-stack references use CDK exports/imports** (`Fn.importValue`) — never
+  hardcoded ARNs.
+- **Valkey is mandatory in non-dev.** CDK only *supplies* the URL via SSM
+  (`/ctech/{env}/valkey/url`); the **Go API refuses to boot without it** outside dev
+  (`api/cmd/api/main.go:70`). Don't add any runtime path that assumes Valkey is
+  optional outside dev.
 
 ### Constants — no magic strings
 
@@ -78,10 +109,13 @@ cdk/
 
 ### DynamoDB
 
-- Single-table design — one table per environment.
-- Table name: `ctech-account-{environment}`.
-- GSIs must be justified by documented access patterns before creation.
-- PITR only in staging/production.
+- **Eight separate tables**, one per environment prefix (`{env}_account_users`,
+  `_account_sessions`, `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`,
+  `_account_passkeys`, `_account_audit`, `_ctech_scopes`). See `lib/dynamodb-stack.ts`.
+- All tables are **OnDemand** with warm-throughput caps (1000 RU/WU each).
+- GSIs are justified by access patterns in `lib/dynamodb-stack.ts` (email lookup,
+  refresh-token hash, owner index, API-key hash).
+- PITR only in **production**.
 
 ### EC2 / ASG (compute-stack)
 
@@ -142,10 +176,16 @@ See `../README.md` §First Deploy for the full ordered checklist.
 
 ## Known Constraints
 
-- SSM parameters (`/ctech-account/{env}/rsa-private-key`, etc.) must be created before deploying compute stack.
+- SSM parameters must exist before deploying the compute stack. Signing keys live at
+  `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) — **not** `rsa-private-key`.
+  Runtime config (base-url, allowed-origins, app-url, google-*, cookie-domain,
+  from-email, internal-token) lives under `/ctech-account/{env}/*`; the shared ALB/VPC
+  params under `/ctech/{env}/*`; the Valkey URL under `/ctech/{env}/valkey/url`.
 - `accounts-ui` OAuth client must be seeded in DynamoDB after first deploy (see `../README.md`).
 - Go binary must be named `ctech-account` on EC2 (systemd service name matches).
 - CloudFront distribution requires ACM certificate in `us-east-1` regardless of deploy region.
+- `S3Stack` is unused; deployments/logs buckets are shared `ctech-cdk` buckets.
+- No jest tests exist despite the `test` script. `cdk synth` is the only automated gate.
 
 ---
 

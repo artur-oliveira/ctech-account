@@ -76,7 +76,7 @@ from `kyc_doc_status` + `kyc_submitted_at`, **not** from `kyc_level`.
 | `POST /account/kyc/documents/confirm`  | record upload          | **unchanged**                                     |
 | `POST /internal/kyc/confirm`           | PIX CPF match (wallet) | **DELETED**                                       |
 | `POST /internal/kyc/review`            | human decision (HTTP)  | **DELETED** → `cmd/kyc`                           |
-| `GET /internal/kyc/:user_id`           | raw CPF (wallet)       | **kept**, scope `internal:wallet:confirm-deposit` |
+| `GET /internal/kyc/:user_id`           | raw CPF (wallet)       | **kept**, scope `internal:account:kyc` |
 | `GET /internal/kyc/:user_id/documents` | doc URLs               | **DELETED** (CLI uses `cmd/kyc show`)             |
 | `internal:kyc` scope                   | service scope          | **DELETED**                                       |
 | `kyc` OIDC scope                       | claim scope            | **kept**                                          |
@@ -119,6 +119,6 @@ of `2.0` becomes pending and re-gated at next `/authorize` (the `ni`/`privacy` n
 
 - **ctech-wallet**: loses `/internal/kyc/confirm` (PIX — moot) and
   `/internal/kyc/:user_id/documents`; **keeps** `/internal/kyc/:user_id` (raw CPF) under
-  `internal:wallet:confirm-deposit`. Wallet must stop calling the deleted endpoints.
+  `internal:account:kyc`. Wallet must stop calling the deleted endpoints.
 - **ctech-dfe**: unaffected — still reads `kyc_level` claim (now only `""`/`verified`).
 - **cdk**: no infra change (no new GSI; `cmd/kyc list` uses a Scan — see plan §1 note).

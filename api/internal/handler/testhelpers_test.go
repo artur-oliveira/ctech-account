@@ -530,12 +530,14 @@ func (m *memUserRepo) Update(_ context.Context, userID string, updates map[strin
 type memSessionRepo struct {
 	sessions map[string]*sessionDomain.Session
 	tokens   map[string]*sessionDomain.RefreshToken
+	consumed map[string]*sessionDomain.ConsumedToken
 }
 
 func newMemSessionRepo() *memSessionRepo {
 	return &memSessionRepo{
 		sessions: make(map[string]*sessionDomain.Session),
 		tokens:   make(map[string]*sessionDomain.RefreshToken),
+		consumed: make(map[string]*sessionDomain.ConsumedToken),
 	}
 }
 
@@ -572,6 +574,25 @@ func (m *memSessionRepo) GetRefreshTokenByHash(_ context.Context, tokenHash stri
 		if t.RefreshTokenHash == tokenHash {
 			return t, nil
 		}
+	}
+	return nil, sessionDomain.ErrRefreshTokenNotFound
+}
+
+func (m *memSessionRepo) PutConsumedToken(_ context.Context, userID, sessionID, clientID, supersededHash string, _ int64) error {
+	m.consumed[supersededHash] = &sessionDomain.ConsumedToken{
+		PK:               sessionDomain.BuildPK(userID),
+		SK:               "CONSUMED_" + supersededHash,
+		RefreshTokenHash: supersededHash,
+		UserID:           userID,
+		SessionID:        sessionID,
+		ClientID:         clientID,
+	}
+	return nil
+}
+
+func (m *memSessionRepo) GetConsumedByHash(_ context.Context, tokenHash string) (*sessionDomain.ConsumedToken, error) {
+	if c, ok := m.consumed[tokenHash]; ok {
+		return c, nil
 	}
 	return nil, sessionDomain.ErrRefreshTokenNotFound
 }

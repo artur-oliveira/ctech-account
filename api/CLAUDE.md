@@ -58,6 +58,17 @@ Implement only what was requested. No opportunistic refactors, no added abstract
 - Before writing any function, search `internal/` for existing implementations.
 - Never duplicate error constructors, validation patterns, or repository logic.
 - One validator singleton (`validate` package) — never instantiate `validator.New()` inline.
+- **Reuse shared `ctech-go-common` helpers (cross-project rule D1)** — `ctech-go-common/dynamo`,
+  `cache`, `lock`, `jwtverify`, `problem`, `oauth2client`. Do **not** reimplement DynamoDB
+  wrappers, cache/lock clients, JWT verification, or RFC 7807 problem construction that already
+  exist there. (This repo still carries a local `internal/database/conditional.go` that replicates
+  `api-commons`' `buildUpdateExpr` because api-commons does not yet expose a *conditional*
+  `UpdateItem` — prefer the shared helper the moment it lands; don't expand the local copy.)
+- **No duplicate handlers.** One handler file + `Register` method per route group. If two routes
+  share logic, extract a helper in `internal/handler/helpers.go`, not a copy-paste handler.
+- **Rate-limiting / brute-force guard is a shared concern (cross-project rule D15).** This repo's
+  `internal/middleware/ratelimit.go` (Valkey-backed, `FailClosed`) is the pattern; prefer a shared
+  construct over a per-repo reimplementation when one is available.
 
 ### Constants — no magic strings/numbers
 
@@ -112,6 +123,16 @@ Implement only what was requested. No opportunistic refactors, no added abstract
 - `GetItem` > `Query` > `Scan`. **No production scans.**
 - OAuth authorization codes stored in Valkey (TTL 60s) — not DynamoDB.
 - MFA tokens stored in Valkey (TTL 5 min).
+- **Conditional writes for every read-modify-write race.** Use
+  `internal/database.ConditionalUpdate` (`internal/database/conditional.go`) with a
+  `ConditionExpression` pinning the value just read (refresh-token rotation, email
+  uniqueness, TOTP/backup-code single-use, CPF uniqueness). Never do a blind
+  `PutItem`/`UpdateItem` where a concurrent writer could clobber state.
+- **Valkey is mandatory outside `dev`/`development`.** The binary refuses to boot
+  without `VALKEY_URL` (`cmd/api/main.go:70`): OAuth codes, MFA/passkey challenges,
+  account-recovery tokens, and all rate limiting live in Valkey with **no DynamoDB
+  fallback**. When `VALKEY_URL` is absent the cache client is in disabled mode
+  (no-ops), which is only acceptable in dev.
 
 ### Secrets
 

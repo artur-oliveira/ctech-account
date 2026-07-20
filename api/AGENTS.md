@@ -95,6 +95,13 @@ internal/
 - Before writing any function, search `internal/` for existing implementations.
 - One validator singleton — never instantiate `validator.New()` inline.
 - Never duplicate error constructors — check `apierror/` before adding new ones.
+- **Reuse `ctech-go-common` helpers (D1):** `dynamo`, `cache`, `lock`, `jwtverify`,
+  `problem`, `oauth2client`. Don't reimplement them. Rate-limiting/brute-force (D15)
+  is a shared concern — prefer a shared construct over a per-repo copy.
+- **Conditional DynamoDB writes** (`internal/database.ConditionalUpdate`) for every
+  read-modify-write race; **Valkey is mandatory outside `dev`** (boot refuses without
+  `VALKEY_URL`) — no DynamoDB fallback for codes/MFA/tokens/rate-limit. See
+  `CLAUDE.md` for detail.
 
 ### Constants — no magic strings
 
@@ -110,8 +117,8 @@ internal/
 
 ### Session Handling
 
-- `session.Service.ReplaceRefreshToken` → first code exchange (no prior token).
-- `session.Service.Rotate` → all subsequent refresh grants (validates before replacing).
+- `session.Service.IssueClientToken` → first code exchange (no prior token; replaces one if it already exists).
+- `session.Service.RotateClientToken` → all subsequent refresh grants (validates the presented token before replacing; replay returns `ErrTokenReuse`).
 
 ### Fiber v3
 
@@ -156,7 +163,7 @@ No real AWS resources needed. All integration tests run against in-memory implem
 ## Known Constraints
 
 - `errors.AsType[*T]` requires Go 1.26 — do not downgrade.
-- Valkey disabled mode: operations are no-ops, not errors — design accordingly.
+- Valkey is **required in non-dev**: the API refuses to boot without `VALKEY_URL` outside `dev`/`development` (OAuth codes, MFA/passkey challenges, recovery tokens and rate limiting have no DynamoDB fallback). In `dev` only it is optional (cache operations become no-ops).
 - RS256 only — no HS256, no `SECRET_KEY`.
 - `GET /v1.0/health-check` returns `application/health+json` — not `application/json`.
 - KID rotation affects all downstream JWT consumers (ctech-dfe) — coordinate carefully.

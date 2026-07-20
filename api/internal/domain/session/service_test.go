@@ -12,12 +12,14 @@ import (
 type mockRepo struct {
 	sessions map[string]*session.Session      // key: pk|sk
 	tokens   map[string]*session.RefreshToken // key: pk|sk
+	consumed map[string]*session.ConsumedToken // key: superseded hash
 }
 
 func newMockRepo() *mockRepo {
 	return &mockRepo{
 		sessions: make(map[string]*session.Session),
 		tokens:   make(map[string]*session.RefreshToken),
+		consumed: make(map[string]*session.ConsumedToken),
 	}
 }
 
@@ -86,6 +88,25 @@ func (m *mockRepo) GetRefreshTokenByHash(_ context.Context, tokenHash string) (*
 		if t.RefreshTokenHash == tokenHash {
 			return t, nil
 		}
+	}
+	return nil, session.ErrRefreshTokenNotFound
+}
+
+func (m *mockRepo) PutConsumedToken(_ context.Context, userID, sessionID, clientID, supersededHash string, _ int64) error {
+	m.consumed[supersededHash] = &session.ConsumedToken{
+		PK:               session.BuildPK(userID),
+		SK:               "CONSUMED_" + supersededHash,
+		RefreshTokenHash: supersededHash,
+		UserID:           userID,
+		SessionID:        sessionID,
+		ClientID:         clientID,
+	}
+	return nil
+}
+
+func (m *mockRepo) GetConsumedByHash(_ context.Context, tokenHash string) (*session.ConsumedToken, error) {
+	if c, ok := m.consumed[tokenHash]; ok {
+		return c, nil
 	}
 	return nil, session.ErrRefreshTokenNotFound
 }
@@ -164,6 +185,29 @@ func TestRotateClientToken_TokenReuse(t *testing.T) {
 	_, _, _, err := svc.RotateClientToken(context.Background(), raw, "test-client")
 	if !errors.Is(err, session.ErrTokenReuse) {
 		t.Errorf("expected ErrTokenReuse, got %v", err)
+	}
+}
+
+// Regression test for B6: a replay of an already-rotated refresh token must
+// revoke the session, not merely return 401 while leaving the stolen chain
+// alive. The attacker redeems the token first (R1 -> R2); the captured old
+// token R1 is then replayed and the grant must be revoked.
+func TestRotateClientToken_ReuseRevokesSession(t *testing.T) {
+	svc := session.NewService(newMockRepo())
+	sess, _, _ := svc.Create(context.Background(), "user3b", "Chrome", "1.2.3.4", "UA", nil)
+	raw, _ := svc.IssueClientToken(context.Background(), "user3b", sess.ID(), "test-client", nil)
+
+	// Attacker redeems the token first, obtaining a fresh chain.
+	if _, _, _, err := svc.RotateClientToken(context.Background(), raw, "test-client"); err != nil {
+		t.Fatalf("attacker rotation failed: %v", err)
+	}
+
+	// The stolen old token is replayed: must be reuse AND revoke the session.
+	if _, _, _, err := svc.RotateClientToken(context.Background(), raw, "test-client"); !errors.Is(err, session.ErrTokenReuse) {
+		t.Fatalf("expected ErrTokenReuse, got %v", err)
+	}
+	if _, err := svc.Get(context.Background(), "user3b", sess.ID()); !errors.Is(err, session.ErrNotFound) {
+		t.Errorf("session should be revoked on token reuse, got err=%v", err)
 	}
 }
 

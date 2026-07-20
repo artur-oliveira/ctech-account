@@ -8,8 +8,11 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: DynamoDB table,
-EC2 ASG (Go API), S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, and S3 for deployment artifacts.
+Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
+DynamoDB tables, an EC2 ASG (Go API) behind a **shared** ALB, S3 + CloudFront
+(frontend), IAM roles, GitHub Actions OIDC, a private KYC documents bucket, and the
+shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
+`README.md`; this file is the quick reference.
 
 ---
 
@@ -18,16 +21,17 @@ EC2 ASG (Go API), S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, an
 ```
 cdk/
 ├── bin/
-│   └── ctech-account.ts        # CDK app entry point
+│   └── ctech-account.ts        # CDK app entry — instantiates the 7 stacks
 ├── lib/
-│   ├── types.ts                # Shared types / interfaces across stacks
-│   ├── dynamodb-stack.ts       # Single DynamoDB table + GSIs
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template
+│   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
+│   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
+│   ├── compute-stack.ts        # EC2 ASG + Launch Template behind the SHARED ALB
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
-│   ├── iam-stack.ts            # Instance profile + DynamoDB/SSM/S3 permissions
-│   ├── oidc-stack.ts           # GitHub Actions OIDC role
-│   └── s3-stack.ts             # Deployment artifacts bucket
-└── test/
+│   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
+│   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
+│   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
+│   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets instead)
+└── test/                       # ABSENT — `test: jest` exists but no tests written
 ```
 
 ---
@@ -56,11 +60,14 @@ cdk/
 
 ## Environment Rules
 
-| Environment | Removal Policy    | PITR   | Table Name              |
-|-------------|-------------------|--------|-------------------------|
-| development | `DESTROY`         | No     | `ctech-account-development` |
-| staging     | `RETAIN`          | No     | `ctech-account-staging` |
-| production  | `RETAIN`          | Yes    | `ctech-account-production` |
+| Environment | Removal Policy    | PITR   | Tables                          |
+|-------------|-------------------|--------|---------------------------------|
+| development | `DESTROY`         | No     | 8 × `{env}_account_*` / `_ctech_scopes` |
+| staging     | `RETAIN`          | No     | 8 × `{env}_account_*` / `_ctech_scopes` |
+| production  | `RETAIN`          | Yes    | 8 × `{env}_account_*` / `_ctech_scopes` |
+
+Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no single
+`ctech-account-{environment}` table.
 
 ---
 
@@ -72,6 +79,8 @@ cdk/
 | Hardcoded ARN in cross-stack reference      | Use CDK export/import (`Fn.importValue`)      |
 | Wildcard `*` in IAM resource ARN            | Scope to the specific table/bucket ARN        |
 | Adding IAM policy inline in compute stack   | Define in `iam-stack.ts`, pass role as prop   |
+| Re-implementing EC2/ASG/ALB wiring          | Reuse `@aoctech/cdk` `PrivateIpv4Ec2Service`  |
+| Reusing ALB listener priority 15/35         | ctech-account uses **25** (dfe=15, wallet=35) |
 | `cdk deploy --all` without `cdk synth` first | Always `cdk synth` → review → deploy         |
 
 ---

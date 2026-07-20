@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -60,8 +61,17 @@ type RateLimitConfig struct {
 }
 
 // denyUnavailable rejects the request because the limiter cannot enforce.
-func denyUnavailable(c fiber.Ctx) error {
-	return apierror.ServiceUnavailable(rateLimitUnavailableMsg, c.Path()).Send(c)
+// It logs the underlying cause (Valkey error or disabled cache) so a cache
+// blip that degrades to 503 is diagnosable instead of silent — see the
+// 2026-07-20 prod incident where /account/* 503'd with no logged reason.
+func denyUnavailable(c fiber.Ctx, prefix, op string, cause error) error {
+	path := c.Path()
+	if cause != nil {
+		log.Printf("ratelimit[%s]: %s failed for %s: %v", prefix, op, path, cause)
+	} else {
+		log.Printf("ratelimit[%s]: %s failed for %s (cache disabled)", prefix, op, path)
+	}
+	return apierror.ServiceUnavailable(rateLimitUnavailableMsg, path).Send(c)
 }
 
 // RateLimit returns a Fiber middleware enforcing the given RateLimitConfig.
@@ -71,7 +81,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if cfg.Cache == nil || !cfg.Cache.Enabled() || cfg.KeyFunc == nil {
 			if cfg.FailClosed {
-				return denyUnavailable(c)
+				return denyUnavailable(c, cfg.Prefix, "enforce", nil)
 			}
 			return c.Next()
 		}
@@ -89,7 +99,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			// to make unbounded guessing impossible, which FailClosed guarantees.
 			n, err := cfg.Cache.Count(c.Context(), key)
 			if err != nil && cfg.FailClosed {
-				return denyUnavailable(c)
+				return denyUnavailable(c, cfg.Prefix, "count", err)
 			}
 			if err == nil && n >= cfg.Max {
 				return apierror.TooManyRequests(rateLimitExceededMsg, c.Path()).Send(c)
@@ -108,7 +118,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		n, err := cfg.Cache.Incr(c.Context(), key, cfg.Window)
 		if err != nil {
 			if cfg.FailClosed {
-				return denyUnavailable(c)
+				return denyUnavailable(c, cfg.Prefix, "incr", err)
 			}
 			return c.Next()
 		}

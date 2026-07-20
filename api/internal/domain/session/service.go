@@ -134,9 +134,18 @@ func (s *Service) IssueClientToken(ctx context.Context, userID, sessionID, clien
 // ErrClientMismatch when presented by another client, and ErrSessionExpired when
 // the parent session is gone or expired.
 func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID string) (*Session, string, []string, error) {
-	t, err := s.repo.GetRefreshTokenByHash(ctx, crypto.HashToken(rawToken))
+	hash := crypto.HashToken(rawToken)
+	t, err := s.repo.GetRefreshTokenByHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, ErrRefreshTokenNotFound) {
+			// The presented hash is not the current one. If a consumed-token
+			// marker still points this hash at a session, the token was valid and
+			// already rotated by someone else — a replay of a captured token. The
+			// grant is compromised, so revoke the whole session (OAuth BCP
+			// §4.13.2) instead of letting the stolen chain keep working.
+			if c, cErr := s.repo.GetConsumedByHash(ctx, hash); cErr == nil && c != nil {
+				_ = s.Revoke(ctx, c.UserID, c.SessionID)
+			}
 			return nil, "", nil, ErrTokenReuse
 		}
 		return nil, "", nil, fmt.Errorf("fetching refresh token: %w", err)
@@ -168,12 +177,20 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("generating new refresh token: %w", err)
 	}
-	if err := s.repo.UpdateRefreshTokenHash(ctx, t.UserID(), t.SessionID, t.ClientID, newHash, t.RefreshTokenHash); err != nil {
+	// Capture the superseded hash before the rotation so the consumed-token
+	// marker below points at the old token, not the freshly written one.
+	oldHash := t.RefreshTokenHash
+	if err := s.repo.UpdateRefreshTokenHash(ctx, t.UserID(), t.SessionID, t.ClientID, newHash, oldHash); err != nil {
 		if errors.Is(err, ErrTokenReuse) {
 			return nil, "", nil, ErrTokenReuse
 		}
 		return nil, "", nil, fmt.Errorf("rotating refresh token: %w", err)
 	}
+	// Leave a marker linking the superseded hash to its session so a replay of
+	// the old token (token-reuse attempt) can revoke the now-compromised grant.
+	// Best-effort: a marker write failure must not fail the rotation, and reuse
+	// is still reported as such even if the marker is missing.
+	_ = s.repo.PutConsumedToken(ctx, t.UserID(), t.SessionID, t.ClientID, oldHash, sess.ExpiresAt)
 	return sess, newRaw, t.Scopes, nil
 }
 

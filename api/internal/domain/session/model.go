@@ -87,6 +87,10 @@ type RefreshToken struct {
 
 const refreshSKPrefix = "REFRESH_"
 const sessionSKPrefix = "SESSION_"
+// consumedSKPrefix marks the sk of a consumed-token marker (see ConsumedToken).
+// It is distinct from refreshSKPrefix so the marker never collides with the
+// active per-(session,client) refresh item under the same pk.
+const consumedSKPrefix = "CONSUMED_"
 
 // refreshSKSeparator joins session and client IDs in the refresh token SK. Both
 // are UUIDs / slug-style identifiers, so '#' can never appear inside either part.
@@ -102,4 +106,21 @@ func (t *RefreshToken) UserID() string {
 
 func (t *RefreshToken) IsExpired() bool {
 	return time.Now().Unix() > t.ExpiresAt
+}
+
+// ConsumedToken is a marker written when a refresh token is rotated. It maps the
+// just-superseded hash back to its session, so a later replay of the old token
+// (a token-reuse attempt) can immediately revoke the compromised grant. The
+// stale hash is no longer the active refresh_token_hash after rotation, so
+// without this marker a reused token could never be traced to a session.
+// expires_at carries the session's TTL so DynamoDB prunes the marker
+// automatically once the grant is past its useful life.
+type ConsumedToken struct {
+	PK               string `dynamodbav:"pk"` // USER_{user_id}
+	SK               string `dynamodbav:"sk"` // CONSUMED_{superseded_hash}
+	RefreshTokenHash string `dynamodbav:"refresh_token_hash"`
+	UserID           string `dynamodbav:"user_id"`
+	SessionID        string `dynamodbav:"session_id"`
+	ClientID         string `dynamodbav:"client_id"`
+	ExpiresAt        int64  `dynamodbav:"expires_at"` // Unix epoch — DynamoDB TTL attribute
 }

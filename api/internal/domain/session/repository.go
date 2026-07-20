@@ -30,6 +30,12 @@ type Repository interface {
 
 	PutRefreshToken(ctx context.Context, t *RefreshToken) error
 	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (*RefreshToken, error)
+	// PutConsumedToken records a marker linking a just-superseded refresh-token
+	// hash to its session, so a replay of the old token can revoke the grant.
+	PutConsumedToken(ctx context.Context, userID, sessionID, clientID, supersededHash string, expiresAt int64) error
+	// GetConsumedByHash returns the consumed-token marker for a hash, if one
+	// exists (i.e. the hash was a valid refresh token that has since rotated).
+	GetConsumedByHash(ctx context.Context, tokenHash string) (*ConsumedToken, error)
 	UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash, oldHash string) error
 	ListRefreshTokensBySession(ctx context.Context, userID, sessionID string) ([]*RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, userID, sessionID, clientID string) error
@@ -134,6 +140,38 @@ func (r *dynamoRepository) GetRefreshTokenByHash(ctx context.Context, tokenHash 
 		return nil, fmt.Errorf("unmarshaling refresh token: %w", err)
 	}
 	return &t, nil
+}
+
+func (r *dynamoRepository) PutConsumedToken(ctx context.Context, userID, sessionID, clientID, supersededHash string, expiresAt int64) error {
+	marker := &ConsumedToken{
+		PK:               BuildPK(userID),
+		SK:               consumedSKPrefix + supersededHash,
+		RefreshTokenHash: supersededHash,
+		UserID:           userID,
+		SessionID:        sessionID,
+		ClientID:         clientID,
+		ExpiresAt:        expiresAt,
+	}
+	item, err := attributevalue.MarshalMap(marker)
+	if err != nil {
+		return fmt.Errorf("marshaling consumed token: %w", err)
+	}
+	return r.table.PutItem(ctx, item)
+}
+
+func (r *dynamoRepository) GetConsumedByHash(ctx context.Context, tokenHash string) (*ConsumedToken, error) {
+	item, err := r.queryByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil || !strings.HasPrefix(skPrefix(item), consumedSKPrefix) {
+		return nil, ErrRefreshTokenNotFound
+	}
+	var c ConsumedToken
+	if err := attributevalue.UnmarshalMap(item, &c); err != nil {
+		return nil, fmt.Errorf("unmarshaling consumed token: %w", err)
+	}
+	return &c, nil
 }
 
 func (r *dynamoRepository) UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash, oldHash string) error {

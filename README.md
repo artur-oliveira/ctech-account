@@ -2,7 +2,7 @@
 
 Centralized OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 
-Built with **Go 1.26** and **Fiber v3**. Runs on AWS Lambda via API Gateway or on EC2/ECS.
+Built with **Go 1.26** and **Fiber v3**. Runs on an EC2 Auto Scaling Group behind a shared Application Load Balancer and CloudFront. There is no Lambda or API Gateway.
 
 ---
 
@@ -15,9 +15,9 @@ Built with **Go 1.26** and **Fiber v3**. Runs on AWS Lambda via API Gateway or o
 - **TOTP / MFA** — Time-based one-time passwords (Sprint 2)
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)
 - **RFC 7807 Problem Details** — All error responses use `application/problem+json`
-- **RFC Health Check** — `/healthz` responds with `application/health+json`
-- **DynamoDB** — Single-table design; sessions, users, API keys, OAuth clients and codes
-- **Valkey** — Optional cache for MFA tokens and session data (disabled when `VALKEY_URL` is unset)
+- **RFC Health Check** — `GET /v1.0/health-check` responds with `application/health+json`
+- **DynamoDB** — Eight tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`, `account_mfa`, `account_passkeys`, `account_audit`, `ctech_scopes`
+- **Valkey** — Required in non-dev (see §Configuration): OAuth codes, MFA/passkey challenges, recovery tokens and rate limiting live in Valkey with no DynamoDB fallback; the API refuses to boot without it outside dev
 
 ---
 
@@ -108,7 +108,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/account/kyc`                                 | Bearer + step-up | Submit identity data `{cpf, legal_name, birth_date, address}` → `pending_review` (requires `id_front`, `id_back` and all four `selfie_{up,down,left,right}` already uploaded) |
 | `POST`   | `/v1.0/account/kyc/documents`                       | Bearer + step-up | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_up`, `selfie_down`, `selfie_left`, `selfie_right` |
 | `POST`   | `/v1.0/account/kyc/documents/confirm`               | Bearer + step-up | `{document_id, type}` → records the upload (verified via HeadObject); documents may be uploaded before any identity data is submitted |
-| `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:wallet:confirm-deposit`) | Full unmasked identity record (ctech-wallet withdrawal-key validation) — the only internal KYC route; approve/reject is a CLI-only action, see `cmd/kyc` |
+| `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record (ctech-wallet withdrawal-key validation) — the only internal KYC route; approve/reject is a CLI-only action, see `cmd/kyc` |
 | `GET`    | `/v1.0/account/consents`                            | Bearer   | List connected apps (consent grants)                                                                     |
 | `DELETE` | `/v1.0/account/consents/:clientID`                  | Bearer   | Revoke a consent grant                                                                                   |
 | `POST`   | `/v1.0/auth/mfa/challenge`                          | —        | Exchange MFA token + TOTP code for session                                                               |
@@ -129,7 +129,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `DELETE` | `/v1.0/account/mfa/passkeys/:id`                    | Bearer   | Remove a passkey                                                                                         |
 | `GET`    | `/.well-known/openid-configuration`                 | —        | OIDC Discovery document                                                                                  |
 | `GET`    | `/.well-known/jwks.json`                            | —        | JSON Web Key Set                                                                                         |
-| `GET`    | `/healthz`                                          | —        | Health check (`application/health+json`)                                                                 |
+| `GET`    | `/v1.0/health-check`                                | —        | Health check (`application/health+json`)                                                                 |
 
 ---
 
@@ -177,7 +177,7 @@ Two scope families:
   permissions on a downstream resource server. `*` is allowed as a full resource or action
   segment; the action segment may be omitted to grant all actions on a resource.
 
-The `internal` service (e.g. `internal:wallet:confirm-deposit`) is machine-to-machine
+The `internal` service (e.g. `internal:account:kyc`) is machine-to-machine
 only: hidden from `GET /v1.0/scopes` and the consent UI, rejected by self-service
 client/API-key creation, and assigned to first-party confidential clients exclusively
 via operator seed.
@@ -218,9 +218,9 @@ service: each downstream consumer gets its own catalog entry keyed
 `internal:<service>` (e.g. `internal:wallet`) with its own `Audience`, so
 `AudiencesFor` resolves the right `aud` claim per target instead of lumping every
 internal scope under one bucket. After deploying a release that adds catalog entries
-(e.g. `kyc`, `internal:wallet:confirm-deposit`), re-run `go run ./cmd/seedscopes` per
+(e.g. `kyc`, `internal:account:kyc`), re-run `go run ./cmd/seedscopes` per
 environment. ctech-wallet's M2M client is seeded confidential + `first_party: true` +
-`allowed_scopes: ["internal:wallet:confirm-deposit"]` (direct DynamoDB put, same as
+`allowed_scopes: ["internal:account:kyc"]` (direct DynamoDB put, same as
 `accounts-ui`).
 
 Pickers, consent screens, and creation validation pick the change up automatically —
@@ -273,7 +273,7 @@ First-party **confidential** clients (e.g. ctech-wallet) obtain machine tokens d
 
 ```
 POST /v1.0/token
-grant_type=client_credentials&client_id=...&client_secret=...&scope=internal:kyc
+grant_type=client_credentials&client_id=...&client_secret=...&scope=internal:account:kyc
 → { access_token (RS256, 15 min), scope, expires_in }   # no refresh token
 ```
 
@@ -380,7 +380,7 @@ AWS_REGION=... TABLE_PREFIX=production_ KYC_DOCUMENTS_BUCKET=... go run ./cmd/ky
 acceptable for an offline operator tool, not a request path; a GSI on `kyc_doc_status`
 is the scale upgrade if this ever needs to run hot.
 
-`GET /v1.0/internal/kyc/:user_id` (scope `internal:wallet:confirm-deposit`) is the one
+`GET /v1.0/internal/kyc/:user_id` (scope `internal:account:kyc`) is the one
 surviving internal route — it hands ctech-wallet the raw CPF for withdrawal-key
 validation. Downstream services otherwise read the `kyc_level` claim from the JWT
 (scope `kyc`, values `""` | `verified`) — no callback to this service on the hot path;
@@ -437,20 +437,20 @@ All configuration is read from environment variables at startup.
 
 | Variable            | Required | Description                                                                                               |
 |---------------------|----------|-----------------------------------------------------------------------------------------------------------|
-| `ENVIRONMENT`       | Yes      | `production`, `staging`, or `development`                                                                 |
+| `ENVIRONMENT`       | Yes      | `dev`, `stage`, or `prod`                                                                                  |
 | `APP_VERSION`       | No       | Release identifier reported as `releaseId` on the health check (default `0.0.1`). Format `YYMMDDHHMM:<7-char commit>`, written by CI into `release.env` inside the deployment artifact and sourced by `start.sh` |
 | `BASE_URL`          | Yes      | Go API public URL, e.g. `https://accountsapi.aoctech.app`                                                 |
 | `APP_URL`           | No       | Frontend URL for login redirects (defaults to `BASE_URL`)                                                 |
-| `PORT`              | No       | HTTP port (default `8080`)                                                                                |
+| `PORT`              | No       | HTTP port (default `8001`)                                                                                |
 | `DYNAMO_TABLE`      | Yes      | DynamoDB table name                                                                                       |
 | `RSA_PRIVATE_KEY`   | Dev only | PEM-encoded RSA private key (RS256). When set, single-key dev mode — no rotation. When absent, keys load from SSM `/ctech-account/{env}/jwk/*` |
 | `PUBLIC_KEY_KID`    | No       | Key ID for the env-provided key (derived from the public key when unset). Ignored in SSM mode            |
-| `VALKEY_URL`        | No       | Redis-compatible URL; cache disabled when absent or invalid                                               |
+| `VALKEY_URL`        | Non-dev  | Redis-compatible URL; **required outside dev** — the API refuses to boot without it (OAuth codes, MFA tokens and rate limiting have no DynamoDB fallback) |
 | `FROM_EMAIL`        | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled |
 | `KYC_DOCUMENTS_BUCKET` | No    | Private S3 bucket for KYC identity documents and selfie clips. When unset, KYC submission is unavailable entirely — document review is the only path |
 | `AUDIENCE`          | No       | Expected `aud` claim on access tokens verified by this service (defaults to `BASE_URL`)                   |
 | `ACCESS_TOKEN_TTL`  | No       | Access token lifetime in seconds (default `900`)                                                          |
-| `REFRESH_TOKEN_TTL` | No       | Refresh token lifetime in seconds (default `2592000`)                                                     |
+| `REFRESH_TOKEN_TTL` | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure |
 | `TRUSTED_PROXIES`   | No       | Comma-separated IPs/CIDRs whose `X-Forwarded-For` is trusted (e.g. `10.0.0.0/8`)                          |
 | `SELF_CLIENT_ID`    | No       | OAuth `client_id` of this service's own frontend (default `accounts`, matching the `accounts-ui` seed). `/v1.0/account/*` and `/v1.0/step-up/*` reject any token whose `azp` doesn't match this — they have no scope of their own, so a downstream client's token (dfe's, or any consented third party) must never reach them |
 
@@ -505,7 +505,7 @@ Run these once before the first production deployment. Order matters.
 ### 1 — Generate RSA key pair (RS256 for JWT signing)
 
 ```bash
-# 4096-bit RSA key, no passphrase (Lambda/ECS reads it from env)
+# 4096-bit RSA key, no passphrase (dev mode: set RSA_PRIVATE_KEY to this key's contents)
 openssl genrsa -out key.pem 4096
 openssl rsa -in key.pem -pubout -out key.pub
 
@@ -513,27 +513,25 @@ openssl rsa -in key.pem -pubout -out key.pub
 openssl rsa -in key.pem -check -noout
 ```
 
-### 2 — Store secrets in AWS SSM Parameter Store
+### 2 — Provision the signing key in AWS SSM Parameter Store
+
+Production signing keys live versioned in SSM — the API loads `/ctech-account/{env}/jwk/active`
+and `/ctech-account/{env}/jwk/previous`. There is **no** `RSA_PRIVATE_KEY` SSM parameter in
+production; generate and store the first key with the rotation tool:
 
 ```bash
+cd api
 REGION=eu-west-1
 ENV=production
 
-# RSA private key
-aws ssm put-parameter \
-  --name "/$ENV/ctech-account/RSA_PRIVATE_KEY" \
-  --value "$(cat key.pem)" \
-  --type SecureString --region $REGION
-
-# Assign a key ID (any stable string, e.g. year + env)
-aws ssm put-parameter \
-  --name "/$ENV/ctech-account/PUBLIC_KEY_KID" \
-  --value "2026-$ENV" \
-  --type String --region $REGION
-
-# Delete local private key after storing
-rm key.pem
+go run ./cmd/rotatekeys -env $ENV -init   # writes /ctech-account/$ENV/jwk/active (+ jwk/previous)
 ```
+
+`jwk/active` is a `SecureString` JSON `{kid, pem, created_at}`. Runtime config
+(`base-url`, `allowed-origins`, `app-url`, `google-client-id`, `google-client-secret`,
+`cookie-domain`, `from-email`, `internal-token`) is also read from SSM under
+`/ctech-account/{env}/<param>` at container start. In dev only, a single key is supplied via the
+`RSA_PRIVATE_KEY` env var and never rotates.
 
 ### 3 — Deploy CDK infrastructure
 
@@ -544,7 +542,7 @@ npx cdk bootstrap aws://ACCOUNT_ID/$REGION
 npx cdk deploy --all
 ```
 
-This creates: DynamoDB table, Lambda function, API Gateway, IAM roles, SSM read permissions.
+This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group behind a shared Application Load Balancer and CloudFront, IAM roles, and SSM read permissions. There is no Lambda or API Gateway.
 
 ### 4 — Seed the `accounts-ui` OAuth client in DynamoDB
 
@@ -580,36 +578,36 @@ cd api
 AWS_REGION=$REGION TABLE_PREFIX=production_ VALKEY_URL=$VALKEY_URL go run ./cmd/seedscopes
 ```
 
-### 5 — Configure Next.js environment (Vercel / ECS / EC2)
+### 5 — Configure the SPA environment (EC2 Auto Scaling Group / CloudFront)
 
 ```bash
-API_URL=https://api-id.execute-api.eu-west-1.amazonaws.com/prod  # your API GW URL
-NEXT_PUBLIC_API_URL=$API_URL
+# In production CloudFront forwards /v1.0/* and /.well-known/* to the ALB, so the SPA calls the API same-origin:
+NEXT_PUBLIC_API_URL=https://accounts.aoctech.app
 OAUTH_CLIENT_ID=accounts-ui
 BASE_URL=https://accounts.aoctech.app
 ```
 
-Set these in Vercel dashboard → Settings → Environment Variables, or in your ECS task definition.
+Set these as build environment variables for the static-export SPA (or your container/deploy pipeline) — there is no Vercel or ECS runtime.
 
-### 6 — Deploy Next.js frontend
+### 6 — Deploy the static-export frontend
 
 ```bash
 cd ui
-npm run build  # verify clean build before deploy
-# then: vercel deploy --prod  OR  docker build + push + ECS service update
+npm run build  # verify clean build before deploy (static export)
+# then: docker build + push, and update the EC2 Auto Scaling Group / container deploy pipeline
 ```
 
 ### 7 — Smoke test
 
 ```bash
 # Backend health
-curl -s https://<api-gw-url>/healthz | jq .
+curl -s https://<alb-or-cloudfront-url>/v1.0/health-check | jq .
 
 # OIDC discovery
-curl -s https://<api-gw-url>/.well-known/openid-configuration | jq .issuer
+curl -s https://<alb-or-cloudfront-url>/.well-known/openid-configuration | jq .issuer
 
-# JWKS (confirm your kid matches PUBLIC_KEY_KID)
-curl -s https://<api-gw-url>/.well-known/jwks.json | jq '.keys[0].kid'
+# JWKS (confirm your kid matches the `kid` in /ctech-account/{env}/jwk/active)
+curl -s https://<alb-or-cloudfront-url>/.well-known/jwks.json | jq '.keys[0].kid'
 
 # Frontend
 curl -sI https://accounts.aoctech.app/login  # expect 200
@@ -617,9 +615,9 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 
 ### 8 — Post-deploy
 
-- Rotate the RSA key annually: generate new pair, update SSM, redeploy, update `PUBLIC_KEY_KID`.
-- Enable DynamoDB Point-in-Time Recovery on the table.
-- Set CloudWatch alarm on Lambda error rate > 1%.
+- Rotate the signing key annually: `go run ./cmd/rotatekeys -env <env>` writes a new `jwk/active` and demotes the old to `jwk/previous` — no redeploy needed.
+- Enable DynamoDB Point-in-Time Recovery on all eight tables.
+- Set a CloudWatch alarm on the EC2/ALB error rate > 1%.
 
 ---
 

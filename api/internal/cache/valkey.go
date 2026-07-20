@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 )
 
 var ErrNotFound = errors.New("key not found")
+
+// valkeyDB isolates this service's keys from other consumers of the shared
+// Valkey instance (ctech-wallet, ctech-dfe, ...). Selected on every connection
+// via ClientOption.SelectDB so isolation holds regardless of VALKEY_URL.
+const valkeyDB = 3
 
 type memEntry struct {
 	data    []byte
@@ -33,6 +39,7 @@ func NewInMemory() *Client {
 
 func New(url string) (*Client, error) {
 	if url == "" {
+		slog.Warn("valkey url is null")
 		return &Client{enabled: false}, nil
 	}
 
@@ -40,6 +47,7 @@ func New(url string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing valkey URL: %w", err)
 	}
+	opts.SelectDB = valkeyDB
 
 	client, err := valkey.NewClient(opts)
 	if err != nil {
