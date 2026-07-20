@@ -20,6 +20,15 @@ var ErrSessionExpired = errors.New("webauthn session expired or not found")
 var ErrInvalidResponse = errors.New("invalid webauthn response")
 var ErrNoCredentials = errors.New("no passkey credentials found for user")
 var ErrCacheRequired = errors.New("passkey sessions require an active cache backend")
+var ErrSessionUserMismatch = errors.New("webauthn session user mismatch")
+
+// cachedSession wraps a WebAuthn challenge with the user it was issued for, so
+// a leaked session token cannot be replayed by a different authenticated
+// principal (SEC-014).
+type cachedSession struct {
+	Data   *webauthn.SessionData `json:"data"`
+	UserID string                `json:"user_id"`
+}
 
 type Service struct {
 	wa    *webauthn.WebAuthn
@@ -60,13 +69,9 @@ func (s *Service) BeginRegistration(ctx context.Context, user *WebAuthnUser) (op
 		return nil, "", fmt.Errorf("beginning registration: %w", err)
 	}
 
-	rawToken, hashHex, err := crypto.GenerateCode()
+	rawToken, err := s.storeSession(ctx, string(user.ID), session)
 	if err != nil {
-		return nil, "", fmt.Errorf("generating session token: %w", err)
-	}
-
-	if err := s.cache.Set(ctx, sessionKeyPrefix+hashHex, session, sessionTTL); err != nil {
-		return nil, "", fmt.Errorf("storing session: %w", err)
+		return nil, "", err
 	}
 
 	optionsJSON, err = json.Marshal(options)
@@ -79,7 +84,7 @@ func (s *Service) BeginRegistration(ctx context.Context, user *WebAuthnUser) (op
 
 // FinishRegistration validates the browser's registration response and persists the new credential.
 func (s *Service) FinishRegistration(ctx context.Context, userID, name string, sessionToken string, responseBody []byte, user *WebAuthnUser) (*Credential, error) {
-	session, err := s.consumeSession(ctx, sessionToken)
+	session, err := s.consumeSession(ctx, userID, sessionToken)
 	if err != nil {
 		return nil, err
 	}
@@ -137,13 +142,9 @@ func (s *Service) BeginAuthentication(ctx context.Context) (optionsJSON []byte, 
 		return nil, "", fmt.Errorf("beginning authentication: %w", err)
 	}
 
-	rawToken, hashHex, err := crypto.GenerateCode()
+	rawToken, err := s.storeSession(ctx, "", session)
 	if err != nil {
-		return nil, "", fmt.Errorf("generating session token: %w", err)
-	}
-
-	if err := s.cache.Set(ctx, sessionKeyPrefix+hashHex, session, sessionTTL); err != nil {
-		return nil, "", fmt.Errorf("storing session: %w", err)
+		return nil, "", err
 	}
 
 	optionsJSON, err = json.Marshal(options)
@@ -156,7 +157,7 @@ func (s *Service) BeginAuthentication(ctx context.Context) (optionsJSON []byte, 
 
 // FinishAuthentication validates the browser's assertion and returns the authenticated userID and matched credential.
 func (s *Service) FinishAuthentication(ctx context.Context, sessionToken string, responseBody []byte) (userID string, waCred *webauthn.Credential, err error) {
-	session, err := s.consumeSession(ctx, sessionToken)
+	session, err := s.consumeSession(ctx, "", sessionToken)
 	if err != nil {
 		return "", nil, err
 	}
@@ -223,13 +224,9 @@ func (s *Service) BeginUserAuthentication(ctx context.Context, userID string) (o
 		return nil, "", fmt.Errorf("beginning user authentication: %w", err)
 	}
 
-	rawToken, hashHex, err := crypto.GenerateCode()
+	rawToken, err := s.storeSession(ctx, userID, session)
 	if err != nil {
-		return nil, "", fmt.Errorf("generating session token: %w", err)
-	}
-
-	if err := s.cache.Set(ctx, sessionKeyPrefix+hashHex, session, sessionTTL); err != nil {
-		return nil, "", fmt.Errorf("storing session: %w", err)
+		return nil, "", err
 	}
 
 	optionsJSON, err = json.Marshal(options)
@@ -242,7 +239,7 @@ func (s *Service) BeginUserAuthentication(ctx context.Context, userID string) (o
 
 // FinishUserAuthentication validates a user-specific passkey assertion (non-discoverable).
 func (s *Service) FinishUserAuthentication(ctx context.Context, userID, sessionToken string, responseBody []byte) error {
-	session, err := s.consumeSession(ctx, sessionToken)
+	session, err := s.consumeSession(ctx, userID, sessionToken)
 	if err != nil {
 		return err
 	}
@@ -296,14 +293,36 @@ func (s *Service) LoadUser(ctx context.Context, userID, name, displayName string
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func (s *Service) consumeSession(ctx context.Context, rawToken string) (*webauthn.SessionData, error) {
+// storeSession persists a WebAuthn challenge bound to the requesting userID
+// and returns an opaque session token (the cache key is its hash).
+func (s *Service) storeSession(ctx context.Context, userID string, session *webauthn.SessionData) (string, error) {
+	if !s.cache.Enabled() {
+		return "", ErrCacheRequired
+	}
+	rawToken, hashHex, err := crypto.GenerateCode()
+	if err != nil {
+		return "", fmt.Errorf("generating session token: %w", err)
+	}
+	cached := cachedSession{Data: session, UserID: userID}
+	if err := s.cache.Set(ctx, sessionKeyPrefix+hashHex, cached, sessionTTL); err != nil {
+		return "", fmt.Errorf("storing session: %w", err)
+	}
+	return rawToken, nil
+}
+
+// consumeSession atomically reads and deletes the session for rawToken, and
+// rejects it when the bound userID does not match the caller (SEC-014). For
+// discoverable logins expectedUserID is empty and no user assertion is made.
+func (s *Service) consumeSession(ctx context.Context, expectedUserID, rawToken string) (*webauthn.SessionData, error) {
 	hashHex := crypto.HashToken(rawToken)
-	var session webauthn.SessionData
-	if err := s.cache.Get(ctx, sessionKeyPrefix+hashHex, &session); err != nil {
+	var cached cachedSession
+	if err := s.cache.GetDel(ctx, sessionKeyPrefix+hashHex, &cached); err != nil {
 		return nil, ErrSessionExpired
 	}
-	_ = s.cache.Delete(ctx, sessionKeyPrefix+hashHex)
-	return &session, nil
+	if expectedUserID != "" && cached.UserID != expectedUserID {
+		return nil, ErrSessionUserMismatch
+	}
+	return cached.Data, nil
 }
 
 func (s *Service) loadWACredentials(ctx context.Context, userID string) ([]webauthn.Credential, error) {

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const rsaKeyBits = 2048
+const rsaKeyBits = 3072
 
 // Key is a signing key with its metadata.
 type Key struct {
@@ -29,16 +29,18 @@ type KeyJSON struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// DeriveKID returns the first 16 hex chars of SHA-256 over the PKIX public key
+// DeriveKID returns the full SHA-256 hex (256 bits) over the PKIX public key
 // DER — the same scheme config.loadRSAKey has always used, so wrapping the
-// legacy key preserves its KID.
+// legacy key preserves its KID. SEC-044: previously truncated to 64 bits;
+// now the full digest is used for collision resistance. This only affects
+// newly derived KIDs; existing keys keep their explicitly stored KID.
 func DeriveKID(pub *rsa.PublicKey) (string, error) {
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
 		return "", fmt.Errorf("marshaling public key: %w", err)
 	}
 	sum := sha256.Sum256(der)
-	return hex.EncodeToString(sum[:])[:16], nil
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // Generate creates a new RSA-2048 signing key stamped with now.

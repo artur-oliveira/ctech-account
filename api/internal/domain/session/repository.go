@@ -30,18 +30,24 @@ type Repository interface {
 
 	PutRefreshToken(ctx context.Context, t *RefreshToken) error
 	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (*RefreshToken, error)
-	UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash string) error
+	UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash, oldHash string) error
 	ListRefreshTokensBySession(ctx context.Context, userID, sessionID string) ([]*RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, userID, sessionID, clientID string) error
 }
 
 type dynamoRepository struct {
-	table database.Base
+	table     database.Base
+	db        *dynamodb.Client
+	tableName string
 }
 
 // NewRepository returns a DynamoDB-backed Repository.
 func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
-	return &dynamoRepository{table: database.NewBase(db, tablePrefix, "account_sessions")}
+	return &dynamoRepository{
+		table:     database.NewBase(db, tablePrefix, "account_sessions"),
+		db:        db,
+		tableName: database.TableName(tablePrefix, "account_sessions"),
+	}
 }
 
 func (r *dynamoRepository) Create(ctx context.Context, s *Session) error {
@@ -130,13 +136,22 @@ func (r *dynamoRepository) GetRefreshTokenByHash(ctx context.Context, tokenHash 
 	return &t, nil
 }
 
-func (r *dynamoRepository) UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash string) error {
+func (r *dynamoRepository) UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
 	sk := BuildRefreshSK(sessionID, clientID)
-	_, err := r.table.UpdateItem(ctx, BuildPK(userID), &sk, map[string]any{
+	oldAV, _ := attributevalue.Marshal(oldHash)
+	updates := map[string]any{
 		"refresh_token_hash": newHash,
 		"last_used_at":       time.Now().UTC().Format(time.RFC3339),
-	})
-	return err
+	}
+	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, BuildPK(userID), &sk, updates,
+		"#refresh_token_hash = :old_hash", nil, map[string]types.AttributeValue{":old_hash": oldAV})
+	if err != nil {
+		return fmt.Errorf("rotating refresh token hash: %w", err)
+	}
+	if !applied {
+		return ErrTokenReuse
+	}
+	return nil
 }
 
 // UpdateMFA persists a fresh MFA proof on the session (amr set + last_mfa_at).

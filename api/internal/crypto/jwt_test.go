@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 )
@@ -183,5 +184,97 @@ func TestSignIDTokenIncludesKYCLevel(t *testing.T) {
 	}
 	if claims["kyc_level"] != "basic" {
 		t.Fatalf("kyc_level = %v", claims["kyc_level"])
+	}
+}
+
+// SEC-011: a token shaped like an id_token (token_use != "access") must be
+// rejected by Verify even when its aud/iss are otherwise valid.
+func TestVerifyRejectsIDTokenShapedToken(t *testing.T) {
+	svc := newTestJWTService(t)
+	// id_token with aud/iss equal to the IdP's own audience/issuer so the
+	// aud/iss validators pass and the token_use guard is the one that bites.
+	idTok, err := svc.SignIDToken("u1", "a@b.c", "F", "F", "F", "", true, testIssuer, "", testIssuer, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Verify(idTok); err == nil {
+		t.Error("id_token must be rejected by Verify (token_use != access)")
+	}
+
+	// And a token with no token_use claim at all must also be rejected.
+	noUse, err := svc.sign(jwt.MapClaims{
+		"sub":  "u1",
+		"iss":  testIssuer,
+		"aud":  []string{testIssuer},
+		"iat":  time.Now().UTC().Unix(),
+		"exp":  time.Now().UTC().Add(time.Hour).Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Verify(noUse); err == nil {
+		t.Error("token without token_use must be rejected by Verify")
+	}
+}
+
+// SEC-011 / BUG-027: an access token carries token_use:"access" and verifies.
+func TestSignAccessTokenVerifiesWithTokenUse(t *testing.T) {
+	svc := newTestJWTService(t)
+	tok, err := svc.SignAccessToken("u1", "s1", "web", nil, testIssuer, []string{testIssuer}, 0, 0, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := svc.Verify(tok)
+	if err != nil {
+		t.Fatalf("valid access token must verify: %v", err)
+	}
+	if claims["token_use"] != "access" {
+		t.Errorf("expected token_use=access, got %v", claims["token_use"])
+	}
+}
+
+// BUG-027: signed exp and advertised TTL must agree, including a custom TTL.
+func TestAccessTokenTTLWiredThrough(t *testing.T) {
+	custom := 30 * time.Minute
+	base := newTestJWTService(t)
+	key := &keystore.Key{KID: "test-kid", Private: base.active.Private}
+	cfg := &config.Config{
+		RSAPrivateKey: key.Private,
+		PublicKeyKID:  "test-kid",
+		Audience:      testIssuer,
+		BaseURL:       testIssuer,
+		AccessTokenTTL: custom,
+	}
+	svc, err := NewJWTServiceWithKeys(cfg, key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := svc.AccessTokenTTLSeconds(); got != 1800 {
+		t.Errorf("AccessTokenTTLSeconds = %d, want 1800", got)
+	}
+
+	tok, err := svc.SignAccessToken("u1", "s1", "web", nil, testIssuer, []string{testIssuer}, 0, 0, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(tok, ".")
+	raw, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	var claims map[string]any
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		t.Fatal(err)
+	}
+	exp := int64(claims["exp"].(float64))
+	iat := int64(claims["iat"].(float64))
+	if got := exp - iat; got != 1800 {
+		t.Errorf("signed exp-iat = %d, want 1800", got)
+	}
+}
+
+// BUG-027: zero AccessTokenTTL defaults to 15 minutes.
+func TestAccessTokenTTLDefaultsToFifteenMinutes(t *testing.T) {
+	svc := newTestJWTService(t) // cfg has no AccessTokenTTL → default
+	if got := svc.AccessTokenTTLSeconds(); got != 900 {
+		t.Errorf("default AccessTokenTTLSeconds = %d, want 900", got)
 	}
 }

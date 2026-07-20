@@ -90,11 +90,17 @@ func (m *mockRepo) GetRefreshTokenByHash(_ context.Context, tokenHash string) (*
 	return nil, session.ErrRefreshTokenNotFound
 }
 
-func (m *mockRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash string) error {
+func (m *mockRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
 	k := session.BuildPK(userID) + "|" + session.BuildRefreshSK(sessionID, clientID)
 	t, ok := m.tokens[k]
 	if !ok {
 		return session.ErrRefreshTokenNotFound
+	}
+	// Simulate the conditional update: only apply when the stored hash still
+	// matches oldHash; a stale oldHash (concurrent rotation already succeeded)
+	// is reported as reuse.
+	if t.RefreshTokenHash != oldHash {
+		return session.ErrTokenReuse
 	}
 	t.RefreshTokenHash = newHash
 	return nil
@@ -329,5 +335,57 @@ func TestRecordMFAUpdatesSessionOnce(t *testing.T) {
 	got, _ = repo.GetByID(context.Background(), "u1", sess.ID())
 	if len(got.AMR) != 2 {
 		t.Errorf("AMR grew on repeat method: %v", got.AMR)
+	}
+}
+
+// Regression test for CON-004: the conditional update must reject a
+// concurrent rotation of the same token as reuse, instead of minting two
+// valid tokens. This drives the new mock conditional directly: two rotations
+// presenting the SAME old hash — exactly the concurrent-refresh race — the
+// second must fail with ErrTokenReuse.
+func TestUpdateRefreshTokenHash_RejectsStaleOldHash(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	sess, _, _ := svc.Create(context.Background(), "uC", "Chrome", "1.2.3.4", "UA", nil)
+	if _, err := svc.IssueClientToken(context.Background(), "uC", sess.ID(), "c", nil); err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	// Current stored hash (this is what the service passes as oldHash).
+	var oldHash string
+	for _, tk := range repo.tokens {
+		oldHash = tk.RefreshTokenHash
+	}
+
+	// First rotation (oldHash matches) applies successfully.
+	if err := repo.UpdateRefreshTokenHash(context.Background(), "uC", sess.ID(), "c", "newhash1", oldHash); err != nil {
+		t.Fatalf("first rotation should apply: %v", err)
+	}
+	// A second concurrent rotation presenting the SAME old raw token must be
+	// rejected — the stored hash no longer equals oldHash.
+	if err := repo.UpdateRefreshTokenHash(context.Background(), "uC", sess.ID(), "c", "newhash2", oldHash); !errors.Is(err, session.ErrTokenReuse) {
+		t.Fatalf("expected ErrTokenReuse for stale oldHash, got %v", err)
+	}
+}
+
+// Single rotation must succeed and yield a brand-new raw token (distinct from
+// the one presented). Exercises the happy path end to end.
+func TestRotateClientToken_SingleUseHappyPath(t *testing.T) {
+	svc := session.NewService(newMockRepo())
+	sess, _, _ := svc.Create(context.Background(), "uH", "Chrome", "1.2.3.4", "UA", nil)
+	raw, err := svc.IssueClientToken(context.Background(), "uH", sess.ID(), "c", nil)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	gotSess, newRaw, _, err := svc.RotateClientToken(context.Background(), raw, "c")
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if gotSess.ID() != sess.ID() {
+		t.Errorf("wrong session returned")
+	}
+	if newRaw == "" || newRaw == raw {
+		t.Errorf("rotation must yield a distinct new raw token")
 	}
 }

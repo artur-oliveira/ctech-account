@@ -38,17 +38,26 @@ func NewService(repo Repository) *Service {
 func (s *Service) Register(ctx context.Context, email, password, firstName, lastName string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
+	// SEC-021: burn Argon2 (the expensive work) on every path before we can
+	// learn whether the email exists, so a registered address is not materially
+	// faster to reject than a fresh one. The conflict branch below also burns a
+	// dummy hash so both branches cost comparably — no timing oracle.
+	hash, err := crypto.HashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("hashing password: %w", err)
+	}
+
 	existing, err := s.repo.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, fmt.Errorf("checking existing user: %w", err)
 	}
 	if existing != nil {
+		// Email taken: hash a random string so this branch costs as much as the
+		// success branch. Closing the enumeration timing oracle.
+		if dummy, _, derr := crypto.GenerateOpaqueToken(); derr == nil {
+			_, _ = crypto.HashPassword(dummy)
+		}
 		return nil, ErrEmailConflict
-	}
-
-	hash, err := crypto.HashPassword(password)
-	if err != nil {
-		return nil, fmt.Errorf("hashing password: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)

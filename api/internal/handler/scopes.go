@@ -25,5 +25,9 @@ func (h *ScopesHandler) list(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	return c.JSON(fiber.Map{"services": scopes.FilterPublic(services)})
+	public := make([]scopes.PublicServiceScopes, 0, len(services))
+	for _, s := range scopes.FilterPublic(services) {
+		public = append(public, s.ToPublic())
+	}
+	return c.JSON(fiber.Map{"services": public})
 }

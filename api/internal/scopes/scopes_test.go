@@ -157,6 +157,57 @@ func TestCatalog(t *testing.T) {
 	}
 }
 
+// newCachedCatalogService builds a CatalogService backed by an in-memory cache
+// and a repo seeded from DefaultCatalog so cache hits/misses are observable.
+func newCachedCatalogService() *CatalogService {
+	return NewCatalogService(&staticRepo{services: DefaultCatalog()}, cache.NewInMemory())
+}
+
+// TestPutServiceInvalidatesCatalogCache is the regression test for CAC-019: a
+// service written via PutService must surface through Catalog immediately, not
+// after the cache TTL. The first Catalog() call populates the cache, so without
+// the invalidation the second Catalog() would still return the stale cached set.
+func TestPutServiceInvalidatesCatalogCache(t *testing.T) {
+	ctx := context.Background()
+	svc := newCachedCatalogService()
+
+	// Prime the cache.
+	if _, err := svc.Catalog(ctx); err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	if bad, _ := svc.ValidateGrantable(ctx, []string{"poker:table:read"}); bad != "poker:table:read" {
+		t.Fatalf("expected poker:table:read absent before PutService, got %q", bad)
+	}
+
+	newSvc := ServiceScopes{
+		Service:  "poker",
+		Name:     "CTech Poker",
+		Audience: "https://poker-api.aoctech.app",
+		Scopes:   []ScopeEntry{{Scope: "poker:table:read", Description: "Read tables", DescriptionPT: "Ler mesas"}},
+	}
+	if err := svc.PutService(ctx, newSvc); err != nil {
+		t.Fatalf("PutService: %v", err)
+	}
+
+	// Cache must have been invalidated and repopulated with the new service.
+	services, err := svc.Catalog(ctx)
+	if err != nil {
+		t.Fatalf("catalog after PutService: %v", err)
+	}
+	var found bool
+	for _, s := range services {
+		if s.Service == "poker" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("catalog still missing poker service after PutService — cache not invalidated")
+	}
+	if bad, _ := svc.ValidateGrantable(ctx, []string{"poker:table:read"}); bad != "" {
+		t.Errorf("expected poker:table:read grantable after PutService, got %q", bad)
+	}
+}
+
 func TestAudiencesForResolvesInternalScopeBySubService(t *testing.T) {
 	// Regression: internal:<service>:<action> scopes must resolve the target
 	// service's own audience, not a shared "internal" bucket — otherwise the

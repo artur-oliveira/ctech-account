@@ -3,8 +3,8 @@
 //	rotatekeys -env prod -init   # one-time: wrap legacy rsa-private-key into jwk/active (KID preserved)
 //	rotatekeys -env prod         # manual rotation: new active key, old active becomes previous
 //
-// Instances reload keys from SSM hourly, so a rotation propagates without a
-// deploy; the previous key stays in JWKS until the next rotation.
+// Instances reload keys from SSM every few minutes, so a rotation propagates
+// without a deploy; the previous key stays in JWKS until the next rotation.
 package main
 
 import (
@@ -46,5 +46,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("rotate: %v", err)
 	}
-	log.Printf("rotated: new active kid=%s (instances pick it up within 1h; previous kid stays in JWKS)", newKey.KID)
+	log.Printf("rotated: new active kid=%s (instances pick it up within 5m; previous kid stays in JWKS)", newKey.KID)
 }

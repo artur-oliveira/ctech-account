@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.aoctech.app/account/api/internal/keystore"
 )
@@ -64,6 +66,11 @@ type Config struct {
 	// OAuth client (dfe included) — and are gated on the token's azp claim
 	// matching this value, since no scope currently governs them.
 	SelfClientID string
+
+	// AccessTokenTTL is the lifetime of signed access tokens. It threads into
+	// crypto.JWTService so the signed `exp` and the advertised `expires_in`
+	// always agree (BUG-027). Defaults to 15 minutes.
+	AccessTokenTTL time.Duration
 }
 
 func Load() (*Config, error) {
@@ -93,6 +100,13 @@ func Load() (*Config, error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8001"
+	}
+
+	accessTokenTTL := 15 * time.Minute
+	if raw := os.Getenv("ACCESS_TOKEN_TTL"); raw != "" {
+		if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
+			accessTokenTTL = time.Duration(secs) * time.Second
+		}
 	}
 
 	tablePrefix := os.Getenv("TABLE_PREFIX")
@@ -140,6 +154,7 @@ func Load() (*Config, error) {
 		TrustedProxies:     trustedProxies,
 		TOTPIssuer:         TOTPIssuer,
 		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
+		AccessTokenTTL:     accessTokenTTL,
 	}, nil
 }
 

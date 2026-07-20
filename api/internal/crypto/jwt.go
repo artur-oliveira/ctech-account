@@ -23,6 +23,8 @@ type JWTService struct {
 	previous     *keystore.Key // nil until first rotation
 	selfAudience string        // Verify() rejects tokens whose aud doesn't contain this value
 	issuer       string        // Verify() rejects tokens whose iss doesn't match this value
+	accessTokenTTL time.Duration
+	idTokenTTL    time.Duration
 }
 
 // NewJWTService wraps the single key loaded by config (RSA_PRIVATE_KEY env —
@@ -41,11 +43,17 @@ func NewJWTServiceWithKeys(cfg *config.Config, active, previous *keystore.Key) (
 	if active == nil || active.Private == nil {
 		return nil, fmt.Errorf("active signing key is nil")
 	}
+	accessTTL := cfg.AccessTokenTTL
+	if accessTTL == 0 {
+		accessTTL = 15 * time.Minute
+	}
 	return &JWTService{
-		active:       active,
-		previous:     previous,
-		selfAudience: cfg.Audience,
-		issuer:       cfg.BaseURL,
+		active:        active,
+		previous:      previous,
+		selfAudience:  cfg.Audience,
+		issuer:        cfg.BaseURL,
+		accessTokenTTL: accessTTL,
+		idTokenTTL:    time.Hour,
 	}, nil
 }
 
@@ -67,14 +75,15 @@ func (j *JWTService) Reload(active, previous *keystore.Key) {
 func (j *JWTService) SignAccessToken(userID, sessionID, clientID string, scopes []string, issuer string, audience []string, authTime, lastMFAAt int64, amr []string, kycLevel string) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
-		"sub":   userID,
-		"sid":   sessionID,
-		"scope": strings.Join(scopes, " "),
-		"iss":   issuer,
-		"aud":   audience,
-		"azp":   clientID,
-		"iat":   now.Unix(),
-		"exp":   now.Add(15 * time.Minute).Unix(),
+		"sub":      userID,
+		"sid":      sessionID,
+		"scope":    strings.Join(scopes, " "),
+		"iss":      issuer,
+		"aud":      audience,
+		"azp":      clientID,
+		"token_use": "access",
+		"iat":      now.Unix(),
+		"exp":      now.Add(j.accessTokenTTL).Unix(),
 	}
 	if authTime > 0 {
 		claims["auth_time"] = authTime
@@ -104,8 +113,9 @@ func (j *JWTService) SignIDToken(userID, email, name, preferredUsername, givenNa
 		"family_name":        familyName,
 		"iss":                issuer,
 		"aud":                []string{clientID},
+		"token_use":          "id_token",
 		"iat":                now.Unix(),
-		"exp":                now.Add(time.Hour).Unix(),
+		"exp":                now.Add(j.idTokenTTL).Unix(),
 		"email_verified":     emailVerified,
 	}
 	if nonce != "" {
@@ -168,6 +178,12 @@ func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 	if !ok || !parsed.Valid {
 		return nil, fmt.Errorf("invalid token claims")
 	}
+	// SEC-011: this service only ever validates bearer access tokens. Reject
+	// anything that isn't explicitly an access token (e.g. an id_token replayed
+	// as a bearer credential). id_tokens are verified by resource servers.
+	if tu, ok := claims["token_use"].(string); !ok || tu != "access" {
+		return nil, fmt.Errorf("token_use claim missing or not \"access\"")
+	}
 	return claims, nil
 }
 
@@ -203,4 +219,10 @@ func (j *JWTService) KID() string {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.active.KID
+}
+
+// AccessTokenTTLSeconds returns the configured access-token lifetime in
+// seconds, for advertising in the token endpoint's expires_in (BUG-027).
+func (j *JWTService) AccessTokenTTLSeconds() int {
+	return int(j.accessTokenTTL.Seconds())
 }

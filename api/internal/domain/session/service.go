@@ -168,7 +168,10 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("generating new refresh token: %w", err)
 	}
-	if err := s.repo.UpdateRefreshTokenHash(ctx, t.UserID(), t.SessionID, t.ClientID, newHash); err != nil {
+	if err := s.repo.UpdateRefreshTokenHash(ctx, t.UserID(), t.SessionID, t.ClientID, newHash, t.RefreshTokenHash); err != nil {
+		if errors.Is(err, ErrTokenReuse) {
+			return nil, "", nil, ErrTokenReuse
+		}
 		return nil, "", nil, fmt.Errorf("rotating refresh token: %w", err)
 	}
 	return sess, newRaw, t.Scopes, nil

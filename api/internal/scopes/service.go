@@ -48,6 +48,18 @@ func (s *CatalogService) Catalog(ctx context.Context) ([]ServiceScopes, error) {
 	return services, nil
 }
 
+// PutService writes a service's scopes to DynamoDB and invalidates the catalog
+// cache so the change is visible without waiting for the TTL (CAC-019).
+func (s *CatalogService) PutService(ctx context.Context, svc ServiceScopes) error {
+	if err := s.repo.PutService(ctx, svc); err != nil {
+		return err
+	}
+	if s.cache != nil && s.cache.Enabled() {
+		_ = s.cache.Delete(ctx, CatalogCacheKey)
+	}
+	return nil
+}
+
 // InCatalog reports whether scope is grantable.
 func (s *CatalogService) InCatalog(ctx context.Context, scope string) (bool, error) {
 	services, err := s.Catalog(ctx)

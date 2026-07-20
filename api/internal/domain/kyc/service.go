@@ -3,6 +3,7 @@ package kyc
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -150,6 +151,12 @@ func (s *Service) PresignDocument(ctx context.Context, userID, docType, contentT
 	}
 
 	documentID = uuid.NewString()
+	// Record the intent server-side before handing out the URL: ConfirmDocument
+	// will reject any Type that does not match what was presigned here
+	// (SEC-018). The URL is only useful once this intent exists.
+	if err := s.repo.SavePendingDocument(ctx, userID, documentID, docType, contentType); err != nil {
+		return "", "", err
+	}
 	uploadURL, err = s.presigner.PresignPut(ctx, BuildDocumentKey(userID, documentID), contentType, PresignTTL)
 	if err != nil {
 		return "", "", err
@@ -177,6 +184,17 @@ func (s *Service) ConfirmDocument(ctx context.Context, userID, documentID, docTy
 	}
 
 	key := BuildDocumentKey(userID, documentID)
+	// The documentID must have been presigned and the confirmed Type must match
+	// what was presigned — otherwise a holder of a presigned URL could PUT one
+	// type and confirm another (SEC-018).
+	pending, err := s.repo.GetPendingDocument(ctx, documentID)
+	if err != nil {
+		return err
+	}
+	if pending == nil || pending.Type != docType || pending.UserID != userID {
+		return ErrDocumentTypeMismatch
+	}
+
 	size, err := s.presigner.Size(ctx, key)
 	if err != nil {
 		return ErrDocumentNotUploaded
@@ -194,7 +212,12 @@ func (s *Service) ConfirmDocument(ctx context.Context, userID, documentID, docTy
 		Key:        key,
 		UploadedAt: s.now().Format(TimeLayout),
 	}
-	return s.repo.AddDocument(ctx, userID, doc, DocStatusAwaitingFiles)
+	if err := s.repo.AddDocument(ctx, userID, doc, DocStatusAwaitingFiles); err != nil {
+		return err
+	}
+	// Intent fulfilled — drop it so the documentID cannot be re-confirmed.
+	_ = s.repo.DeletePendingDocument(ctx, documentID)
+	return nil
 }
 
 // DocumentsEnabled reports whether the document verification path is available
@@ -237,7 +260,16 @@ func (s *Service) Review(ctx context.Context, userID, decision, reason string) e
 	case DecisionApprove:
 		return s.repo.MarkVerified(ctx, userID, s.now().Format(TimeLayout))
 	case DecisionReject:
-		return s.repo.MarkRejected(ctx, userID, strings.TrimSpace(reason))
+		// Snapshot the document keys before MarkRejected clears kyc_documents,
+		// then purge the PII objects from S3 best-effort (SEC-038). The reject
+		// itself must never fail because an S3 delete did.
+		docs := make([]Document, len(u.KYCDocuments))
+		copy(docs, u.KYCDocuments)
+		if err := s.repo.MarkRejected(ctx, userID, strings.TrimSpace(reason)); err != nil {
+			return err
+		}
+		s.purgeRejectedObjects(docs)
+		return nil
 	default:
 		return ErrInvalidDecision
 	}
@@ -338,4 +370,29 @@ func (s *Service) GetUser(ctx context.Context, userID string) (*user.User, error
 // The comparison uses date arithmetic so the birthday itself counts.
 func isAtLeast(born time.Time, years int, now time.Time) bool {
 	return !now.Before(born.AddDate(years, 0, 0))
+}
+
+// objectDeleter is the optional S3-delete capability some Presigner
+// implementations expose. The Presigner interface is intentionally left
+// unchanged (SEC-018/038 scope); the service uses a type assertion so storage.S3
+// can purge rejected PII without forcing every presigner to implement delete.
+type objectDeleter interface {
+	DeleteObject(ctx context.Context, key string) error
+}
+
+// purgeRejectedObjects best-effort deletes the rejected documents' S3 objects
+// in the background. Failures are logged, never returned — a failed delete must
+// not undo the rejection (SEC-038).
+func (s *Service) purgeRejectedObjects(docs []Document) {
+	deleter, ok := s.presigner.(objectDeleter)
+	if !ok {
+		return
+	}
+	for _, d := range docs {
+		go func(key string) {
+			if err := deleter.DeleteObject(context.Background(), key); err != nil {
+				log.Printf("kyc: failed to delete rejected document object %s: %v", key, err)
+			}
+		}(d.Key)
+	}
 }

@@ -10,8 +10,8 @@ func TestGenerateRoundTripsThroughJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(k.KID) != 16 {
-		t.Errorf("kid = %q", k.KID)
+	if len(k.KID) != 64 {
+		t.Errorf("kid length = %d, want 64 (full SHA-256 hex)", len(k.KID))
 	}
 	j, err := k.ToJSON()
 	if err != nil {
@@ -38,6 +38,28 @@ func TestDeriveKIDIsStable(t *testing.T) {
 	kid2, _ := DeriveKID(&k.Private.PublicKey)
 	if kid1 != kid2 || kid1 != k.KID {
 		t.Errorf("kid unstable: %s %s %s", kid1, kid2, k.KID)
+	}
+}
+
+// SEC-044: KID must be derived from the full SHA-256 (≥128 bits), not the old
+// 64-bit truncation.
+func TestDeriveKIDFullSHA256(t *testing.T) {
+	k, err := Generate(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	kid, err := DeriveKID(&k.Private.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kid) < 32 {
+		t.Errorf("kid too short: %q (len %d), want ≥32 hex chars (128 bits)", kid, len(kid))
+	}
+	// A different key must derive a different KID.
+	other, _ := Generate(time.Now())
+	otherKID, _ := DeriveKID(&other.Private.PublicKey)
+	if otherKID == kid {
+		t.Error("distinct keys produced identical KIDs")
 	}
 }
 

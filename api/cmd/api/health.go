@@ -38,7 +38,7 @@ type healthResponse struct {
 	Checks      map[string]healthEntry `json:"checks"`
 }
 
-func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Client, releaseID string) fiber.Handler {
+func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Client, releaseID string, valkeyRequired bool) fiber.Handler {
 
 	return func(c fiber.Ctx) error {
 		now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -47,7 +47,7 @@ func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Cl
 		defer cancel()
 
 		dynamo := checkDynamoDB(ctx, db, pingTable, now)
-		valkey := checkValkey(ctx, valkeyClient, now)
+		valkey := checkValkey(ctx, valkeyClient, now, valkeyRequired)
 		cpu := checkCPU(now)
 		mem := checkMemory(now)
 		uptime := healthEntry{
@@ -70,7 +70,7 @@ func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Cl
 
 		overall := "pass"
 		httpStatus := fiber.StatusOK
-		for _, e := range []healthEntry{dynamo, cpu, mem} {
+		for _, e := range []healthEntry{dynamo, valkey, cpu, mem} {
 			if e.Status == "fail" {
 				overall = "fail"
 				httpStatus = fiber.StatusServiceUnavailable
@@ -110,16 +110,25 @@ func checkDynamoDB(ctx context.Context, db *dynamodb.Client, table, nowStr strin
 	return healthEntry{"dynamodb", "responseTime", "datastore:database", ms, "ms", st, nowStr}
 }
 
-func checkValkey(ctx context.Context, cl *cache.Client, nowStr string) healthEntry {
+func checkValkey(ctx context.Context, cl *cache.Client, nowStr string, required bool) healthEntry {
+	// Valkey is a hard dependency in production (OAuth codes, MFA tokens, rate
+	// limiting all live there). A missing or unreachable cache is a functional
+	// outage, not a degraded state — report it as "fail" so the LB drains the
+	// instance (CAC-005). In dev (required=false) a disabled cache is tolerable,
+	// so it stays "warn".
 	if !cl.Enabled() {
-		return healthEntry{"valkey", "responseTime", "datastore:cache", -1, "ms", "warn", nowStr}
+		st := "warn"
+		if required {
+			st = "fail"
+		}
+		return healthEntry{"valkey", "responseTime", "datastore:cache", -1, "ms", st, nowStr}
 	}
 	t0 := time.Now()
 	err := cl.Ping(ctx)
 	ms := roundOne(float64(time.Since(t0).Milliseconds()))
 	st := "pass"
 	if err != nil {
-		st = "warn"
+		st = "fail"
 	}
 	return healthEntry{"valkey", "responseTime", "datastore:cache", ms, "ms", st, nowStr}
 }
@@ -142,22 +151,19 @@ func checkMemory(nowStr string) healthEntry {
 	return healthEntry{"memory", "utilization", "system", pct, "percent", st, nowStr}
 }
 
-func cpuPercent() float64 {
-	if runtime.GOOS != "linux" {
-		return -1
-	}
+func cpuSample() (idle, total int64, ok bool) {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
-		return -1
+		return 0, 0, false
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
-		return -1
+		return 0, 0, false
 	}
 	fields := strings.Fields(scanner.Text())
 	if len(fields) < 5 || fields[0] != "cpu" {
-		return -1
+		return 0, 0, false
 	}
 	var vals []int64
 	for _, s := range fields[1:] {
@@ -168,17 +174,41 @@ func cpuPercent() float64 {
 		vals = append(vals, v)
 	}
 	if len(vals) < 4 {
-		return -1
+		return 0, 0, false
 	}
-	idle := vals[3]
-	total := int64(0)
+	idle = vals[3]
+	total = int64(0)
 	for _, v := range vals {
 		total += v
 	}
 	if total == 0 {
+		return 0, 0, false
+	}
+	return idle, total, true
+}
+
+// cpuPercent reads /proc/stat twice ~150ms apart and divides the delta. A
+// single sample (as before) is the since-boot average, which misleads
+// autoscaling (BUG-040).
+func cpuPercent() float64 {
+	if runtime.GOOS != "linux" {
 		return -1
 	}
-	return roundOne(100.0 * float64(total-idle) / float64(total))
+	idle1, total1, ok1 := cpuSample()
+	if !ok1 {
+		return -1
+	}
+	time.Sleep(150 * time.Millisecond)
+	idle2, total2, ok2 := cpuSample()
+	if !ok2 {
+		return -1
+	}
+	idleDelta := idle2 - idle1
+	totalDelta := total2 - total1
+	if totalDelta <= 0 {
+		return -1
+	}
+	return roundOne(100.0 * float64(totalDelta-idleDelta) / float64(totalDelta))
 }
 
 func memoryPercent() float64 {
@@ -217,5 +247,10 @@ func memoryPercent() float64 {
 }
 
 func roundOne(v float64) float64 {
+	// Negative sentinels (e.g. -1 for "unavailable") must pass through unchanged;
+	// the old rounding turned -1 into -0.9 (BUG-041).
+	if v < 0 {
+		return v
+	}
 	return float64(int64(v*10+0.5)) / 10
 }

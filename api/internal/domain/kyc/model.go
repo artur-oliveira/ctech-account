@@ -130,6 +130,10 @@ var (
 	ErrTooManyDocuments    = errors.New("too many documents for this submission")
 	ErrNoDocuments         = errors.New("no documents uploaded")
 	ErrInvalidDecision     = errors.New("invalid review decision")
+
+	// ErrDocumentTypeMismatch is returned when the type a client confirms does
+	// not match the type the document was presigned for (SEC-018).
+	ErrDocumentTypeMismatch = errors.New("document type does not match the presigned intent")
 )
 
 // Address and Document are stored on the user item, so their canonical
@@ -138,6 +142,19 @@ type (
 	Address  = user.Address
 	Document = user.KYCDocument
 )
+
+// PendingDocument is the server-side upload intent recorded when a document is
+// presigned (see Service.PresignDocument). ConfirmDocument must match the
+// client-supplied Type against PendingDocument.Type — otherwise a holder of a
+// presigned URL could PUT a file of one type and confirm it as another,
+// defeating the check (SEC-018). It is persisted as its own item
+// (KYCPEND_<documentID>) rather than on the user record, because the kyc
+// package must not mutate the user model.
+type PendingDocument struct {
+	UserID      string `dynamodbav:"user_id"`      // owner, guards against cross-user confirm
+	Type        string `dynamodbav:"doc_type"`     // the only type ConfirmDocument may record
+	ContentType string `dynamodbav:"content_type"` // pinned type, also enforced by the signed URL
+}
 
 // Status is the user-facing view of KYC state (CPF always masked, S3 keys
 // never exposed).

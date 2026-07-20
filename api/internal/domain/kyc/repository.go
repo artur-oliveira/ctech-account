@@ -46,6 +46,16 @@ type Repository interface {
 	// AddDocument appends an uploaded document and sets the doc status
 	// (awaiting_files while the user is still gathering required documents).
 	AddDocument(ctx context.Context, userID string, doc Document, docStatus string) error
+	// SavePendingDocument records the presigned upload intent (documentID →
+	// type, content_type) so ConfirmDocument can reject a mismatched type
+	// (SEC-018). Conditional on the pk not existing — a documentID is a UUID, so
+	// a conflict would mean a reused id.
+	SavePendingDocument(ctx context.Context, userID, documentID, docType, contentType string) error
+	// GetPendingDocument returns the recorded intent for documentID, or nil when
+	// none was presigned.
+	GetPendingDocument(ctx context.Context, documentID string) (*PendingDocument, error)
+	// DeletePendingDocument drops the intent once the upload is confirmed.
+	DeletePendingDocument(ctx context.Context, documentID string) error
 	MarkVerified(ctx context.Context, userID, verifiedAt string) error
 	// MarkRejected records the rejection and clears kyc_documents: a rejected
 	// submission's documents were judged insufficient, so a resubmission must
@@ -187,6 +197,71 @@ func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc D
 	}
 	_, err = r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{{Update: &update}}})
 	return err
+}
+
+// pendingPKPrefix keys the standalone item holding a presigned upload intent.
+// It lives in the same table as the user items (single-table pattern).
+const pendingPKPrefix = "KYCPEND_"
+
+func buildPendingPK(documentID string) string { return pendingPKPrefix + documentID }
+
+// SavePendingDocument writes the presign intent as its own item, conditional on
+// the pk not existing so a reused documentID fails fast.
+func (r *dynamoRepository) SavePendingDocument(ctx context.Context, userID, documentID, docType, contentType string) error {
+	item, err := attributevalue.MarshalMap(map[string]string{
+		"pk":           buildPendingPK(documentID),
+		"user_id":      userID,
+		"doc_type":     docType,
+		"content_type": contentType,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling pending document: %w", err)
+	}
+	if _, err := r.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           aws.String(r.table),
+		Item:                item,
+		ConditionExpression: aws.String("attribute_not_exists(pk)"),
+	}); err != nil {
+		return fmt.Errorf("saving pending document %s: %w", documentID, err)
+	}
+	return nil
+}
+
+// GetPendingDocument reads the intent written by SavePendingDocument, or nil
+// when the documentID was never presigned.
+func (r *dynamoRepository) GetPendingDocument(ctx context.Context, documentID string) (*PendingDocument, error) {
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.table),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: buildPendingPK(documentID)},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting pending document %s: %w", documentID, err)
+	}
+	if len(out.Item) == 0 {
+		return nil, nil
+	}
+	var p PendingDocument
+	if err := attributevalue.UnmarshalMap(out.Item, &p); err != nil {
+		return nil, fmt.Errorf("unmarshaling pending document %s: %w", documentID, err)
+	}
+	return &p, nil
+}
+
+// DeletePendingDocument removes the intent once the upload is confirmed. It is
+// best-effort from the caller's perspective, so errors are surfaced but not
+// fatal.
+func (r *dynamoRepository) DeletePendingDocument(ctx context.Context, documentID string) error {
+	if _, err := r.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(r.table),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: buildPendingPK(documentID)},
+		},
+	}); err != nil {
+		return fmt.Errorf("deleting pending document %s: %w", documentID, err)
+	}
+	return nil
 }
 
 func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt string) error {

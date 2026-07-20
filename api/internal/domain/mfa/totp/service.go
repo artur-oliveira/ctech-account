@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"gopkg.aoctech.app/account/api/internal/crypto"
-	"gopkg.aoctech.app/account/api/internal/database"
 )
 
 var ErrNotFound = errors.New("totp not configured")
@@ -19,11 +17,11 @@ var ErrAlreadyVerified = errors.New("totp already verified")
 var ErrInvalidCode = errors.New("invalid or expired totp code")
 
 type Service struct {
-	table database.Base
+	repo Repository
 }
 
 func NewService(db *dynamodb.Client, tablePrefix string) *Service {
-	return &Service{table: database.NewBase(db, tablePrefix, "account_mfa")}
+	return &Service{repo: NewRepository(db, tablePrefix)}
 }
 
 // Generate creates an unverified TOTP secret and returns the provisioning URI for QR code display.
@@ -47,12 +45,8 @@ func (s *Service) Generate(ctx context.Context, userID, accountName, issuer stri
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	item, err := attributevalue.MarshalMap(secret)
-	if err != nil {
-		return nil, "", fmt.Errorf("marshaling totp secret: %w", err)
-	}
-	if err := s.table.PutItem(ctx, item); err != nil {
-		return nil, "", fmt.Errorf("storing totp secret: %w", err)
+	if err := s.repo.Create(ctx, secret); err != nil {
+		return nil, "", err
 	}
 
 	return secret, key.URL(), nil
@@ -89,12 +83,15 @@ func (s *Service) Verify(ctx context.Context, userID, code string) ([]string, er
 		hashedCodes[i] = hash
 	}
 
-	sk := BuildSK()
-	if _, err := s.table.UpdateItem(ctx, BuildPK(userID), &sk, map[string]any{
-		"verified":     true,
-		"backup_codes": hashedCodes,
-	}); err != nil {
-		return nil, fmt.Errorf("activating totp: %w", err)
+	// Best-effort pre-check above; the conditional update is the real guard
+	// against concurrent confirms clobbering each other's backup codes.
+	applied, err := s.repo.Confirm(ctx, userID, hashedCodes)
+	if err != nil {
+		return nil, err
+	}
+	if !applied {
+		// Another confirm already committed first; this call is idempotent.
+		return nil, nil
 	}
 
 	return rawCodes, nil
@@ -137,12 +134,17 @@ func (s *Service) validateBackupCode(ctx context.Context, secret *TOTPSecret, us
 		if err != nil || !ok {
 			continue
 		}
-		// Consume backup code by removing it from the list.
+		// Consume backup code by removing it from the list under optimistic
+		// concurrency. If the version moved (another login already consumed
+		// this code), the conditional update fails and we reject.
 		newCodes := append(secret.BackupCodes[:i], secret.BackupCodes[i+1:]...)
-		sk := BuildSK()
-		_, _ = s.table.UpdateItem(ctx, BuildPK(userID), &sk, map[string]any{
-			"backup_codes": newCodes,
-		})
+		applied, err := s.repo.ConsumeBackupCode(ctx, userID, newCodes, secret.Version)
+		if err != nil {
+			return false, err
+		}
+		if !applied {
+			return false, nil
+		}
 		return true, nil
 	}
 	return false, nil
@@ -173,32 +175,16 @@ func (s *Service) RegenerateBackupCodes(ctx context.Context, userID string) ([]s
 		hashedCodes[i] = hash
 	}
 
-	sk := BuildSK()
-	if _, err := s.table.UpdateItem(ctx, BuildPK(userID), &sk, map[string]any{
-		"backup_codes": hashedCodes,
-	}); err != nil {
-		return nil, fmt.Errorf("updating backup codes: %w", err)
+	if err := s.repo.ReplaceBackupCodes(ctx, userID, hashedCodes); err != nil {
+		return nil, err
 	}
 	return rawCodes, nil
 }
 
 func (s *Service) Remove(ctx context.Context, userID string) error {
-	_, err := s.table.DeleteItem(ctx, BuildPK(userID), BuildSK())
-	return err
+	return s.repo.Remove(ctx, userID)
 }
 
 func (s *Service) Get(ctx context.Context, userID string) (*TOTPSecret, error) {
-	item, err := s.table.GetItem(ctx, BuildPK(userID), BuildSK())
-	if err != nil {
-		return nil, err
-	}
-	if item == nil {
-		return nil, ErrNotFound
-	}
-
-	var t TOTPSecret
-	if err := attributevalue.UnmarshalMap(item, &t); err != nil {
-		return nil, fmt.Errorf("unmarshaling totp: %w", err)
-	}
-	return &t, nil
+	return s.repo.Get(ctx, userID)
 }

@@ -10,12 +10,13 @@ import (
 )
 
 type memRepo struct {
-	users map[string]*user.User
-	cpfs  map[string]string // cpf -> userID
+	users   map[string]*user.User
+	cpfs    map[string]string // cpf -> userID
+	pending map[string]PendingDocument
 }
 
 func newMemRepo() *memRepo {
-	return &memRepo{users: map[string]*user.User{}, cpfs: map[string]string{}}
+	return &memRepo{users: map[string]*user.User{}, cpfs: map[string]string{}, pending: map[string]PendingDocument{}}
 }
 
 func (m *memRepo) GetUser(_ context.Context, userID string) (*user.User, error) {
@@ -68,6 +69,25 @@ func (m *memRepo) MarkRejected(_ context.Context, userID, reason string) error {
 	return nil
 }
 
+func (m *memRepo) SavePendingDocument(_ context.Context, userID, documentID, docType, contentType string) error {
+	m.pending[documentID] = PendingDocument{UserID: userID, Type: docType, ContentType: contentType}
+	return nil
+}
+
+func (m *memRepo) GetPendingDocument(_ context.Context, documentID string) (*PendingDocument, error) {
+	p, ok := m.pending[documentID]
+	if !ok {
+		return nil, nil
+	}
+	cp := p
+	return &cp, nil
+}
+
+func (m *memRepo) DeletePendingDocument(_ context.Context, documentID string) error {
+	delete(m.pending, documentID)
+	return nil
+}
+
 func (m *memRepo) ListPendingKYC(_ context.Context) ([]*user.User, error) {
 	var out []*user.User
 	for _, u := range m.users {
@@ -108,6 +128,30 @@ func (p *memPresigner) Size(_ context.Context, key string) (int64, error) {
 // put simulates the browser uploading to the presigned URL.
 func (p *memPresigner) put(key string, size int64) { p.objects[key] = size }
 
+// testPresigner is the presigner shape the upload helpers need: the real
+// Presigner surface plus the put() simulator. Both memPresigner and
+// memDeleterPresigner satisfy it.
+type testPresigner interface {
+	Presigner
+	put(key string, size int64)
+}
+
+// memDeleterPresigner is a memPresigner that also records DeleteObject calls,
+// so tests can assert the rejected-document purge (SEC-038).
+type memDeleterPresigner struct {
+	*memPresigner
+	deleted []string
+}
+
+func newMemDeleterPresigner() *memDeleterPresigner {
+	return &memDeleterPresigner{memPresigner: newMemPresigner()}
+}
+
+func (p *memDeleterPresigner) DeleteObject(_ context.Context, key string) error {
+	p.deleted = append(p.deleted, key)
+	return nil
+}
+
 func adultBirthDate() string {
 	return time.Now().UTC().AddDate(-30, 0, 0).Format("2006-01-02")
 }
@@ -146,7 +190,7 @@ func advance(svc *Service, d time.Duration) {
 }
 
 // uploadAllRequiredDocs uploads one document per RequiredDocTypes entry.
-func uploadAllRequiredDocs(t *testing.T, svc *Service, presigner *memPresigner, userID string) {
+func uploadAllRequiredDocs(t *testing.T, svc *Service, presigner testPresigner, userID string) {
 	t.Helper()
 	for _, docType := range RequiredDocTypes {
 		docID, _, err := svc.PresignDocument(context.Background(), userID, docType, "image/jpeg")
@@ -161,7 +205,7 @@ func uploadAllRequiredDocs(t *testing.T, svc *Service, presigner *memPresigner, 
 }
 
 // submitWithDocuments uploads every required document then submits.
-func submitWithDocuments(t *testing.T, svc *Service, presigner *memPresigner, userID string, sub Submission) error {
+func submitWithDocuments(t *testing.T, svc *Service, presigner testPresigner, userID string, sub Submission) error {
 	t.Helper()
 	uploadAllRequiredDocs(t, svc, presigner, userID)
 	return svc.Submit(context.Background(), userID, sub)
@@ -434,6 +478,50 @@ func TestConfirmDocumentRejectsOversizedFile(t *testing.T) {
 	}
 }
 
+// TestConfirmDocumentRejectsTypeMismatch proves SEC-018: a presigned id_front
+// URL cannot be confirmed as selfie_up. The client controls the confirmed Type,
+// so it must be bound to the presigned intent.
+func TestConfirmDocumentRejectsTypeMismatch(t *testing.T) {
+	svc, repo, presigner := setup()
+
+	docID, _, _ := svc.PresignDocument(context.Background(), "u1", DocTypeIDFront, "image/png")
+	presigner.put(BuildDocumentKey("u1", docID), 1024)
+
+	// Spoof a different type on confirm.
+	err := svc.ConfirmDocument(context.Background(), "u1", docID, DocTypeSelfieUp)
+	if !errors.Is(err, ErrDocumentTypeMismatch) {
+		t.Fatalf("err = %v, want ErrDocumentTypeMismatch", err)
+	}
+	if len(repo.users["u1"].KYCDocuments) != 0 {
+		t.Fatal("a mismatched type must not record the document")
+	}
+
+	// The intent persists across a failed spoof, so a second spoof (a different
+	// wrong type) must also be rejected.
+	err = svc.ConfirmDocument(context.Background(), "u1", docID, DocTypeIDBack)
+	if !errors.Is(err, ErrDocumentTypeMismatch) {
+		t.Fatalf("second spoof err = %v, want ErrDocumentTypeMismatch", err)
+	}
+
+	// The correct type finally confirms and consumes the intent.
+	if err := svc.ConfirmDocument(context.Background(), "u1", docID, DocTypeIDFront); err != nil {
+		t.Fatalf("correct confirm should succeed: %v", err)
+	}
+	if len(repo.users["u1"].KYCDocuments) != 1 {
+		t.Fatalf("documents = %d, want 1 after correct confirm", len(repo.users["u1"].KYCDocuments))
+	}
+}
+
+// TestConfirmDocumentRejectsUnpresignedID proves a documentID never presigned
+// cannot be confirmed.
+func TestConfirmDocumentRejectsUnpresignedID(t *testing.T) {
+	svc, _, _ := setup()
+	err := svc.ConfirmDocument(context.Background(), "u1", "not-a-real-id", DocTypeIDFront)
+	if !errors.Is(err, ErrDocumentTypeMismatch) {
+		t.Fatalf("err = %v, want ErrDocumentTypeMismatch", err)
+	}
+}
+
 func TestConfirmDocumentAccumulatesAwaitingFiles(t *testing.T) {
 	svc, repo, presigner := setup()
 
@@ -452,8 +540,7 @@ func TestConfirmDocumentAccumulatesAwaitingFiles(t *testing.T) {
 	}
 }
 
-func TestUploadRejectsTooManyDocuments(t *testing.T) {
-	svc, _, presigner := setup()
+func TestUploadRejectsTooManyDocuments(t *testing.T) {	svc, _, presigner := setup()
 	for i := 0; i < MaxDocuments; i++ {
 		docID, _, err := svc.PresignDocument(context.Background(), "u1", DocTypeIDFront, "image/png")
 		if err != nil {
@@ -477,6 +564,69 @@ func TestReviewApproveVerifies(t *testing.T) {
 	if u.KYCLevel != LevelVerified || u.KYCVerifiedAt == "" {
 		t.Fatalf("user = %+v", u)
 	}
+}
+
+// TestReviewRejectPurgesS3Objects proves SEC-038: rejecting a submission
+// best-effort deletes the rejected documents' S3 objects, and the reject still
+// succeeds even if the (simulated) deletes fail.
+func TestReviewRejectPurgesS3Objects(t *testing.T) {
+	repo := newMemRepo()
+	repo.users["u1"] = &user.User{PK: user.BuildPK("u1")}
+	presigner := newMemDeleterPresigner()
+	svc := NewService(repo, presigner)
+
+	uploadAndReview(t, svc, presigner, "u1", DecisionReject, "document unreadable")
+
+	want := len(RequiredDocTypes)
+	waitForDeletes(t, presigner, want)
+
+	// The documents were cleared locally too.
+	if len(repo.users["u1"].KYCDocuments) != 0 {
+		t.Fatal("rejection must clear the local document list")
+	}
+}
+
+// waitForDeletes polls because the service deletes in best-effort goroutines.
+func waitForDeletes(t *testing.T, p *memDeleterPresigner, want int) {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if len(p.deleted) == want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("deleted = %d, want %d", len(p.deleted), want)
+}
+
+func TestReviewRejectPurgesS3ObjectsEvenIfDeleteFails(t *testing.T) {
+	repo := newMemRepo()
+	repo.users["u1"] = &user.User{PK: user.BuildPK("u1")}
+	presigner := newMemDeleterPresigner()
+
+	// Simulate failing deletes: wrap DeleteObject to error. The reject must
+	// still succeed (best-effort, never fatal).
+	boom := &failingDeleter{presigner}
+	svc := NewService(repo, boom)
+
+	if err := uploadAndReviewNoErr(t, svc, presigner, "u1", DecisionReject, "blurry"); err != nil {
+		t.Fatalf("reject must not fail on delete error: %v", err)
+	}
+}
+
+// failingDeleter wraps a presigner and makes DeleteObject always error, to prove
+// the reject path is independent of S3 delete success.
+type failingDeleter struct{ *memDeleterPresigner }
+
+func (f *failingDeleter) DeleteObject(_ context.Context, _ string) error {
+	return errors.New("simulated s3 failure")
+}
+
+func uploadAndReviewNoErr(t *testing.T, svc *Service, presigner *memDeleterPresigner, userID, decision, reason string) error {
+	t.Helper()
+	if err := submitWithDocuments(t, svc, presigner, userID, submission("52998224725", "Fulano")); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	return svc.Review(context.Background(), userID, decision, reason)
 }
 
 func TestReviewRejectClearsDocumentsAndRecordsReason(t *testing.T) {
@@ -625,7 +775,7 @@ func assertState(t *testing.T, svc *Service, userID, want string) {
 }
 
 // uploadAndReview drives a document submission all the way to a review decision.
-func uploadAndReview(t *testing.T, svc *Service, presigner *memPresigner, userID, decision, reason string) {
+func uploadAndReview(t *testing.T, svc *Service, presigner testPresigner, userID, decision, reason string) {
 	t.Helper()
 	if err := submitWithDocuments(t, svc, presigner, userID, submission("52998224725", "Fulano")); err != nil {
 		t.Fatalf("Submit: %v", err)

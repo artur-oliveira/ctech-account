@@ -237,24 +237,23 @@ func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64
 		return n, nil
 	}
 
-	// Incrementa o contador
-	incrCmd := c.client.B().Incr().Key(key).Build()
+	// Atomic increment with a guaranteed TTL. SET ... NX EX only touches a
+	// brand-new key, so it seeds the expiry without clobbering an existing
+	// counter's value; INCR then bumps it. This replaces the old INCR-then-EXPIRE
+	// pair, which could crash between the two ops and leave a key with no TTL —
+	// a permanent lockout for a client that then stops (see CAC-010).
+	setCmd := c.client.B().Set().Key(key).Value("0").Nx().Ex(ttl).Build()
+	if err := c.client.Do(ctx, setCmd).Error(); err != nil {
+		// SET NX is a no-op (not an error) when the key already exists, so any
+		// error here is a transport failure worth surfacing so the limiter can
+		// fail closed.
+		return 0, fmt.Errorf("valkey SET NX: %w", err)
+	}
 
+	incrCmd := c.client.B().Incr().Key(key).Build()
 	n, err := c.client.Do(ctx, incrCmd).AsInt64()
 	if err != nil {
 		return 0, fmt.Errorf("valkey INCR: %w", err)
-	}
-
-	// Define TTL apenas se a chave ainda não tiver expiração
-	expireCmd := c.client.B().
-		Expire().
-		Key(key).
-		Seconds(int64(ttl.Seconds())).
-		Nx().
-		Build()
-
-	if err := c.client.Do(ctx, expireCmd).Error(); err != nil {
-		return 0, fmt.Errorf("valkey EXPIRE: %w", err)
 	}
 
 	return n, nil

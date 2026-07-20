@@ -3,6 +3,7 @@ package user_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"gopkg.aoctech.app/account/api/internal/domain/user"
@@ -11,6 +12,7 @@ import (
 
 // mockRepo is an in-memory Repository implementation for unit tests.
 type mockRepo struct {
+	mu      sync.Mutex
 	byID    map[string]*user.User
 	byEmail map[string]*user.User
 	nextID  int
@@ -24,6 +26,8 @@ func newMockRepo() *mockRepo {
 }
 
 func (m *mockRepo) GetByID(_ context.Context, userID string) (*user.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	u, ok := m.byID[userID]
 	if !ok {
 		return nil, user.ErrNotFound
@@ -32,6 +36,8 @@ func (m *mockRepo) GetByID(_ context.Context, userID string) (*user.User, error)
 }
 
 func (m *mockRepo) GetByEmail(_ context.Context, email string) (*user.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	u, ok := m.byEmail[email]
 	if !ok {
 		return nil, user.ErrNotFound
@@ -40,6 +46,13 @@ func (m *mockRepo) GetByEmail(_ context.Context, email string) (*user.User, erro
 }
 
 func (m *mockRepo) Create(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Enforce email uniqueness, mirroring the DynamoDB conditional marker so
+	// the concurrency regression tests exercise the same invariant.
+	if _, exists := m.byEmail[u.Email]; exists {
+		return user.ErrEmailConflict
+	}
 	if u.PK == "" {
 		m.nextID++
 		u.PK = "USER_test-" + string(rune('0'+m.nextID))
@@ -50,6 +63,8 @@ func (m *mockRepo) Create(_ context.Context, u *user.User) error {
 }
 
 func (m *mockRepo) Update(_ context.Context, userID string, updates map[string]any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	u, ok := m.byID[userID]
 	if !ok {
 		return user.ErrNotFound
@@ -508,3 +523,83 @@ func TestUnlinkGoogle_RefusesPasswordless(t *testing.T) {
 		t.Fatalf("expected ErrCannotUnlink, got %v", err)
 	}
 }
+
+// Regression for CON-008: two concurrent registrations for the SAME email must
+// not create two users. Exactly one succeeds; the loser gets ErrEmailConflict.
+// The mock enforces the same uniqueness contract the DynamoDB conditional
+// marker does, so this exercises the check-then-create race the fix closes.
+func TestRegister_ConcurrentDuplicateEmail(t *testing.T) {
+	repo := newMockRepo()
+	svc := user.NewService(repo)
+
+	const email = "concurrent@example.com"
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := svc.Register(context.Background(), email, "password123", "A", "")
+			errs <- err
+		}()
+	}
+
+	successes, conflicts := 0, 0
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, user.ErrEmailConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("expected exactly one success and one ErrEmailConflict, got successes=%d conflicts=%d", successes, conflicts)
+	}
+
+	// Exactly one user exists for that email.
+	if _, err := repo.GetByEmail(context.Background(), email); err != nil {
+		t.Fatalf("expected exactly one user, got: %v", err)
+	}
+}
+
+// Regression for CON-008 on the Google path: FindOrCreateByGoogle routes through
+// the same conditional Create, so a duplicate email can never yield two users.
+// Two concurrent Google signups for the same address resolve to exactly one user;
+// any loser error must be ErrEmailConflict (never a duplicate account).
+func TestFindOrCreateByGoogle_NoDuplicateUser(t *testing.T) {
+	repo := newMockRepo()
+	svc := user.NewService(repo)
+
+	const email = "gdup@example.com"
+	type result struct {
+		created bool
+		err     error
+	}
+	ch := make(chan result, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, created, err := svc.FindOrCreateByGoogle(context.Background(), "same-sub", email, "A", "B", "")
+			ch <- result{created, err}
+		}()
+	}
+
+	anyCreated := false
+	for i := 0; i < 2; i++ {
+		r := <-ch
+		if r.created {
+			anyCreated = true
+		}
+		if r.err != nil && !errors.Is(r.err, user.ErrEmailConflict) {
+			t.Fatalf("unexpected error: %v", r.err)
+		}
+	}
+	if !anyCreated {
+		t.Fatal("expected at least one successful Google account creation")
+	}
+	// The core invariant: exactly one user for the email (no duplicate).
+	if _, err := repo.GetByEmail(context.Background(), email); err != nil {
+		t.Fatalf("expected exactly one user for %s, got: %v", email, err)
+	}
+}
+

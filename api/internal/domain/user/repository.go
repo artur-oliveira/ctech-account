@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/google/uuid"
+	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
 )
 
@@ -25,12 +26,19 @@ type Repository interface {
 }
 
 type dynamoRepository struct {
-	table database.Base
+	table     database.Base
+	db        *dynamodb.Client
+	tableName string
 }
 
 // NewRepository returns a DynamoDB-backed Repository.
 func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
-	return &dynamoRepository{table: database.NewBase(db, tablePrefix, "account_users")}
+	tableName := database.TableName(tablePrefix, "account_users")
+	return &dynamoRepository{
+		table:     database.NewBase(db, tablePrefix, "account_users"),
+		db:        db,
+		tableName: tableName,
+	}
 }
 
 func (r *dynamoRepository) GetByID(ctx context.Context, userID string) (*User, error) {
@@ -74,11 +82,36 @@ func (r *dynamoRepository) Create(ctx context.Context, u *User) error {
 	u.UpdatedAt = now
 	u.Email = strings.ToLower(u.Email)
 
+	// CON-008: enforce email uniqueness with a conditional marker write. The
+	// marker PK is a hash of the email, so two concurrent creates for the same
+	// address race on the SAME item; attribute_not_exists(pk) lets exactly one
+	// win and the loser sees ErrEmailConflict — closing the non-atomic
+	// check-then-create gap. The marker deliberately omits the `email`
+	// attribute so it is NOT projected into the email-index GSI and cannot be
+	// returned by GetByEmail in place of the real user.
+	markerPK := "EMAIL#" + crypto.HashToken(u.Email)
+	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, markerPK, nil,
+		map[string]any{"kind": "email-lock", "created_at": now},
+		"attribute_not_exists(pk)", nil, nil)
+	if err != nil {
+		return fmt.Errorf("creating email marker: %w", err)
+	}
+	if !applied {
+		return ErrEmailConflict
+	}
+
 	item, err := attributevalue.MarshalMap(u)
 	if err != nil {
+		// Best-effort rollback: a failed marshal must not leave the marker
+		// permanently blocking this email.
+		_, _ = r.table.DeleteItem(ctx, markerPK)
 		return fmt.Errorf("marshaling user: %w", err)
 	}
-	return r.table.PutItem(ctx, item)
+	if err := r.table.PutItem(ctx, item); err != nil {
+		_, _ = r.table.DeleteItem(ctx, markerPK)
+		return fmt.Errorf("putting user: %w", err)
+	}
+	return nil
 }
 
 func (r *dynamoRepository) Update(ctx context.Context, userID string, updates map[string]any) error {

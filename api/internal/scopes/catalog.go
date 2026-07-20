@@ -15,13 +15,31 @@ type ServiceScopes struct {
 	Name    string `json:"name"    dynamodbav:"name"`
 	// Audience is the aud claim value the service expects in access tokens
 	// (its SERVICE_AUDIENCE config). Empty for identity/account — the IdP's own
-	// audience is always included at signing time.
-	Audience string       `json:"-"      dynamodbav:"audience,omitempty"`
+	// audience is always included at signing time. Serialized in JSON so the
+	// Valkey catalog cache round-trips it (json:"-" here previously dropped it,
+	// which both emptied AudiencesFor from cache and — because ValidateGrantable
+	// skips Internal services — made cached internal M2M scopes grantable).
+	Audience string       `json:"audience,omitempty" dynamodbav:"audience,omitempty"`
 	Scopes   []ScopeEntry `json:"scopes" dynamodbav:"scopes"`
 	// Internal hides the service from GET /v1.0/scopes and the consent UI, and
 	// makes its scopes non-grantable through self-service creation endpoints —
 	// they are assigned to first-party confidential clients via seed only.
-	Internal bool `json:"-" dynamodbav:"internal,omitempty"`
+	Internal bool `json:"internal,omitempty" dynamodbav:"internal,omitempty"`
+}
+
+// PublicServiceScopes is the catalog shape exposed by GET /v1.0/scopes. It
+// deliberately omits Audience (an internal routing claim) and the Internal
+// flag — those are stripped here rather than via json:"-" on ServiceScopes,
+// because the cache needs them.
+type PublicServiceScopes struct {
+	Service string       `json:"service"`
+	Name    string       `json:"name"`
+	Scopes  []ScopeEntry `json:"scopes"`
+}
+
+// ToPublic projects a ServiceScopes into its public, client-safe form.
+func (s ServiceScopes) ToPublic() PublicServiceScopes {
+	return PublicServiceScopes{Service: s.Service, Name: s.Name, Scopes: s.Scopes}
 }
 
 // IdentityService is the pseudo-service grouping OIDC scopes. Valid only for

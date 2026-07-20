@@ -63,6 +63,15 @@ func main() {
 	}
 	defer valkeyClient.Close()
 
+	// Valkey is a hard production dependency: OAuth authorization codes, MFA /
+	// passkey challenges, account-recovery tokens and all rate limiting live
+	// there with no DynamoDB fallback. Refuse to boot without it in non-dev
+	// environments so a misconfigured instance never enters rotation (§1.1).
+	if !valkeyClient.Enabled() && cfg.Environment != "dev" && cfg.Environment != "development" {
+		log.Fatalf("VALKEY_URL is required in environment %q: OAuth codes, MFA tokens and rate limiting depend on Valkey", cfg.Environment)
+	}
+	valkeyRequired := cfg.Environment != "dev" && cfg.Environment != "development"
+
 	// Signing keys: RSA_PRIVATE_KEY env = dev mode (single key, no rotation);
 	// otherwise versioned keys come from SSM and rotate automatically.
 	var jwtSvc *crypto.JWTService
@@ -90,15 +99,25 @@ func main() {
 	// (env key) and Valkey-less deployments skip it — cmd/rotatekeys remains
 	// the manual path.
 	if keyStore != nil && valkeyClient.Enabled() {
+		// CAC-025: namespace the rotation lock by environment so a Valkey
+		// shared across envs can't let one env block another.
+		lockKey := keystore.LockKey
+		if cfg.Environment != "" {
+			lockKey = fmt.Sprintf("rotate_jwk_lock:%s", cfg.Environment)
+		}
 		go keystore.RunRotator(ctx, keystore.RotatorConfig{
 			Store:  keyStore,
 			Reload: jwtSvc.Reload,
 			TryLock: func(ctx context.Context) (bool, error) {
-				return valkeyClient.SetNX(ctx, keystore.LockKey, "1", keystore.LockTTL)
+				return valkeyClient.SetNX(ctx, lockKey, "1", keystore.LockTTL)
+			},
+			Unlock: func(ctx context.Context) error {
+				return valkeyClient.Delete(ctx, lockKey)
 			},
 			Interval: keystore.CheckInterval,
 			MaxAge:   keystore.KeyMaxAge,
 			Now:      time.Now,
+			Env:      cfg.Environment,
 		})
 	}
 
@@ -238,26 +257,26 @@ func main() {
 	wellknownH.Register(app)
 
 	v1 := app.Group("/v1.0")
-	v1.Get("/health-check", healthHandler(db, database.TableName(cfg.TablePrefix, "account_users"), valkeyClient, cfg.AppVersion))
+	v1.Get("/health-check", healthHandler(db, database.TableName(cfg.TablePrefix, "account_users"), valkeyClient, cfg.AppVersion, valkeyRequired))
 
 	// Rate limiting (Valkey-backed; no-op when Valkey is disabled).
 	// Brute-force guard: count only failed responses per client IP.
 	ipKey := utils.IP
 	authLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 		Cache: valkeyClient, Prefix: "login", Max: middleware.FailedLoginMax,
-		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true,
+		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
 	})
 	pwResetLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 		Cache: valkeyClient, Prefix: "pwreset", Max: middleware.FailedLoginMax,
-		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true,
+		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
 	})
 	tokenLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 		Cache: valkeyClient, Prefix: "token", Max: middleware.FailedLoginMax,
-		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true,
+		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
 	})
 	perUserLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 		Cache: valkeyClient, Prefix: "user", Max: middleware.PerUserMax,
-		Window: middleware.PerUserWindow, KeyFunc: middleware.GetUserID, CountOnlyFailures: false,
+		Window: middleware.PerUserWindow, KeyFunc: middleware.GetUserID, CountOnlyFailures: false, FailClosed: true,
 	})
 	v1.Use("/auth/login", authLimiter)
 	v1.Use("/auth/mfa/challenge", authLimiter)
