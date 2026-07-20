@@ -2,8 +2,11 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/valkey-io/valkey-go"
 )
 
 func TestGetDel_ConsumesOnce(t *testing.T) {
@@ -106,5 +109,21 @@ func TestSetNXDisabledClientIsNoop(t *testing.T) {
 	ok, err := c.SetNX(context.Background(), "lock", "1", time.Minute)
 	if err != nil || ok {
 		t.Fatalf("disabled client: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestSetNXErr_IgnoresExistingKey guards the 2026-07-20 regression where
+// Incr mistook valkey.Nil (returned by SET NX when the key already exists)
+// for a transport failure and 503'd every 2nd+ request in a rate-limit window.
+func TestSetNXErr_IgnoresExistingKey(t *testing.T) {
+	if err := setNXErr(valkey.Nil); err != nil {
+		t.Fatalf("valkey.Nil (key already exists) must be non-fatal, got %v", err)
+	}
+	if err := setNXErr(nil); err != nil {
+		t.Fatalf("nil must be non-fatal, got %v", err)
+	}
+	transport := errors.New("connection refused")
+	if err := setNXErr(transport); !errors.Is(err, transport) {
+		t.Fatalf("real transport error must be wrapped and surfaced, got %v", err)
 	}
 }

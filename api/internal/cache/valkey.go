@@ -220,6 +220,18 @@ func (c *Client) Count(ctx context.Context, key string) (int64, error) {
 	return n, nil
 }
 
+// setNXErr classifies the outcome of a SET ... NX attempt. valkey-go returns
+// valkey.Nil when the key already exists — the normal "not new" case, not a
+// transport failure. Only genuine errors are wrapped so the limiter can fail
+// closed. Mistaking Nil for a failure made every 2nd+ request in a rate-limit
+// window 503 (CAC-010 regression, 2026-07-20).
+func setNXErr(err error) error {
+	if err == nil || valkey.IsValkeyNil(err) {
+		return nil
+	}
+	return fmt.Errorf("valkey SET NX: %w", err)
+}
+
 // Incr atomically increments a counter and sets TTL if it's a new key. Used for rate limiting.
 func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64, error) {
 	if !c.enabled {
@@ -251,11 +263,8 @@ func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64
 	// pair, which could crash between the two ops and leave a key with no TTL —
 	// a permanent lockout for a client that then stops (see CAC-010).
 	setCmd := c.client.B().Set().Key(key).Value("0").Nx().Ex(ttl).Build()
-	if err := c.client.Do(ctx, setCmd).Error(); err != nil {
-		// SET NX is a no-op (not an error) when the key already exists, so any
-		// error here is a transport failure worth surfacing so the limiter can
-		// fail closed.
-		return 0, fmt.Errorf("valkey SET NX: %w", err)
+	if err := setNXErr(c.client.Do(ctx, setCmd).Error()); err != nil {
+		return 0, err
 	}
 
 	incrCmd := c.client.B().Incr().Key(key).Build()
