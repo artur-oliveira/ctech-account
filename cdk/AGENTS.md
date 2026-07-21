@@ -110,7 +110,7 @@ cdk synth  # CloudFormation synthesis — must succeed cleanly
 - SSM parameters must exist before deploying compute stack.
 - ACM certificate for CloudFront must be in `us-east-1` regardless of deploy region.
 - Go binary on EC2 must be named `ctech-account`.
-- `accounts-ui` OAuth client must be seeded in DynamoDB after first deploy.
+- `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy.
 
 ---
 

@@ -181,7 +181,7 @@ See `../README.md` §First Deploy for the full ordered checklist.
   Runtime config (base-url, allowed-origins, app-url, google-*, cookie-domain,
   from-email, internal-token) lives under `/ctech-account/{env}/*`; the shared ALB/VPC
   params under `/ctech/{env}/*`; the Valkey URL under `/ctech/{env}/valkey/url`.
-- `accounts-ui` OAuth client must be seeded in DynamoDB after first deploy (see `../README.md`).
+- `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy (see `../README.md`).
 - Go binary must be named `ctech-account` on EC2 (systemd service name matches).
 - CloudFront distribution requires ACM certificate in `us-east-1` regardless of deploy region.
 - `S3Stack` is unused; deployments/logs buckets are shared `ctech-cdk` buckets.

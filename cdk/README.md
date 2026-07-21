@@ -198,7 +198,7 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
 ### First-deploy prerequisites (outside CDK)
 1. Seed signing keys in SSM `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) via
    `api/cmd/rotatekeys` (see root `README.md` §First Deploy).
-2. Seed the `accounts-ui` OAuth client in `{env}_account_oauth_clients`
+2. Seed the `accounts` OAuth client (the SPA default — `SELF_CLIENT_ID`/`NEXT_PUBLIC_OAUTH_CLIENT_ID` both default to `accounts`) in `{env}_account_oauth_clients`
    (`CLIENT_accounts`, `first_party: true`).
 3. Seed the scope catalog in `{env}_ctech_scopes` via `api/cmd/seedscopes`.
 4. Set the SSM params listed in §2 (base-url, allowed-origins, app-url,

@@ -4,9 +4,9 @@ import {Construct} from 'constructs';
 import {Environment} from './types';
 
 // ui/ dev server always runs on this fixed port (see ui/package.json "dev" script).
-// Allowed on every environment's bucket, including prod, so local frontend dev can
-// exercise the presigned-upload flow against any deployed backend.
-const LOCAL_DEV_ORIGIN = 'http://localhost:3001'; // TODO: remove this, test only
+// Allowed on non-prod buckets only, so local frontend dev can exercise the
+// presigned-upload flow against a deployed backend without widening prod CORS (B13).
+const LOCAL_DEV_ORIGIN = 'http://localhost:3001';
 
 interface KYCStackProps extends cdk.StackProps {
   environment: Environment;
@@ -46,7 +46,7 @@ export class KYCStack extends cdk.Stack {
         noncurrentVersionExpiration: cdk.Duration.days(30),
       }],
       cors: [{
-        allowedOrigins: [frontendOrigin, LOCAL_DEV_ORIGIN],
+        allowedOrigins: isProd ? [frontendOrigin] : [frontendOrigin, LOCAL_DEV_ORIGIN],
         allowedMethods: [s3.HttpMethods.PUT],
         allowedHeaders: ['content-type'],
         maxAge: 3000,
