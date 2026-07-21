@@ -249,16 +249,35 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 // memKYCRepo implements kyc.Repository over the shared memUserRepo store with
 // real CPF-uniqueness semantics (mirrors the CPF_{cpf} conditional item).
 type memKYCRepo struct {
-	users *memUserRepo
-	cpfs  map[string]string // cpf -> userID
+	users   *memUserRepo
+	cpfs    map[string]string // cpf -> userID
+	pending map[string]*kycDomain.PendingDocument
 }
 
 func newMemKYCRepo(users *memUserRepo) *memKYCRepo {
-	return &memKYCRepo{users: users, cpfs: map[string]string{}}
+	return &memKYCRepo{
+		users:   users,
+		cpfs:    map[string]string{},
+		pending: map[string]*kycDomain.PendingDocument{},
+	}
 }
 
 func (m *memKYCRepo) GetUser(ctx context.Context, userID string) (*userDomain.User, error) {
 	return m.users.GetByID(ctx, userID)
+}
+
+func (m *memKYCRepo) SavePendingDocument(_ context.Context, userID, documentID, docType, contentType string) error {
+	m.pending[documentID] = &kycDomain.PendingDocument{UserID: userID, Type: docType, ContentType: contentType}
+	return nil
+}
+
+func (m *memKYCRepo) GetPendingDocument(_ context.Context, documentID string) (*kycDomain.PendingDocument, error) {
+	return m.pending[documentID], nil
+}
+
+func (m *memKYCRepo) DeletePendingDocument(_ context.Context, documentID string) error {
+	delete(m.pending, documentID)
+	return nil
 }
 
 func (m *memKYCRepo) SaveSubmission(_ context.Context, userID string, rec kycDomain.Record, oldCPF string) error {
@@ -597,11 +616,14 @@ func (m *memSessionRepo) GetConsumedByHash(_ context.Context, tokenHash string) 
 	return nil, sessionDomain.ErrRefreshTokenNotFound
 }
 
-func (m *memSessionRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash string) error {
+func (m *memSessionRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
 	k := sessionDomain.BuildPK(userID) + "|" + sessionDomain.BuildRefreshSK(sessionID, clientID)
 	t, ok := m.tokens[k]
 	if !ok {
 		return sessionDomain.ErrRefreshTokenNotFound
+	}
+	if t.RefreshTokenHash != oldHash {
+		return sessionDomain.ErrTokenReuse
 	}
 	t.RefreshTokenHash = newHash
 	return nil

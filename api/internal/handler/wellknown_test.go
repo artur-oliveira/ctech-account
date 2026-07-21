@@ -24,6 +24,18 @@ func TestOIDCConfiguration(t *testing.T) {
 			t.Errorf("missing field %q in OIDC configuration", field)
 		}
 	}
+
+	grants, _ := body["grant_types_supported"].([]any)
+	got := make(map[string]bool, len(grants))
+	for _, g := range grants {
+		s, _ := g.(string)
+		got[s] = true
+	}
+	for _, want := range []string{"authorization_code", "refresh_token", "client_credentials", "api_key"} {
+		if !got[want] {
+			t.Errorf("grant_types_supported missing %q (got %v)", want, grants)
+		}
+	}
 }
 
 func TestJWKS(t *testing.T) {

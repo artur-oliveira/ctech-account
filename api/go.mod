@@ -18,7 +18,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/valkey-io/valkey-go v1.0.76
 	golang.org/x/crypto v0.54.0
-	gopkg.aoctech.app/api-commons v1.0.2
+	gopkg.aoctech.app/api-commons v1.2.0
 )
 
 require (
