@@ -34,6 +34,11 @@ interface FrontendStackProps extends cdk.StackProps {
   // Used as the API origin: ALL_VIEWER_EXCEPT_HOST_HEADER makes CloudFront send
   // this as the Host header, which is what the ALB listener rule matches on.
   apiDomainName: string;
+  // Virtual-hosted S3 endpoint the KYC bucket is reached at, e.g.
+  // "dev-ctech-account-kyc-documents.s3.us-east-1.amazonaws.com". The browser
+  // PUTs identity documents straight to this origin via a presigned URL
+  // (kyc-stack.ts), so CSP connect-src must allow it or the fetch is blocked.
+  kycBucketDomain: string;
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -44,7 +49,7 @@ export class FrontendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props);
 
-    const {environment, certificateArn, domainName, apiDomainName} = props;
+    const {environment, certificateArn, domainName, apiDomainName, kycBucketDomain} = props;
     const isProd = environment === 'prod';
 
     this.bucket = new s3.Bucket(this, 'Bucket', {
@@ -138,7 +143,7 @@ async function handler(event) {
             "img-src 'self' data:",
             "style-src 'self' 'unsafe-inline'",
             "script-src 'self' 'unsafe-inline'",
-            `connect-src 'self'${extraConnectSrc ? ' ' + extraConnectSrc : ''}`,
+            `connect-src 'self' https://${kycBucketDomain}${extraConnectSrc ? ' ' + extraConnectSrc : ''}`,
           ].join('; '),
           override: true,
         },

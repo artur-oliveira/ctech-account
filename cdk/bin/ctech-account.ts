@@ -35,45 +35,45 @@ const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 const BASE_DOMAIN = 'aoctech.app';
 
 const domainForEnv = (environment: Environment, prefix: string) => {
-  switch (environment) {
-    case 'prod':
-      return `${prefix}.${BASE_DOMAIN}`;
-    case 'dev':
-    case 'stage':
-      return `${prefix}-${environment}.${BASE_DOMAIN}`;
-  }
+    switch (environment) {
+        case 'prod':
+            return `${prefix}.${BASE_DOMAIN}`;
+        case 'dev':
+        case 'stage':
+            return `${prefix}-${environment}.${BASE_DOMAIN}`;
+    }
 };
 
 const id = (name: string) =>
-  `CtechAccount-${ENVIRONMENT.charAt(0).toUpperCase() + ENVIRONMENT.slice(1)}-${name}`;
+    `CtechAccount-${ENVIRONMENT.charAt(0).toUpperCase() + ENVIRONMENT.slice(1)}-${name}`;
 
 // =====================
 // GitHub Actions OIDC (global, deployed once)
 // =====================
 new OidcStack(app, 'CtechAccount-Global-OIDC', {
-  env,
-  githubRepo: GITHUB_REPO,
-  description: 'ctech-account GitHub Actions OIDC provider and deployment role (global)',
+    env,
+    githubRepo: GITHUB_REPO,
+    description: 'ctech-account GitHub Actions OIDC provider and deployment role (global)',
 });
 
 // =====================
 // DynamoDB
 // =====================
 const dynamodbStack = new DynamoDBStack(app, id('DynamoDB'), {
-  env,
-  environment: ENVIRONMENT,
-  description: `ctech-account DynamoDB - ${ENVIRONMENT}`,
+    env,
+    environment: ENVIRONMENT,
+    description: `ctech-account DynamoDB - ${ENVIRONMENT}`,
 });
 
 // =====================
 // KYC identity documents (private S3 bucket, presigned uploads)
 // =====================
 const kycStack = new KYCStack(app, id('KYC'), {
-  env,
-  environment: ENVIRONMENT,
-  bucketName: KYC_DOCUMENTS_BUCKET,
-  frontendOrigin: `https://${domainForEnv(ENVIRONMENT, 'accounts')}`,
-  description: `ctech-account KYC documents bucket - ${ENVIRONMENT}`,
+    env,
+    environment: ENVIRONMENT,
+    bucketName: KYC_DOCUMENTS_BUCKET,
+    frontendOrigin: `https://${domainForEnv(ENVIRONMENT, 'accounts')}`,
+    description: `ctech-account KYC documents bucket - ${ENVIRONMENT}`,
 });
 
 // =====================
@@ -81,13 +81,13 @@ const kycStack = new KYCStack(app, id('KYC'), {
 // Shared S3 bucket ARNs are derived from the bucket names read via env vars.
 // =====================
 const iamStack = new IAMStack(app, id('IAM'), {
-  env,
-  environment: ENVIRONMENT,
-  dynamoDBTables: dynamodbStack.tables,
-  deploymentsBucketArn: `arn:aws:s3:::${CTECH_DEPLOYMENTS_BUCKET}`,
-  logsBucketArn: `arn:aws:s3:::${CTECH_LOGS_BUCKET}`,
-  kycDocumentsBucketArn: `arn:aws:s3:::${KYC_DOCUMENTS_BUCKET}`,
-  description: `ctech-account IAM - ${ENVIRONMENT}`,
+    env,
+    environment: ENVIRONMENT,
+    dynamoDBTables: dynamodbStack.tables,
+    deploymentsBucketArn: `arn:aws:s3:::${CTECH_DEPLOYMENTS_BUCKET}`,
+    logsBucketArn: `arn:aws:s3:::${CTECH_LOGS_BUCKET}`,
+    kycDocumentsBucketArn: `arn:aws:s3:::${KYC_DOCUMENTS_BUCKET}`,
+    description: `ctech-account IAM - ${ENVIRONMENT}`,
 });
 iamStack.addDependency(dynamodbStack);
 iamStack.addDependency(kycStack);
@@ -96,17 +96,17 @@ iamStack.addDependency(kycStack);
 // Compute (EC2 + ASG, shared ALB from ctech-cdk)
 // =====================
 const computeStack = new ComputeStack(app, id('Compute'), {
-  env,
-  environment: ENVIRONMENT,
-  vpcId: CTECH_VPC_ID,
-  domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.aoctech.app → ALB
-  instanceProfileName: iamStack.instanceProfileName,
-  deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
-  logsBucketName: CTECH_LOGS_BUCKET,
-  kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
-  valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
-  listenerRulePriority: 25, // py-dfe-api uses 15, ctech-wallet-api uses 35
-  description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
+    env,
+    environment: ENVIRONMENT,
+    vpcId: CTECH_VPC_ID,
+    domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.aoctech.app → ALB
+    instanceProfileName: iamStack.instanceProfileName,
+    deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
+    logsBucketName: CTECH_LOGS_BUCKET,
+    kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
+    valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
+    listenerRulePriority: 25, // py-dfe-api uses 15, ctech-wallet-api uses 35
+    description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 computeStack.addDependency(iamStack);
 
@@ -118,10 +118,11 @@ computeStack.addDependency(iamStack);
 // accounts-api.aoctech.app          → API (ALB) direct — service-to-service + public API
 // =====================
 new FrontendStack(app, id('Frontend'), {
-  env,
-  environment: ENVIRONMENT,
-  certificateArn: CERT_ARN,
-  domainName: domainForEnv(ENVIRONMENT, 'accounts'), // accounts.aoctech.app → CloudFront → S3
-  apiDomainName: domainForEnv(ENVIRONMENT, 'accounts-api'),
-  description: `ctech-account Frontend (S3 + CloudFront) - ${ENVIRONMENT}`,
+    env,
+    environment: ENVIRONMENT,
+    certificateArn: CERT_ARN,
+    domainName: domainForEnv(ENVIRONMENT, 'accounts'), // accounts.aoctech.app → CloudFront → S3
+    apiDomainName: domainForEnv(ENVIRONMENT, 'accounts-api'),
+    kycBucketDomain: `${KYC_DOCUMENTS_BUCKET}.s3.dualstack.${AWS_REGION}.amazonaws.com`,
+    description: `ctech-account Frontend (S3 + CloudFront) - ${ENVIRONMENT}`,
 });
