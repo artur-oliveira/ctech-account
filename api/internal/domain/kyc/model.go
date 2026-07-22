@@ -2,6 +2,8 @@ package kyc
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/user"
@@ -183,27 +185,26 @@ type Submission struct {
 
 // IsValidDocumentType reports whether t is an accepted document type.
 func IsValidDocumentType(t string) bool {
-	for _, want := range RequiredDocTypes {
-		if t == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(RequiredDocTypes, t)
 }
 
 // allowedContentTypes are the MIME types a reviewer can actually open. The
 // presigned PUT pins the content type, so this is what ends up in the bucket.
-var allowedContentTypes = map[string]struct{}{
-	"image/jpeg":      {},
-	"image/png":       {},
-	"image/heic":      {},
-	"application/pdf": {},
-	"video/webm":      {}, // selfie pose clips recorded via MediaRecorder
-	"video/mp4":       {},
+var allowedContentTypes = []string{
+	"image/jpeg",
+	"image/png",
+	"image/heic",
+	"application/pdf",
+	"video/webm",
+	"video/mp4",
 }
 
 // IsValidContentType reports whether ct may be uploaded as an identity document.
 func IsValidContentType(ct string) bool {
-	_, ok := allowedContentTypes[ct]
-	return ok
+	for _, doc := range allowedContentTypes {
+		if strings.HasPrefix(ct, doc) {
+			return true
+		}
+	}
+	return false
 }
