@@ -18,13 +18,6 @@ import (
 // ErrNotFound is returned by Size when the object does not exist.
 var ErrNotFound = errors.New("object not found")
 
-// MaxDocumentSize is the hard ceiling (10 MiB) a single presigned PUT may
-// carry. PresignPut pins this on the request so a presigned-URL holder cannot
-// push an arbitrarily large object at the bucket (SEC-024). The server-side
-// ConfirmDocument check (kyc.MaxDocumentBytes) is the effective enforcement;
-// this is the presign-level hint.
-const MaxDocumentSize = 10 * 1024 * 1024
-
 // S3 presigns uploads/downloads and reads object metadata for one bucket.
 type S3 struct {
 	client  *s3.Client
@@ -43,14 +36,17 @@ func NewS3(ctx context.Context, region, bucket string) (*S3, error) {
 }
 
 // buildPutObjectInput constructs the PUT request the presigned URL signs. It
-// pins ContentType and a ContentLength ceiling (SEC-024) so the holder of the
-// URL cannot change the type or inflate the object beyond MaxDocumentSize.
+// pins ContentType so the holder of the URL cannot change the type. It does
+// NOT pin ContentLength: SigV4 signs that header's literal value, so pinning
+// it to a constant made every upload whose real size differed from that
+// constant fail with SignatureDoesNotMatch. Size is capped server-side after
+// upload (kyc.MaxDocumentBytes, see ConfirmDocument) — that's the effective
+// enforcement (SEC-024).
 func buildPutObjectInput(bucket, key, contentType string) *s3.PutObjectInput {
 	return &s3.PutObjectInput{
-		Bucket:        aws.String(bucket),
-		Key:           aws.String(key),
-		ContentType:   aws.String(contentType),
-		ContentLength: aws.Int64(MaxDocumentSize),
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
 	}
 }
 
