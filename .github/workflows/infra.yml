@@ -1,0 +1,145 @@
+name: Infrastructure
+
+# Deploy is called by deploy.yml (which owns the ordering: CDK → API → Frontend).
+# The diff job runs on its own for pull requests — it deploys nothing.
+on:
+  workflow_call:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'cdk/**'
+      - '.github/workflows/infra.yml'
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  # main is the only deploy branch in this repo.
+  ENVIRONMENT: prod
+
+jobs:
+  diff:
+    name: CDK Diff
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Check for duplicated infra patterns
+        working-directory: cdk
+        run: |
+          FAIL=0
+          if grep -rn "AssociatePublicIpAddress" --include="*.ts" lib/ bin/ 2>/dev/null; then
+            echo "::error::Hand-rolled AssociatePublicIpAddress found — use PrivateIpv4Ec2Service from @aoctech/cdk instead"
+            FAIL=1
+          fi
+          if grep -rEn "max(Read|Write)RequestUnits: [0-9]{1,2}[,}]" --include="*.ts" lib/ 2>/dev/null; then
+            echo "::error::DynamoDB on-demand throughput cap suspiciously low (<100 RCU/WCU) — see _analysis P0 finding"
+            FAIL=1
+          fi
+          exit $FAIL
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::868899309401:role/ctech-account-gha-infra
+          aws-region: us-east-1
+
+      - name: Read ctech shared infrastructure values
+        run: |
+          echo "CTECH_VPC_ID=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/network/vpc-id --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          echo "CTECH_DEPLOYMENTS_BUCKET=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/s3/deployments-bucket --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          echo "CTECH_LOGS_BUCKET=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/s3/logs-bucket --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+
+      - name: CDK Diff
+        working-directory: cdk
+        run: npx cdk diff --all 2>&1 | tee diff.txt
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          CTECH_VPC_ID: ${{ env.CTECH_VPC_ID }}
+          CTECH_DEPLOYMENTS_BUCKET: ${{ env.CTECH_DEPLOYMENTS_BUCKET }}
+          CTECH_LOGS_BUCKET: ${{ env.CTECH_LOGS_BUCKET }}
+
+      - name: Comment diff on PR
+        uses: actions/github-script@v9
+        if: always()
+        with:
+          script: |
+            const fs = require('fs');
+            const diff = fs.readFileSync('cdk/diff.txt', 'utf8');
+            const body = `## CDK Diff (\`${{ env.ENVIRONMENT }}\`)\n\`\`\`\n${diff.slice(0, 60000)}\n\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+  deploy:
+    name: CDK Deploy
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Check for duplicated infra patterns
+        working-directory: cdk
+        run: |
+          FAIL=0
+          if grep -rn "AssociatePublicIpAddress" --include="*.ts" lib/ bin/ 2>/dev/null; then
+            echo "::error::Hand-rolled AssociatePublicIpAddress found — use PrivateIpv4Ec2Service from @aoctech/cdk instead"
+            FAIL=1
+          fi
+          if grep -rEn "max(Read|Write)RequestUnits: [0-9]{1,2}[,}]" --include="*.ts" lib/ 2>/dev/null; then
+            echo "::error::DynamoDB on-demand throughput cap suspiciously low (<100 RCU/WCU) — see _analysis P0 finding"
+            FAIL=1
+          fi
+          exit $FAIL
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::868899309401:role/ctech-account-gha-infra
+          aws-region: us-east-1
+
+      - name: Read ctech shared infrastructure values
+        run: |
+          echo "CTECH_VPC_ID=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/network/vpc-id --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          echo "CTECH_DEPLOYMENTS_BUCKET=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/s3/deployments-bucket --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          echo "CTECH_LOGS_BUCKET=$(aws ssm get-parameter --name /ctech/${ENVIRONMENT}/s3/logs-bucket --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+
+      - name: CDK Deploy
+        working-directory: cdk
+        # CtechAccount-Global-OIDC is intentionally excluded by the env-scoped glob
+        # (CtechAccount-Prod-*). CDK has no --exclude flag; the global stack owns the
+        # very role this job assumes, so it is deployed manually when the roles change.
+        run: npx cdk deploy "CtechAccount-Prod-*" --require-approval never
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          CTECH_VPC_ID: ${{ env.CTECH_VPC_ID }}
+          CTECH_DEPLOYMENTS_BUCKET: ${{ env.CTECH_DEPLOYMENTS_BUCKET }}
+          CTECH_LOGS_BUCKET: ${{ env.CTECH_LOGS_BUCKET }}

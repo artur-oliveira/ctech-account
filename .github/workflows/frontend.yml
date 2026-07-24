@@ -1,0 +1,101 @@
+name: Frontend
+
+# Called by deploy.yml, which owns the trigger, the path filter and the
+# CDK → API → Frontend ordering. Never triggered on push directly.
+on:
+  workflow_call:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Build & Deploy Next.js
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::868899309401:role/ctech-account-github-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      # NEXT_PUBLIC_API_URL points at the app domain, not accounts-api: CloudFront
+      # forwards /v1.0/* to the ALB, so the browser talks same-origin and never
+      # needs CORS. accounts-api stays reachable directly for service-to-service
+      # callers (JWKS from ctech-dfe / ctech-wallet) and the public API.
+      - name: Set environment
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          if [ "$BRANCH" = "main" ]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_API_URL=https://accounts.aoctech.app" >> $GITHUB_ENV
+          elif [ "$BRANCH" = "staging" ]; then
+            echo "ENVIRONMENT=stage" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_API_URL=https://accounts-stage.aoctech.app" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_API_URL=https://accounts-dev.aoctech.app" >> $GITHUB_ENV
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+
+      - name: Read stack outputs
+        run: |
+          BUCKET="${ENVIRONMENT}-ctech-account-frontend"
+          STACK="CtechAccount-$(echo $ENVIRONMENT | sed 's/./\u&/')-Frontend"
+          OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK" \
+            --query "Stacks[0].Outputs" --output json 2>/dev/null || echo "[]")
+          echo "S3_BUCKET=$BUCKET" >> $GITHUB_ENV
+          echo "DISTRIBUTION_ID=$(echo "$OUTPUTS" | jq -r '.[]|select(.OutputKey=="DistributionId").OutputValue // empty')" >> $GITHUB_ENV
+          echo "ROUTE_STORE_ARN=$(echo "$OUTPUTS" | jq -r '.[]|select(.OutputKey=="RouteStoreArn").OutputValue // empty')" >> $GITHUB_ENV
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync out/ "s3://$S3_BUCKET/" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html" \
+            --exclude "*.json"
+
+          # HTML files: no cache
+          aws s3 sync out/ "s3://$S3_BUCKET/" \
+            --delete \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html" \
+            --include "*.json"
+
+      # After the sync, so the route store can never advertise a page the bucket
+      # does not have. The url-rewrite function reads it to decide .html vs 404.
+      - name: Publish route manifest
+        if: env.ROUTE_STORE_ARN != ''
+        run: ./scripts/publish-routes.sh "$ROUTE_STORE_ARN" out
+
+      - name: Invalidate CloudFront
+        if: env.DISTRIBUTION_ID != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*"
