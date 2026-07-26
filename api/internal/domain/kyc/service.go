@@ -206,7 +206,7 @@ func (s *Service) sendFreshOTP(ctx context.Context, userID, phone string) error 
 	return s.sms.SendOTP(ctx, phone, code)
 }
 
-func otpKey(userID string) string        { return "kyc_otp:" + userID }
+func otpKey(userID string) string         { return "kyc_otp:" + userID }
 func otpAttemptsKey(userID string) string { return "kyc_otp_attempts:" + userID }
 func otpResendKey(userID string) string   { return "kyc_otp_resend:" + userID }
 
