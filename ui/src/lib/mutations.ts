@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { KYCDocumentType, KYCStatus, KYCSubmission, OAuthClient, PresignedUpload, TermsPending } from './types'
+import type { KYCBasicSubmission, KYCDocumentType, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -234,8 +234,23 @@ export async function completeStepUpPasskeyAPI(sessionToken: string, credential:
   )
 }
 
-export async function submitKYCAPI(payload: KYCSubmission): Promise<KYCStatus> {
-  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc', payload)
+export async function submitBasicKYCAPI(payload: KYCBasicSubmission): Promise<KYCStatus> {
+  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/basic', payload)
+  return data
+}
+
+export async function verifyPhoneKYCAPI(code: string): Promise<KYCStatus> {
+  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/basic/verify-phone', { code })
+  return data
+}
+
+export async function resendKYCCodeAPI(): Promise<KYCStatus> {
+  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/basic/resend-code')
+  return data
+}
+
+export async function submitEnhancedKYCAPI(): Promise<KYCStatus> {
+  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/enhanced')
   return data
 }
 

@@ -4,7 +4,6 @@
 // is set, so it is safe to leave in the tree.
 import axios, { AxiosError } from 'axios'
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
-import { REQUIRED_DOC_TYPES } from './constants'
 import type {
   APIKey,
   ActivityEvent,
@@ -45,23 +44,15 @@ function mockId(prefix: string): string {
 function mockKycSeed(): KYCStatus {
   const base: KYCStatus = {
     state: 'under_review',
-    level: '',
-    method: 'document',
+    level: 'enhanced',
     cpf_masked: '***.***.***-00',
     legal_name: 'Mock User',
     birth_date: '1990-01-01',
-    address: {
-      zip_code: '01001-000',
-      street: 'Praça da Sé',
-      number: '100',
-      district: 'Sé',
-      city: 'São Paulo',
-      state: 'SP',
-    },
+    phone_masked: '***4321',
     documents: [
       { id: 'doc_front', type: 'id_front', uploaded_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
       { id: 'doc_back', type: 'id_back', uploaded_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
-      { id: 'doc_selfie_up', type: 'selfie_up', uploaded_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+      { id: 'doc_selfie_with_document', type: 'selfie_with_document', uploaded_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
     ],
     submitted_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
   }
@@ -316,16 +307,46 @@ const routes: Route[] = [
   { method: 'post', pattern: /^\/v1\.0\/auth\/step-up\/passkeys\/complete/, handle: () => ({}) },
   {
     method: 'post',
-    pattern: /^\/v1\.0\/account\/kyc$/,
+    pattern: /^\/v1\.0\/account\/kyc\/basic$/,
     handle: (_m, body) => {
       state.kyc = {
         ...state.kyc,
-        state: 'awaiting_files',
+        state: 'awaiting_phone_verification',
+        level: 'basic',
         legal_name: String(body.legal_name ?? ''),
         birth_date: String(body.birth_date ?? ''),
         cpf_masked: '***.***.***-00',
-        address: body.address as KYCStatus['address'],
+        phone_masked: '***' + String(body.phone_number ?? '').slice(-4),
         submitted_at: new Date().toISOString(),
+      }
+      return state.kyc
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/account\/kyc\/basic\/verify-phone$/,
+    handle: () => {
+      state.kyc = {
+        ...state.kyc,
+        state: 'basic_verified',
+        basic_verified_at: new Date().toISOString(),
+      }
+      return state.kyc
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/account\/kyc\/basic\/resend-code$/,
+    handle: () => state.kyc,
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/account\/kyc\/enhanced$/,
+    handle: () => {
+      state.kyc = {
+        ...state.kyc,
+        state: 'under_review',
+        level: 'enhanced',
       }
       return state.kyc
     },
@@ -347,8 +368,7 @@ const routes: Route[] = [
     handle: (_m, body) => {
       const type = body.type as KYCDocumentType
       const documents = [...(state.kyc.documents ?? []), { id: String(body.document_id), type, uploaded_at: new Date().toISOString() }]
-      const allUploaded = REQUIRED_DOC_TYPES.every((required) => documents.some((doc) => doc.type === required))
-      state.kyc = { ...state.kyc, documents, state: allUploaded ? 'under_review' : 'awaiting_files' }
+      state.kyc = { ...state.kyc, documents }
       return state.kyc
     },
   },

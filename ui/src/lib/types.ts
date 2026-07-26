@@ -105,30 +105,19 @@ export interface ActivityPage {
   next_cursor: string
 }
 
-export type KYCLevel = '' | 'verified'
+export type KYCLevel = '' | 'basic' | 'enhanced'
 
-/** Verification is document-only — kept as a type for forward compatibility. */
-export type KYCMethod = '' | 'document'
+/** Derived by the API from level+status+expiry — branch on this. */
+export type KYCState =
+  | 'not_started'
+  | 'awaiting_phone_verification'
+  | 'basic_verified'
+  | 'under_review'
+  | 'rejected'
+  | 'verified'
 
-/** Derived by the API from document status — branch on this. */
-export type KYCState = 'not_started' | 'awaiting_files' | 'under_review' | 'rejected' | 'verified'
-
-/**
- * The four selfie poses replace a single static photo: a printed photo or
- * looped video can't turn on command, so this is the liveness signal — the
- * reviewer still judges real-vs-photo, no server-side ML.
- */
-export type KYCDocumentType = 'id_front' | 'id_back' | 'selfie_up' | 'selfie_down' | 'selfie_left' | 'selfie_right'
-
-export interface Address {
-  zip_code: string
-  street: string
-  number: string
-  complement?: string
-  district: string
-  city: string
-  state: string
-}
+/** A static photo holding the document replaces the old four-clip video liveness check. */
+export type KYCDocumentType = 'id_front' | 'id_back' | 'selfie_with_document'
 
 export interface KYCDocument {
   id: string
@@ -139,11 +128,11 @@ export interface KYCDocument {
 export interface KYCStatus {
   state: KYCState
   level: KYCLevel
-  method?: KYCMethod
   cpf_masked?: string
   legal_name?: string
   birth_date?: string
-  address?: Address
+  phone_masked?: string
+  basic_verified_at?: string
   documents?: KYCDocument[]
   rejection_reason?: string
   submitted_at?: string
@@ -151,11 +140,11 @@ export interface KYCStatus {
   verified_at?: string
 }
 
-export interface KYCSubmission {
+export interface KYCBasicSubmission {
   cpf: string
   legal_name: string
   birth_date: string
-  address: Address
+  phone_number: string
 }
 
 export interface PresignedUpload {

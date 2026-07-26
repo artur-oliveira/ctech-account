@@ -20,10 +20,7 @@ const DOCUMENT_TYPES: KYCDocumentType[] = ['id_front', 'id_back']
 const TYPE_LABEL_KEY: Record<KYCDocumentType, string> = {
   id_front: 'identity.documentIdFront',
   id_back: 'identity.documentIdBack',
-  selfie_up: 'identity.selfieUp',
-  selfie_down: 'identity.selfieDown',
-  selfie_left: 'identity.selfieLeft',
-  selfie_right: 'identity.selfieRight',
+  selfie_with_document: 'identity.selfieWithDocument',
 }
 
 /**
