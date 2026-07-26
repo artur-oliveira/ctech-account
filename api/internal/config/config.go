@@ -55,6 +55,12 @@ type Config struct {
 	// verification path is disabled and only PIX-match verification is offered.
 	KYCDocumentsBucket string
 
+	// PhoneVerificationEnabled gates AWS SNS phone verification (PHONE_VERIFICATION_ENABLED
+	// env var, default false). While false, every Basic/OTP route hard-blocks
+	// with 503 — mirrors how an absent KYCDocumentsBucket disables document
+	// verification. Flip to true once production SNS SMS access is granted.
+	PhoneVerificationEnabled bool
+
 	// Reverse proxy
 	// TrustedProxies is a list of IPs/CIDRs whose X-Forwarded-For header is trusted.
 	// Set TRUSTED_PROXIES to a comma-separated list (e.g. "10.0.0.0/8,172.16.0.0/12").
@@ -129,6 +135,8 @@ func Load() (*Config, error) {
 		rpOrigins = append(rpOrigins, o)
 	}
 
+	phoneVerificationEnabled, _ := strconv.ParseBool(getEnv("PHONE_VERIFICATION_ENABLED", "false"))
+
 	return &Config{
 		AppVersion:    getEnv("APP_VERSION", DefaultAppVersion),
 		Environment:   getEnv("ENVIRONMENT", "dev"),
@@ -151,6 +159,7 @@ func Load() (*Config, error) {
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		KYCDocumentsBucket: os.Getenv("KYC_DOCUMENTS_BUCKET"),
+		PhoneVerificationEnabled: phoneVerificationEnabled,
 		TrustedProxies:     trustedProxies,
 		TOTPIssuer:         TOTPIssuer,
 		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
