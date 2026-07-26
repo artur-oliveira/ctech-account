@@ -34,6 +34,7 @@ const (
 
 	// KYC lifecycle. Metadata never contains personal data (no CPF).
 	EventKYCSubmitted        = "kyc.submitted"
+	EventKYCPhoneVerified    = "kyc.phone_verified"
 	EventKYCVerified         = "kyc.verified"
 	EventKYCDocumentUploaded = "kyc.document_uploaded"
 	EventKYCRejected         = "kyc.rejected"
