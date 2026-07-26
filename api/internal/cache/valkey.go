@@ -30,11 +30,16 @@ type Client struct {
 	inMemory bool
 	mu       sync.RWMutex
 	mem      map[string]memEntry
+
+	// Now is the clock used for in-memory TTL expiry. Defaults to time.Now;
+	// tests overriding cooldown/TTL behavior on an in-memory client can swap
+	// it out to fast-forward past an expiry without a real sleep.
+	Now func() time.Time
 }
 
 // NewInMemory returns an in-memory cache client suitable for testing.
 func NewInMemory() *Client {
-	return &Client{enabled: true, inMemory: true, mem: make(map[string]memEntry)}
+	return &Client{enabled: true, inMemory: true, mem: make(map[string]memEntry), Now: time.Now}
 }
 
 func New(url string) (*Client, error) {
@@ -54,7 +59,7 @@ func New(url string) (*Client, error) {
 		return nil, fmt.Errorf("creating valkey client: %w", err)
 	}
 
-	return &Client{client: client, enabled: true}, nil
+	return &Client{client: client, enabled: true, Now: time.Now}, nil
 }
 
 func (c *Client) Enabled() bool {
@@ -73,7 +78,7 @@ func (c *Client) Set(ctx context.Context, key string, value any, ttl time.Durati
 
 	if c.inMemory {
 		c.mu.Lock()
-		c.mem[key] = memEntry{data: data, expires: time.Now().Add(ttl)}
+		c.mem[key] = memEntry{data: data, expires: c.Now().Add(ttl)}
 		c.mu.Unlock()
 		return nil
 	}
@@ -91,7 +96,7 @@ func (c *Client) Get(ctx context.Context, key string, dest any) error {
 		c.mu.RLock()
 		entry, ok := c.mem[key]
 		c.mu.RUnlock()
-		if !ok || time.Now().After(entry.expires) {
+		if !ok || c.Now().After(entry.expires) {
 			return ErrNotFound
 		}
 		return json.Unmarshal(entry.data, dest)
@@ -133,7 +138,7 @@ func (c *Client) GetDel(ctx context.Context, key string, dest any) error {
 			delete(c.mem, key)
 		}
 		c.mu.Unlock()
-		if !ok || time.Now().After(entry.expires) {
+		if !ok || c.Now().After(entry.expires) {
 			return ErrNotFound
 		}
 		return json.Unmarshal(entry.data, dest)
@@ -178,6 +183,12 @@ func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	if !c.enabled {
 		return false, nil
 	}
+	if c.inMemory {
+		c.mu.RLock()
+		entry, ok := c.mem[key]
+		c.mu.RUnlock()
+		return ok && c.Now().Before(entry.expires), nil
+	}
 	cmd := c.client.B().Exists().Key(key).Build()
 	n, err := c.client.Do(ctx, cmd).AsInt64()
 	if err != nil {
@@ -197,7 +208,7 @@ func (c *Client) Count(ctx context.Context, key string) (int64, error) {
 		c.mu.RLock()
 		entry, ok := c.mem[key]
 		c.mu.RUnlock()
-		if !ok || time.Now().After(entry.expires) {
+		if !ok || c.Now().After(entry.expires) {
 			return 0, nil
 		}
 		var n int64
@@ -243,7 +254,7 @@ func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64
 		defer c.mu.Unlock()
 		entry, ok := c.mem[key]
 		var n int64
-		fresh := !ok || time.Now().After(entry.expires)
+		fresh := !ok || c.Now().After(entry.expires)
 		if !fresh {
 			_ = json.Unmarshal(entry.data, &n)
 		}
@@ -251,7 +262,7 @@ func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64
 		data, _ := json.Marshal(n)
 		expires := entry.expires
 		if fresh {
-			expires = time.Now().Add(ttl) // reset window only on a new key (NX semantics)
+			expires = c.Now().Add(ttl) // reset window only on a new key (NX semantics)
 		}
 		c.mem[key] = memEntry{data: data, expires: expires}
 		return n, nil
@@ -287,11 +298,11 @@ func (c *Client) SetNX(ctx context.Context, key, value string, ttl time.Duration
 	if c.inMemory {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		if entry, ok := c.mem[key]; ok && time.Now().Before(entry.expires) {
+		if entry, ok := c.mem[key]; ok && c.Now().Before(entry.expires) {
 			return false, nil
 		}
 		data, _ := json.Marshal(value)
-		c.mem[key] = memEntry{data: data, expires: time.Now().Add(ttl)}
+		c.mem[key] = memEntry{data: data, expires: c.Now().Add(ttl)}
 		return true, nil
 	}
 

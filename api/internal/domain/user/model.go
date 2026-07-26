@@ -15,29 +15,37 @@ type User struct {
 	IsEnabled     bool   `dynamodbav:"is_enabled"`
 	CreatedAt     string `dynamodbav:"created_at"`
 	UpdatedAt     string `dynamodbav:"updated_at"`
-	CPF           string `dynamodbav:"cpf,omitempty"`             // 11 digits, numbers only — never serialized to clients
-	BirthDate     string `dynamodbav:"birth_date,omitempty"`      // YYYY-MM-DD
-	LegalName     string `dynamodbav:"legal_name,omitempty"`      // name as registered with Receita Federal
-	KYCLevel      string `dynamodbav:"kyc_level,omitempty"`       // kyc.LevelNone | kyc.LevelBasic | kyc.LevelVerified
-	KYCVerifiedAt string `dynamodbav:"kyc_verified_at,omitempty"` // RFC3339
 
-	KYCMethod          string        `dynamodbav:"kyc_method,omitempty"`           // kyc.MethodPIX | kyc.MethodDocument
-	KYCDocStatus       string        `dynamodbav:"kyc_doc_status,omitempty"`       // kyc.DocStatus*
-	KYCRejectionReason string        `dynamodbav:"kyc_rejection_reason,omitempty"` // reviewer's note, shown to the user
-	KYCSubmittedAt     string        `dynamodbav:"kyc_submitted_at,omitempty"`     // RFC3339
-	KYCExpiresAt       string        `dynamodbav:"kyc_expires_at,omitempty"`       // RFC3339 — a stale pending submission unlocks re-submission
+	CPF       string  `dynamodbav:"cpf,omitempty"`        // 11 digits, numbers only — never serialized to clients
+	BirthDate string  `dynamodbav:"birth_date,omitempty"` // YYYY-MM-DD
+	LegalName string  `dynamodbav:"legal_name,omitempty"` // name as registered with Receita Federal
+	Address   Address `dynamodbav:"address,omitempty"`    // collected at Basic — needed for future BaaS integration
+
+	KYCLevel           string        `dynamodbav:"kyc_level,omitempty"`             // kyc.LevelNone | kyc.LevelBasic | kyc.LevelEnhanced
+	KYCStatus          string        `dynamodbav:"kyc_status,omitempty"`            // kyc.Status* — renamed from kyc_doc_status
+	KYCBasicVerifiedAt string        `dynamodbav:"kyc_basic_verified_at,omitempty"` // RFC3339 — set once, never cleared
+	KYCVerifiedAt      string        `dynamodbav:"kyc_verified_at,omitempty"`       // RFC3339 — Enhanced verified timestamp
+	KYCRejectionReason string        `dynamodbav:"kyc_rejection_reason,omitempty"`  // reviewer's note, Enhanced only
+	KYCSubmittedAt     string        `dynamodbav:"kyc_submitted_at,omitempty"`      // RFC3339 — whichever level is currently pending
+	KYCExpiresAt       string        `dynamodbav:"kyc_expires_at,omitempty"`        // RFC3339 — stale Enhanced pending unlocks re-submission
 	KYCDocuments       []KYCDocument `dynamodbav:"kyc_documents,omitempty"`
 
-	Address Address `dynamodbav:"address,omitempty"`
+	PhoneNumber     string `dynamodbav:"phone_number,omitempty"`      // E.164, collected at Basic
+	PhoneVerifiedAt string `dynamodbav:"phone_verified_at,omitempty"` // RFC3339
 
-	TOSVersion        string `dynamodbav:"tos_version,omitempty"`         // legal.CurrentToSVersion at acceptance time
-	TOSAcceptedAt     string `dynamodbav:"tos_accepted_at,omitempty"`     // RFC3339
-	PrivacyVersion    string `dynamodbav:"privacy_version,omitempty"`     // legal.CurrentPrivacyVersion at acceptance time
-	PrivacyAcceptedAt string `dynamodbav:"privacy_accepted_at,omitempty"` // RFC3339
+	KYCRiskScore       int      `dynamodbav:"kyc_risk_score,omitempty"`
+	KYCRiskSignals     []string `dynamodbav:"kyc_risk_signals,omitempty"`      // "name:detail" pairs, latest snapshot
+	KYCRiskEvaluatedAt string   `dynamodbav:"kyc_risk_evaluated_at,omitempty"` // RFC3339
+
+	TOSVersion        string `dynamodbav:"tos_version,omitempty"`
+	TOSAcceptedAt     string `dynamodbav:"tos_accepted_at,omitempty"`
+	PrivacyVersion    string `dynamodbav:"privacy_version,omitempty"`
+	PrivacyAcceptedAt string `dynamodbav:"privacy_accepted_at,omitempty"`
 }
 
-// Address is the residential address collected during KYC. It lives here (not
-// in the kyc package) because kyc imports user, not the other way round.
+// Address is the residential address collected during Basic KYC. It lives
+// here (not in the kyc package) because kyc imports user, not the other way
+// round. Kept post-tiering because the planned BaaS integration needs it.
 type Address struct {
 	ZipCode    string `dynamodbav:"zip_code" json:"zip_code"`
 	Street     string `dynamodbav:"street" json:"street"`

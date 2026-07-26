@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"gopkg.aoctech.app/account/api/internal/database"
+	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
 
@@ -20,49 +21,66 @@ const usersTable = "account_users"
 
 const conditionalCheckFailed = "ConditionalCheckFailed"
 
-// Record is one full submission as persisted on the user item.
-type Record struct {
+// BasicRecord is a validated Basic submission as persisted on the user item.
+// Address is collected here (not Enhanced) — the planned BaaS integration
+// needs it at the level every verified user reaches.
+type BasicRecord struct {
 	CPF         string
 	LegalName   string
 	BirthDate   string
-	Method      string
+	PhoneNumber string
 	Address     Address
-	DocStatus   string
 	SubmittedAt string
-	ExpiresAt   string
 }
 
 // Repository persists KYC state on the user item plus a CPF_{cpf}
 // uniqueness item, transactionally.
 type Repository interface {
 	GetUser(ctx context.Context, userID string) (*user.User, error)
-	// SaveSubmission writes the identity data and doc_status=pending_review on
-	// the user (the caller has already verified every required document is
-	// uploaded), claims CPF_{cpf} (failing with ErrCPFConflict if another
-	// account owns it), and releases CPF_{oldCPF} when re-submitting with a
-	// different CPF. It clears any previous rejection reason but leaves
-	// kyc_documents untouched — those documents are the submission.
-	SaveSubmission(ctx context.Context, userID string, rec Record, oldCPF string) error
-	// AddDocument appends an uploaded document and sets the doc status
-	// (awaiting_files while the user is still gathering required documents).
-	AddDocument(ctx context.Context, userID string, doc Document, docStatus string) error
+
+	// SaveBasicSubmission writes Basic identity data, sets kyc_level=basic and
+	// kyc_status=pending, and claims CPF_{cpf} transactionally (failing with
+	// ErrCPFConflict if another account owns it, releasing CPF_{oldCPF} when
+	// re-submitting with a different CPF). Only reachable while Basic is not
+	// yet phone-verified — see Service.SubmitBasic.
+	SaveBasicSubmission(ctx context.Context, userID string, rec BasicRecord, oldCPF string) error
+	// MarkPhoneVerified sets kyc_status=verified, phone_verified_at, and
+	// kyc_basic_verified_at (only ever called once per Basic cycle — see
+	// Service.VerifyPhone).
+	MarkPhoneVerified(ctx context.Context, userID, verifiedAt string) error
+
+	// AddDocument appends an uploaded Enhanced document. Unlike the old
+	// single-tier scheme there is no separate "awaiting files" doc status:
+	// documents may accumulate any time Service.assertAcceptsDocuments allows
+	// it, while the derived state stays basic_verified until SubmitEnhanced.
+	AddDocument(ctx context.Context, userID string, doc Document) error
 	// SavePendingDocument records the presigned upload intent (documentID →
 	// type, content_type) so ConfirmDocument can reject a mismatched type
-	// (SEC-018). Conditional on the pk not existing — a documentID is a UUID, so
-	// a conflict would mean a reused id.
+	// (SEC-018).
 	SavePendingDocument(ctx context.Context, userID, documentID, docType, contentType string) error
-	// GetPendingDocument returns the recorded intent for documentID, or nil when
-	// none was presigned.
+	// GetPendingDocument returns the recorded intent for documentID, or nil
+	// when none was presigned.
 	GetPendingDocument(ctx context.Context, documentID string) (*PendingDocument, error)
 	// DeletePendingDocument drops the intent once the upload is confirmed.
 	DeletePendingDocument(ctx context.Context, documentID string) error
+
+	// SaveEnhancedSubmission moves a basic/verified (or enhanced/rejected)
+	// user to enhanced/pending. Documents were already uploaded and validated
+	// by Service.SubmitEnhanced; no CPF transaction is needed since it was
+	// already claimed at Basic time.
+	SaveEnhancedSubmission(ctx context.Context, userID, submittedAt, expiresAt string) error
 	MarkVerified(ctx context.Context, userID, verifiedAt string) error
 	// MarkRejected records the rejection and clears kyc_documents: a rejected
 	// submission's documents were judged insufficient, so a resubmission must
 	// upload fresh ones.
 	MarkRejected(ctx context.Context, userID, reason string) error
-	// ListPendingKYC returns every user whose doc_status is pending_review, for
-	// cmd/kyc list. This is an operator-tool Scan, not a request path.
+
+	// SaveRiskAssessment overwrites the latest risk snapshot — no history is
+	// kept (spec §9).
+	SaveRiskAssessment(ctx context.Context, userID string, a risk.Assessment) error
+
+	// ListPendingKYC returns every user whose Enhanced submission is queued
+	// for review, for cmd/kyc list. Operator-tool Scan, not a request path.
 	ListPendingKYC(ctx context.Context) ([]*user.User, error)
 }
 
@@ -82,7 +100,7 @@ func (r *dynamoRepository) GetUser(ctx context.Context, userID string) (*user.Us
 	return r.userRepo.GetByID(ctx, userID)
 }
 
-func (r *dynamoRepository) SaveSubmission(ctx context.Context, userID string, rec Record, oldCPF string) error {
+func (r *dynamoRepository) SaveBasicSubmission(ctx context.Context, userID string, rec BasicRecord, oldCPF string) error {
 	table := r.table
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -119,25 +137,21 @@ func (r *dynamoRepository) SaveSubmission(ctx context.Context, userID string, re
 				Key: map[string]types.AttributeValue{
 					"pk": &types.AttributeValueMemberS{Value: user.BuildPK(userID)},
 				},
-				// The documents backing this submission were already uploaded and
-				// validated by Service.Submit — only identity data and the doc
-				// status move here. A stale rejection reason must not survive it.
 				UpdateExpression: aws.String(
-					"SET cpf = :cpf, legal_name = :ln, birth_date = :bd, " +
-						"kyc_method = :m, kyc_doc_status = :ds, kyc_submitted_at = :sub, " +
-						"kyc_expires_at = :exp, address = :addr, updated_at = :now " +
-						"REMOVE kyc_rejection_reason",
+					"SET cpf = :cpf, legal_name = :ln, birth_date = :bd, phone_number = :phone, address = :addr, " +
+						"kyc_level = :lvl, kyc_status = :st, kyc_submitted_at = :sub, updated_at = :now " +
+						"REMOVE kyc_rejection_reason, phone_verified_at",
 				),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":cpf":  &types.AttributeValueMemberS{Value: rec.CPF},
-					":ln":   &types.AttributeValueMemberS{Value: rec.LegalName},
-					":bd":   &types.AttributeValueMemberS{Value: rec.BirthDate},
-					":m":    &types.AttributeValueMemberS{Value: rec.Method},
-					":ds":   &types.AttributeValueMemberS{Value: rec.DocStatus},
-					":sub":  &types.AttributeValueMemberS{Value: rec.SubmittedAt},
-					":exp":  &types.AttributeValueMemberS{Value: rec.ExpiresAt},
-					":addr": address,
-					":now":  &types.AttributeValueMemberS{Value: now},
+					":cpf":   &types.AttributeValueMemberS{Value: rec.CPF},
+					":ln":    &types.AttributeValueMemberS{Value: rec.LegalName},
+					":bd":    &types.AttributeValueMemberS{Value: rec.BirthDate},
+					":phone": &types.AttributeValueMemberS{Value: rec.PhoneNumber},
+					":addr":  address,
+					":lvl":   &types.AttributeValueMemberS{Value: LevelBasic},
+					":st":    &types.AttributeValueMemberS{Value: StatusPending},
+					":sub":   &types.AttributeValueMemberS{Value: rec.SubmittedAt},
+					":now":   &types.AttributeValueMemberS{Value: now},
 				},
 			},
 		},
@@ -168,7 +182,15 @@ func (r *dynamoRepository) SaveSubmission(ctx context.Context, userID string, re
 	return nil
 }
 
-func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc Document, docStatus string) error {
+func (r *dynamoRepository) MarkPhoneVerified(ctx context.Context, userID, verifiedAt string) error {
+	return r.userRepo.Update(ctx, userID, map[string]any{
+		"kyc_status":            StatusVerified,
+		"phone_verified_at":     verifiedAt,
+		"kyc_basic_verified_at": verifiedAt,
+	})
+}
+
+func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc Document) error {
 	table := r.table
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -185,13 +207,11 @@ func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc D
 		TableName: aws.String(table),
 		Key:       key,
 		UpdateExpression: aws.String(
-			"SET kyc_documents = list_append(if_not_exists(kyc_documents, :empty), :doc), " +
-				"kyc_doc_status = :ds, updated_at = :now",
+			"SET kyc_documents = list_append(if_not_exists(kyc_documents, :empty), :doc), updated_at = :now",
 		),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":empty": &types.AttributeValueMemberL{Value: []types.AttributeValue{}},
 			":doc":   docAV,
-			":ds":    &types.AttributeValueMemberS{Value: docStatus},
 			":now":   &types.AttributeValueMemberS{Value: now},
 		},
 	}
@@ -200,13 +220,10 @@ func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc D
 }
 
 // pendingPKPrefix keys the standalone item holding a presigned upload intent.
-// It lives in the same table as the user items (single-table pattern).
 const pendingPKPrefix = "KYCPEND_"
 
 func buildPendingPK(documentID string) string { return pendingPKPrefix + documentID }
 
-// SavePendingDocument writes the presign intent as its own item, conditional on
-// the pk not existing so a reused documentID fails fast.
 func (r *dynamoRepository) SavePendingDocument(ctx context.Context, userID, documentID, docType, contentType string) error {
 	item, err := attributevalue.MarshalMap(map[string]string{
 		"pk":           buildPendingPK(documentID),
@@ -227,8 +244,6 @@ func (r *dynamoRepository) SavePendingDocument(ctx context.Context, userID, docu
 	return nil
 }
 
-// GetPendingDocument reads the intent written by SavePendingDocument, or nil
-// when the documentID was never presigned.
 func (r *dynamoRepository) GetPendingDocument(ctx context.Context, documentID string) (*PendingDocument, error) {
 	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.table),
@@ -249,9 +264,6 @@ func (r *dynamoRepository) GetPendingDocument(ctx context.Context, documentID st
 	return &p, nil
 }
 
-// DeletePendingDocument removes the intent once the upload is confirmed. It is
-// best-effort from the caller's perspective, so errors are surfaced but not
-// fatal.
 func (r *dynamoRepository) DeletePendingDocument(ctx context.Context, documentID string) error {
 	if _, err := r.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.table),
@@ -264,27 +276,35 @@ func (r *dynamoRepository) DeletePendingDocument(ctx context.Context, documentID
 	return nil
 }
 
+func (r *dynamoRepository) SaveEnhancedSubmission(ctx context.Context, userID, submittedAt, expiresAt string) error {
+	return r.userRepo.Update(ctx, userID, map[string]any{
+		"kyc_level":            LevelEnhanced,
+		"kyc_status":           StatusPending,
+		"kyc_submitted_at":     submittedAt,
+		"kyc_expires_at":       expiresAt,
+		"kyc_rejection_reason": "",
+	})
+}
+
 func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt string) error {
 	return r.userRepo.Update(ctx, userID, map[string]any{
-		"kyc_level":            LevelVerified,
+		"kyc_status":           StatusVerified,
 		"kyc_verified_at":      verifiedAt,
-		"kyc_doc_status":       DocStatusNone,
 		"kyc_rejection_reason": "",
 	})
 }
 
 func (r *dynamoRepository) MarkRejected(ctx context.Context, userID, reason string) error {
 	if err := r.userRepo.Update(ctx, userID, map[string]any{
-		"kyc_doc_status":       DocStatusRejected,
+		"kyc_status":           StatusRejected,
 		"kyc_rejection_reason": reason,
 	}); err != nil {
 		return err
 	}
 	// Documents were judged insufficient — clear them so re-submission requires
 	// a fresh upload instead of silently reusing the rejected ones.
-	table := r.table
 	update := types.Update{
-		TableName: aws.String(table),
+		TableName: aws.String(r.table),
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: user.BuildPK(userID)},
 		},
@@ -294,19 +314,35 @@ func (r *dynamoRepository) MarkRejected(ctx context.Context, userID, reason stri
 	return err
 }
 
-// ListPendingKYC scans for users whose submission is queued for review.
+func (r *dynamoRepository) SaveRiskAssessment(ctx context.Context, userID string, a risk.Assessment) error {
+	signals := make([]string, len(a.Signals))
+	for i, s := range a.Signals {
+		signals[i] = s.Name + ":" + s.Detail
+	}
+	return r.userRepo.Update(ctx, userID, map[string]any{
+		"kyc_risk_score":        a.Score,
+		"kyc_risk_signals":      signals,
+		"kyc_risk_evaluated_at": a.EvaluatedAt,
+	})
+}
+
+// ListPendingKYC scans for users whose Enhanced submission is queued for
+// review.
 // ponytail: offline operator tool (cmd/kyc list), not a request path — a GSI
-// on kyc_doc_status is the scale upgrade if this table grows large.
+// on kyc_status is the scale upgrade if this table grows large.
 func (r *dynamoRepository) ListPendingKYC(ctx context.Context) ([]*user.User, error) {
 	table := r.table
 	var users []*user.User
 	var startKey map[string]types.AttributeValue
 	for {
 		out, err := r.db.Scan(ctx, &dynamodb.ScanInput{
-			TableName:                 aws.String(table),
-			FilterExpression:          aws.String("kyc_doc_status = :ds"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{":ds": &types.AttributeValueMemberS{Value: DocStatusPendingReview}},
-			ExclusiveStartKey:         startKey,
+			TableName:        aws.String(table),
+			FilterExpression: aws.String("kyc_level = :lvl AND kyc_status = :st"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":lvl": &types.AttributeValueMemberS{Value: LevelEnhanced},
+				":st":  &types.AttributeValueMemberS{Value: StatusPending},
+			},
+			ExclusiveStartKey: startKey,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("scanning for pending kyc: %w", err)

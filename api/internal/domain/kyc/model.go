@@ -9,62 +9,48 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
 
-// KYC verification levels stored on the user and exposed as the kyc_level claim.
-// Downstream services (ctech-wallet, ctech-dfe) read this and nothing else —
-// never widen the value set. KYC is manual-only: kyc_level stays LevelNone
-// throughout the pending phase and only becomes LevelVerified once a human
-// reviewer approves it via cmd/kyc — there is no intermediate level.
+// KYC verification levels stored on the user. ClaimLevel (below) maps these
+// onto ctech-wallet's existing kyc_level claim contract ("" | "basic" |
+// "verified") — never widen that value set; LevelEnhanced never appears in a
+// token as-is.
 const (
 	LevelNone     = ""
-	LevelVerified = "verified" // a human reviewer approved the submitted documents
+	LevelBasic    = "basic"
+	LevelEnhanced = "enhanced"
 )
 
-// MethodDocument is the only verification method: the user uploads identity
-// documents and a human reviews them. Stored on kyc_method for forward
-// compatibility with any future method, but nothing else is ever written here.
+// KYCStatus values. StatusRejected is only reachable from LevelEnhanced —
+// Basic never regresses once verified (spec §4).
 const (
-	MethodNone     = ""
-	MethodDocument = "document"
+	StatusNone     = ""
+	StatusPending  = "pending"
+	StatusVerified = "verified"
+	StatusRejected = "rejected"
 )
 
-// Document review outcome.
+// User-facing state, derived from level+status+expiry (see Service.state) —
+// the UI branches on this single value instead of recombining level/status.
 const (
-	DocStatusNone          = ""
-	DocStatusAwaitingFiles = "awaiting_files" // submitted, required documents not all uploaded yet
-	DocStatusPendingReview = "pending_review" // all required documents uploaded, queued for a reviewer
-	DocStatusRejected      = "rejected"       // reviewer refused it; the user may re-submit
+	StateNotStarted                = "not_started"
+	StateAwaitingPhoneVerification = "awaiting_phone_verification"
+	StateBasicVerified             = "basic_verified"
+	StateUnderReview               = "under_review"
+	StateRejected                  = "rejected"
+	StateVerified                  = "verified"
 )
 
-// User-facing state, derived from doc status + submitted_at (never from
-// kyc_level, which stays "" until verified). The UI renders off this so it
-// never has to recombine the underlying fields.
+// Enhanced document types. A printed photo can't hold itself next to an ID,
+// so the human reviewer judges real-vs-photo from one static shot instead of
+// the four head-turn video clips the old single-tier scheme required.
 const (
-	StateNotStarted    = "not_started"
-	StateAwaitingFiles = "awaiting_files" // submitted, required documents not all uploaded yet
-	StateUnderReview   = "under_review"   // all required documents uploaded, waiting on a reviewer
-	StateRejected      = "rejected"
-	StateVerified      = "verified"
+	DocTypeIDFront            = "id_front"
+	DocTypeIDBack             = "id_back"
+	DocTypeSelfieWithDocument = "selfie_with_document"
 )
 
-// Document types accepted for manual review. The four selfie poses replace a
-// single static photo: a printed photo or looping video cannot turn on
-// command, so the reviewer gets a lightweight liveness signal without any
-// server-side ML.
-const (
-	DocTypeIDFront     = "id_front"
-	DocTypeIDBack      = "id_back"
-	DocTypeSelfieUp    = "selfie_up"
-	DocTypeSelfieDown  = "selfie_down"
-	DocTypeSelfieLeft  = "selfie_left"
-	DocTypeSelfieRight = "selfie_right"
-)
-
-// RequiredDocTypes are the documents Submit requires before it will accept a
-// submission — see Service.Submit.
-var RequiredDocTypes = []string{
-	DocTypeIDFront, DocTypeIDBack,
-	DocTypeSelfieUp, DocTypeSelfieDown, DocTypeSelfieLeft, DocTypeSelfieRight,
-}
+// RequiredDocTypes are the documents SubmitEnhanced requires before it will
+// accept a submission — see Service.SubmitEnhanced.
+var RequiredDocTypes = []string{DocTypeIDFront, DocTypeIDBack, DocTypeSelfieWithDocument}
 
 // Review decisions accepted by cmd/kyc.
 const (
@@ -73,25 +59,33 @@ const (
 )
 
 const (
-	// MinAge is the minimum age (years) to submit for KYC — real-money games
-	// require adults, and the rule lives here so downstream services only read
-	// kyc_level.
+	// MinAge is the minimum age (years) to submit for KYC.
 	MinAge = 18
 
-	// SubmissionTTL is how long a pending submission holds the user's CPF. Past
-	// it the submission is stale (no reviewer acted) and the user may submit
-	// again — see Service.Submit.
+	// SubmissionTTL is how long a pending Enhanced submission holds the queue
+	// slot. Past it the submission is stale (no reviewer acted) and reads back
+	// as basic_verified — see Service.state.
 	SubmissionTTL = 30 * 24 * time.Hour
 
-	// MaxDocumentBytes caps an uploaded identity document or selfie clip.
+	// MaxDocumentBytes caps an uploaded identity document or selfie photo.
 	MaxDocumentBytes = 5 << 20
 
 	// PresignTTL bounds how long an upload/download URL stays usable.
 	PresignTTL = 10 * time.Minute
 
-	// MaxDocuments caps how many files one submission may carry: the 6
-	// required documents plus headroom for re-taking a blurry shot.
+	// MaxDocuments caps how many files one Enhanced submission may carry: the
+	// 3 required documents plus headroom for re-taking a blurry shot.
 	MaxDocuments = 10
+
+	// OTPLength is the digit count of a phone-verification code.
+	OTPLength = 6
+	// OTPTTL bounds how long a sent code stays valid.
+	OTPTTL = 10 * time.Minute
+	// OTPResendCooldown is the minimum gap between two sent codes.
+	OTPResendCooldown = 60 * time.Second
+	// OTPMaxAttempts caps wrong-code guesses against one sent code; exceeding
+	// it requires a fresh resend rather than a permanent lockout.
+	OTPMaxAttempts = 5
 )
 
 // TimeLayout is the wire/storage format for every timestamp in this package.
@@ -108,21 +102,54 @@ func BuildDocumentKey(userID, documentID string) string {
 	return "kyc/" + userID + "/" + documentID
 }
 
+// ClaimLevel maps (level, status) onto ctech-wallet's existing kyc_level
+// claim contract — see ctech-wallet/api/internal/middleware/scope.go. Called
+// from handler/token.go and handler/userinfo.go; ctech-wallet requires no
+// changes.
+func ClaimLevel(level, status string) string {
+	switch {
+	case level == LevelEnhanced && status == StatusVerified:
+		return "verified"
+	case level == LevelBasic && status == StatusVerified:
+		return "basic"
+	case level == LevelEnhanced:
+		return "basic" // pending or rejected enhanced still keeps basic access
+	default:
+		return ""
+	}
+}
+
 var (
 	ErrInvalidCPF       = errors.New("invalid cpf")
 	ErrInvalidBirthDate = errors.New("invalid birth date")
 	ErrUnderage         = errors.New("user is under the minimum age")
 	ErrCPFConflict      = errors.New("cpf already registered to another account")
+	ErrInvalidPhone     = errors.New("invalid phone number")
+	ErrInvalidAddress   = errors.New("invalid address")
 	ErrAlreadyVerified  = errors.New("kyc already verified")
 	ErrNotSubmitted     = errors.New("kyc data not submitted")
-	ErrInvalidAddress   = errors.New("invalid address")
+
+	// ErrBasicRequired is returned when Enhanced is submitted before Basic has
+	// been phone-verified (spec §4: Enhanced requires Basic verified first).
+	ErrBasicRequired = errors.New("basic verification must be completed first")
+	// ErrBasicLocked is returned when Basic identity data is resubmitted after
+	// it has already been phone-verified — Basic never regresses.
+	ErrBasicLocked = errors.New("basic identity data cannot be changed once verified")
+
+	// ErrPhoneVerificationUnavailable is returned by every Basic/OTP method
+	// while PHONE_VERIFICATION_ENABLED is false (see Service.PhoneVerificationEnabled).
+	ErrPhoneVerificationUnavailable = errors.New("phone verification is not available")
+	ErrNoOTPPending                 = errors.New("no verification code is pending")
+	ErrInvalidCode                  = errors.New("invalid verification code")
+	ErrTooManyAttempts              = errors.New("too many invalid attempts, request a new code")
+	ErrResendCooldown               = errors.New("a code was already sent recently")
 
 	// ErrInvalidMethod is returned when document verification is unavailable —
 	// no bucket is configured (see Service.DocumentsEnabled).
 	ErrInvalidMethod = errors.New("document verification is not available")
 
-	// ErrSubmissionLocked guards a pending submission: identity data is frozen
-	// until the submission is rejected or expires.
+	// ErrSubmissionLocked guards an Enhanced submission under active review:
+	// documents and the submit route are frozen until it is rejected or expires.
 	ErrSubmissionLocked = errors.New("kyc submission is pending and cannot be changed")
 
 	ErrInvalidDocumentType = errors.New("invalid document type")
@@ -138,7 +165,7 @@ var (
 	ErrDocumentTypeMismatch = errors.New("document type does not match the presigned intent")
 )
 
-// Address and Document are stored on the user item, so their canonical
+// Address and Document are stored on the user item; their canonical
 // definitions live in the user package (kyc imports user, not the reverse).
 type (
 	Address  = user.Address
@@ -147,27 +174,25 @@ type (
 
 // PendingDocument is the server-side upload intent recorded when a document is
 // presigned (see Service.PresignDocument). ConfirmDocument must match the
-// client-supplied Type against PendingDocument.Type — otherwise a holder of a
-// presigned URL could PUT a file of one type and confirm it as another,
-// defeating the check (SEC-018). It is persisted as its own item
-// (KYCPEND_<documentID>) rather than on the user record, because the kyc
-// package must not mutate the user model.
+// client-supplied Type against PendingDocument.Type (SEC-018). Persisted as
+// its own item (KYCPEND_<documentID>) rather than on the user record.
 type PendingDocument struct {
-	UserID      string `dynamodbav:"user_id"`      // owner, guards against cross-user confirm
-	Type        string `dynamodbav:"doc_type"`     // the only type ConfirmDocument may record
-	ContentType string `dynamodbav:"content_type"` // pinned type, also enforced by the signed URL
+	UserID      string `dynamodbav:"user_id"`
+	Type        string `dynamodbav:"doc_type"`
+	ContentType string `dynamodbav:"content_type"`
 }
 
-// Status is the user-facing view of KYC state (CPF always masked, S3 keys
-// never exposed).
+// Status is the user-facing view of KYC state (CPF/phone always masked, S3
+// keys never exposed).
 type Status struct {
 	State           string     `json:"state"`
 	Level           string     `json:"level"`
-	Method          string     `json:"method,omitempty"`
 	CPFMasked       string     `json:"cpf_masked,omitempty"`
 	LegalName       string     `json:"legal_name,omitempty"`
 	BirthDate       string     `json:"birth_date,omitempty"`
+	PhoneMasked     string     `json:"phone_masked,omitempty"`
 	Address         *Address   `json:"address,omitempty"`
+	BasicVerifiedAt string     `json:"basic_verified_at,omitempty"`
 	Documents       []Document `json:"documents,omitempty"`
 	RejectionReason string     `json:"rejection_reason,omitempty"`
 	SubmittedAt     string     `json:"submitted_at,omitempty"`
@@ -175,28 +200,28 @@ type Status struct {
 	VerifiedAt      string     `json:"verified_at,omitempty"`
 }
 
-// Submission is the validated input of Service.Submit.
-type Submission struct {
-	CPF       string
-	LegalName string
-	BirthDate string
-	Address   Address
+// BasicSubmission is the validated input of Service.SubmitBasic.
+type BasicSubmission struct {
+	CPF         string
+	LegalName   string
+	BirthDate   string
+	PhoneNumber string // E.164
+	Address     Address
 }
 
-// IsValidDocumentType reports whether t is an accepted document type.
+// IsValidDocumentType reports whether t is an accepted Enhanced document type.
 func IsValidDocumentType(t string) bool {
 	return slices.Contains(RequiredDocTypes, t)
 }
 
-// allowedContentTypes are the MIME types a reviewer can actually open. The
-// presigned PUT pins the content type, so this is what ends up in the bucket.
+// allowedContentTypes are the MIME types a reviewer can actually open. Video
+// types are gone along with the 4-clip selfie flow — every Enhanced document
+// is now a static photo or PDF.
 var allowedContentTypes = []string{
 	"image/jpeg",
 	"image/png",
 	"image/heic",
 	"application/pdf",
-	"video/webm",
-	"video/mp4",
 }
 
 // IsValidContentType reports whether ct may be uploaded as an identity document.
