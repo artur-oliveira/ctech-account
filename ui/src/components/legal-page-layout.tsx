@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
+import type {ReactNode} from 'react'
+import {useTranslation} from 'react-i18next'
 
 export type LegalDocumentVersion = {
   version: string
@@ -28,24 +28,39 @@ export const DFE_VERSION_HISTORY: LegalDocumentVersion[] = [
 ]
 
 export const WALLET_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/wallet'},
+  {version: '2.1', updatedAt: '25 de julho de 2026', href: '/products/wallet'},
+  {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/wallet/v2'},
   {version: '1.0', updatedAt: '11 de julho de 2026', href: '/products/wallet/v1'},
+]
+export const WALLET_GAMING_VERSION_HISTORY: LegalDocumentVersion[] = [
+  {version: '2.1', updatedAt: '25 de julho de 2026', href: '/products/wallet-gaming'},
+  {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/wallet-gaming/v1'},
+]
+
+export const POKER_VERSION_HISTORY: LegalDocumentVersion[] = [
+  {version: '2.0', updatedAt: '25 de julho de 2026', href: '/products/poker'},
+  {version: '1.0', updatedAt: '19 de julho de 2026', href: '/products/poker/v1'},
+]
+
+export const POKER_PRIVACY_VERSION_HISTORY: LegalDocumentVersion[] = [
+  {version: '2.0', updatedAt: '25 de julho de 2026', href: '/products/poker-privacy'},
+  {version: '1.0', updatedAt: '19 de julho de 2026', href: '/products/poker-privacy/v1'},
 ]
 
 export function LegalPageLayout({
-  title,
-  version,
-  updatedAt,
-  versionHistory,
-  children,
-}: {
+                                  title,
+                                  version,
+                                  updatedAt,
+                                  versionHistory,
+                                  children,
+                                }: {
   title: string
   version: string
   updatedAt: string
   versionHistory?: LegalDocumentVersion[]
   children: ReactNode
 }) {
-  const { t } = useTranslation()
+  const {t} = useTranslation()
   return (
     <div className="min-h-screen bg-muted/40">
       <div className="mx-auto max-w-3xl px-4 py-12">
@@ -60,7 +75,7 @@ export function LegalPageLayout({
 
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-1 text-xs text-muted-foreground">Versão {version}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('legal.lastUpdated', { date: updatedAt })}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t('legal.lastUpdated', {date: updatedAt})}</p>
 
         <article className="mt-8 space-y-8 text-sm leading-relaxed text-foreground/90">{children}</article>
 
@@ -97,7 +112,7 @@ export function LegalPageLayout({
   )
 }
 
-export function LegalSection({ heading, children }: { heading: string; children: ReactNode }) {
+export function LegalSection({heading, children}: { heading: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold tracking-tight text-foreground">{heading}</h2>

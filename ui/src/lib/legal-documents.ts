@@ -1,3 +1,12 @@
+import {
+  DFE_VERSION_HISTORY,
+  LegalDocumentVersion,
+  POKER_PRIVACY_VERSION_HISTORY,
+  POKER_VERSION_HISTORY,
+  WALLET_GAMING_VERSION_HISTORY,
+  WALLET_VERSION_HISTORY
+} from "@/components/legal-page-layout";
+
 export type LegalDocumentId =
   | 'cookies'
   | 'security'
@@ -11,9 +20,13 @@ export type LegalDocumentId =
   | 'dfe-v1'
   | 'wallet'
   | 'wallet-v1'
+  | 'wallet-v2'
   | 'wallet-gaming'
+  | 'wallet-gaming-v1'
   | 'poker'
+  | 'poker-v1'
   | 'poker-privacy'
+  | 'poker-privacy-v1'
   | 'poker-rules'
   | 'billing'
 
@@ -29,6 +42,7 @@ export type LegalDocument = {
   version: string
   updatedAt: string
   intro: string
+  versions?: LegalDocumentVersion[];
   sections: LegalSectionData[]
 }
 
@@ -259,6 +273,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     description: 'Condições específicas do serviço de documentos fiscais eletrônicos.',
     version: '2.0',
     updatedAt,
+    versions: DFE_VERSION_HISTORY,
     intro: 'Estes Termos complementam os Termos de Uso, a Política de Privacidade e o DPA da CTech.',
     sections: [
       {
@@ -288,6 +303,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     description: 'Versão histórica dos termos específicos do CTech DF-e.',
     version: '1.0',
     updatedAt: '10 de julho de 2026',
+    versions: DFE_VERSION_HISTORY,
     intro: '',
     sections: [
       {
@@ -320,7 +336,59 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   wallet: {
     title: 'Termos Adicionais — CTech Wallet',
     description: 'Condições de saldo, Pix, saques e pagamentos internos.',
+    version: '2.1',
+    updatedAt: '25 de julho de 2026',
+    versions: WALLET_VERSION_HISTORY,
+    intro: 'A Wallet é uma carteira digital que opera por meio de parceiro de infraestrutura financeira regulado pelo Banco Central (BaaS). Cada usuário possui conta de pagamento individual e segregada. A CTech não é instituição financeira e a Wallet não constitui conta bancária.',
+    sections: [
+      {
+        heading: '1. Contas individuais e segregação',
+        paragraphs: [
+          'Cada usuário com identidade verificada possui uma conta de pagamento digital individual junto ao parceiro financeiro, vinculada ao seu CPF. Os recursos do usuário são mantidos segregados do patrimônio da CTech e dos demais usuários.',
+          'O saldo não constitui depósito bancário, investimento, crédito ou rendimento. Não há incidência de juros, correção monetária ou qualquer remuneração sobre o saldo.'
+        ]
+      },
+      {
+        heading: '2. Depósitos e identificação',
+        paragraphs: [
+          'Depósitos são realizados exclusivamente por Pix para a conta digital individual do usuário. O valor somente é creditado após confirmação pelo parceiro financeiro e conciliação automática.',
+          'O CPF do pagador deve coincidir com o CPF verificado na conta CTech. Depósitos de terceiros são recusados e devolvidos automaticamente à origem, deduzidos eventuais custos operacionais.'
+        ]
+      },
+      {
+        heading: '3. Saques',
+        paragraphs: [
+          'Saques são realizados por Pix a partir da conta digital individual do usuário. A chave Pix de destino deve pertencer ao mesmo CPF verificado na conta.',
+          'O valor mínimo de saque e as tarifas aplicáveis são exibidos antes da confirmação. A tarifa de saque cobre os custos operacionais da transação e é debitada do saldo do usuário no momento do saque.'
+        ]
+      },
+      {
+        heading: '4. Pagamentos internos',
+        paragraphs: [
+          'O saldo pode ser utilizado para pagar serviços integrados ao ecossistema CTech, incluindo taxas de inscrição em torneios, aluguel de salas e compra de créditos de entretenimento.',
+          'As movimentações internas entre contas de usuários e contas de custódia de torneios são processadas pelo parceiro financeiro e registradas no extrato do usuário.'
+        ]
+      },
+      {
+        heading: '5. MED, bloqueios e retenções',
+        paragraphs: [
+          'Operações podem ser bloqueadas, devolvidas ou ajustadas em razão do Mecanismo Especial de Devolução (MED), ordem judicial ou administrativa, suspeita de fraude, erro operacional ou obrigação regulatória do parceiro financeiro.',
+          'A CTech preservará evidências e, quando permitido por lei ou pelo regulador, notificará o usuário sobre a medida aplicada.'
+        ]
+      },
+      {
+        heading: '6. Encerramento',
+        paragraphs: [
+          'Antes do encerramento da conta, o saldo disponível deve ser sacado pelo usuário. Saldos residuais inferiores ao valor mínimo de saque poderão ser utilizados em serviços CTech ou, após 90 dias de inatividade, revertidos como receita operacional, respeitado o direito de solicitação de saque pelo titular.'
+        ]
+      },
+    ],
+  },
+  'wallet-v2': {
+    title: 'Termos Adicionais — CTech Wallet',
+    description: 'Condições de saldo, Pix, saques e pagamentos internos.',
     version: '2.0',
+    versions: WALLET_VERSION_HISTORY,
     updatedAt,
     intro: 'A Wallet é uma carteira interna para pagamentos no ecossistema CTech e operações Pix realizadas por integração com instituição financeira parceira. Não é conta bancária e a CTech não é instituição financeira.',
     sections: [
@@ -350,6 +418,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     title: 'Termos Adicionais — CTech Wallet',
     description: 'Versão histórica dos termos específicos da CTech Wallet.',
     version: '1.0',
+    versions: WALLET_VERSION_HISTORY,
     updatedAt: '11 de julho de 2026',
     intro: 'Este aditivo complementa — e não substitui — os Termos de Uso e a Política de Privacidade da CTech. No que for específico da carteira digital, este aditivo prevalece.',
     sections: [
@@ -387,11 +456,12 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
     ],
   },
-  'wallet-gaming': {
+  'wallet-gaming-v1': {
     title: 'Termos da Wallet para Jogos',
     description: 'Regras adicionais para uso de saldo em jogos elegíveis.',
     version: '2.0',
-    updatedAt,
+    versions: WALLET_GAMING_VERSION_HISTORY,
+    updatedAt: '25 de julho de 2026',
     intro: 'Este documento complementa os Termos da Wallet para separação e uso de saldo destinado a jogos com dinheiro real ou créditos sandbox.',
     sections: [
       {
@@ -416,11 +486,63 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
     ],
   },
-  poker: {
+  'wallet-gaming': {
+    title: 'Termos da Wallet para Jogos',
+    description: 'Regras adicionais para uso de saldo em jogos de habilidade.',
+    version: '2.1',
+    versions: WALLET_GAMING_VERSION_HISTORY,
+    updatedAt: '25 de julho de 2026',
+    intro: 'Este documento complementa os Termos da Wallet e disciplina o uso de saldo real e créditos de entretenimento em jogos de habilidade integrados à plataforma.',
+    sections: [
+      {
+        heading: '1. Elegibilidade',
+        paragraphs: [
+          'O uso de saldo real em jogos é exclusivo para maiores de 18 anos com identidade verificada (KYC). A CTech pode aplicar limites geográficos, financeiros, de sessão, depósito, perda e pausa, informados antes da entrada.'
+        ]
+      },
+      {
+        heading: '2. Saldo real e créditos de entretenimento',
+        paragraphs: [
+          'O saldo real é mantido na conta de pagamento individual do usuário junto ao parceiro financeiro. Créditos de entretenimento (sandbox) são ativos virtuis sem valor monetário, não reembolsáveis, não sacáveis e não conversíveis em dinheiro.',
+          'Transferências de saldo real entre usuários somente são permitidas por funcionalidade expressamente autorizada pela plataforma.'
+        ]
+      },
+      {
+        heading: '3. Taxas de serviço',
+        paragraphs: [
+          'A CTech cobra taxas fixas de serviço para criação de salas e torneios, conforme tabela pública baseada em faixas de blinds. As taxas são valores fixos em Reais, devidos independentemente do resultado das partidas.',
+          'A taxa aplicável é exibida antes da criação da sala ou inscrição no torneio. A CTech não retém qualquer percentual sobre os potes ou premiações em dinheiro real.'
+        ]
+      },
+      {
+        heading: '4. Integridade e prevenção à fraude',
+        paragraphs: [
+          'São proibidos: múltiplas contas, colusão, chip dumping, bots, assistência em tempo real (RTA), ghosting, soft play, exploração de falhas, lavagem de dinheiro e qualquer forma de manipulação de resultados.',
+          'Operações suspeitas podem ser retidas para investigação. A CTech pode reter valores, anular resultados e suspender contas envolvidas em atividades fraudulentas.'
+        ]
+      },
+      {
+        heading: '5. Jogo responsável',
+        paragraphs: [
+          'O usuário deve jogar apenas com recursos que pode perder. A plataforma oferece ferramentas de autoexclusão, limites de depósito e pausas programadas.',
+          'Durante o período de autoexclusão, o acesso a jogos com saldo real é bloqueado. Canais de apoio: CVV (188) e Jogadores Anônimos.'
+        ]
+      },
+      {
+        heading: '6. Falhas e estornos',
+        paragraphs: [
+          'Falhas de conexão, servidor ou regra podem levar a cancelamento, rollback ou recomposição com base nos registros auditáveis da plataforma.',
+          'Ganhos decorrentes de erro, manipulação ou exploração de vulnerabilidade não são devidos e serão estornados.'
+        ]
+      },
+    ],
+  },
+  'poker-v1': {
     title: 'Termos Adicionais — CTech Poker',
     description: 'Condições específicas para mesas de poker online.',
     version: '1.0',
     updatedAt,
+    versions: POKER_VERSION_HISTORY,
     intro: 'O CTech Poker oferece mesas públicas ou privadas de jogo de habilidade, com créditos sandbox e, quando habilitado e permitido, valores reais por meio da Wallet.',
     sections: [
       {
@@ -445,11 +567,71 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
     ],
   },
-  'poker-privacy': {
+  poker: {
+    title: 'Termos Adicionais — CTech Poker',
+    description: 'Condições específicas para mesas de poker online.',
+    version: '2.0',
+    updatedAt,
+    versions: POKER_VERSION_HISTORY,
+    intro: 'O CTech Poker oferece mesas de jogo de habilidade, com créditos de entretenimento (sandbox) e, quando habilitado, saldo real por meio da Wallet. A plataforma cobra taxas fixas de serviço por sala ou torneio, sem rake percentual sobre potes em dinheiro real.',
+    sections: [
+      {
+        heading: '1. Elegibilidade e acesso',
+        paragraphs: [
+          'O acesso a mesas com saldo real exige maioridade (18+), verificação de identidade (KYC) e localização em jurisdição permitida.',
+          'O usuário é responsável por verificar a legalidade do jogo em sua jurisdição. É proibido o uso de VPN, proxy ou qualquer mecanismo para contornar restrições geográficas.'
+        ]
+      },
+      {
+        heading: '2. Modalidades de jogo',
+        paragraphs: [
+          'Mesas de Entretenimento: utilizam exclusivamente créditos sandbox, sem valor monetário. Não há taxas de serviço.',
+          'Mesas com Saldo Real: utilizam saldo da Wallet. O buy-in é integralmente destinado ao pote de premiação. A CTech cobra taxa fixa de serviço (Taxa de Criação de Sala ou Inscrição em Torneio), conforme tabela pública baseada em faixas de blinds, exibida antes da entrada.'
+        ]
+      },
+      {
+        heading: '3. Taxas de serviço (sem rake)',
+        paragraphs: [
+          'A CTech não retém qualquer percentual sobre os potes ou premiações em dinheiro real. A remuneração da plataforma é exclusivamente a taxa fixa de serviço, devida no momento da criação da sala ou inscrição no torneio.',
+          'A tabela de taxas vigente é pública, fixa por faixa de blinds e independe do resultado das partidas. Valores são exibidos antes da confirmação.'
+        ]
+      },
+      {
+        heading: '4. Regras das mesas',
+        paragraphs: [
+          'As regras publicadas, blinds, limites, buy-in, premiação e tempo de ação integram cada partida e são exibidas antes da entrada.',
+          'Os registros do servidor prevalecem para reconstruir mãos e resolver divergências. A plataforma utiliza embaralhamento criptográfico auditável (Provably Fair).'
+        ]
+      },
+      {
+        heading: '5. Jogo justo',
+        paragraphs: [
+          'São proibidos: bots, RTA, colusão, chip dumping, ghosting, compartilhamento de conta, múltiplas contas, exploração de bugs e acesso a informações privilegiadas.',
+          'A CTech pode analisar padrões de jogo, preservar logs, anular resultados e suspender contas envolvidas em violações.'
+        ]
+      },
+      {
+        heading: '6. Transparência e código aberto',
+        paragraphs: [
+          'O algoritmo de embaralhamento é publicamente auditável. Ao final de cada partida, o usuário pode verificar a seed criptográfica utilizada.',
+          'A publicação de código aumenta a transparência, mas não autoriza acesso à infraestrutura de produção, engenharia social ou manipulação de partidas.'
+        ]
+      },
+      {
+        heading: '7. Responsabilidade do usuário',
+        paragraphs: [
+          'O usuário é responsável por declarar e recolher tributos sobre seus ganhos, conforme legislação aplicável.',
+          'O usuário reconhece o risco de perda e declara que joga apenas com recursos próprios e disponíveis.'
+        ]
+      },
+    ],
+  },
+  'poker-privacy-v1': {
     title: 'Privacidade — CTech Poker',
     description: 'Tratamento de dados específico das partidas e recursos do CTech Poker.',
     version: '1.0',
     updatedAt,
+    versions: POKER_PRIVACY_VERSION_HISTORY,
     intro: 'Este documento complementa a Política de Privacidade da CTech e descreve o tratamento de dados necessário para operar o CTech Poker.',
     sections: [
       {
@@ -471,6 +653,50 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '5. Direitos e contato',
         paragraphs: ['O titular pode exercer os direitos previstos na LGPD pelos canais indicados na Política de Privacidade da CTech. O Poker não é destinado a menores de 18 anos; atualizações materiais deste documento poderão exigir novo aceite.']
+      },
+    ],
+  },
+  'poker-privacy': {
+    title: 'Privacidade — CTech Poker',
+    description: 'Tratamento de dados específico das partidas e recursos do CTech Poker.',
+    version: '2.0',
+    updatedAt,
+    versions: POKER_PRIVACY_VERSION_HISTORY,
+    intro: 'Este documento complementa a Política de Privacidade da CTech e descreve o tratamento de dados necessário para operar o CTech Poker.',
+    sections: [
+      {
+        heading: '1. Dados tratados',
+        paragraphs: [
+          'Tratamos: identificadores da conta, versão dos documentos aceitos, mesas, buy-ins, premiações, taxas de serviço, ações e resultados de jogo, mensagens do chat, conquistas, estatísticas, dados técnicos, endereço IP, registros de conexão e sinais necessários à segurança e à prevenção de fraude.'
+        ]
+      },
+      {
+        heading: '2. Finalidades e bases legais',
+        paragraphs: [
+          'Os dados são utilizados para: operar e reconstruir partidas, processar buy-ins e premiações via parceiro financeiro, calcular e cobrar taxas de serviço fixas, apresentar histórico e estatísticas, moderar interações, prestar suporte, cumprir obrigações legais e proteger usuários e a plataforma.',
+          'O tratamento se fundamenta em: execução contratual, obrigação legal ou regulatória, exercício regular de direitos, prevenção à fraude, legítimo interesse e consentimento, conforme o caso.'
+        ]
+      },
+      {
+        heading: '3. Compartilhamento',
+        paragraphs: [
+          'Dados são compartilhados com: parceiro financeiro (BaaS) para processamento de pagamentos e custódia de valores; Account e Wallet para funcionamento integrado; autoridades competentes quando houver fundamento legal.',
+          'Rankings e perfis públicos não exibem valores monetários ganhos, perdidos, depositados ou sacados.'
+        ]
+      },
+      {
+        heading: '4. Retenção e segurança',
+        paragraphs: [
+          'Registros de jogo, transações financeiras e eventos de segurança são mantidos pelo prazo necessário para auditoria, prevenção à fraude, obrigações legais e defesa de direitos.',
+          'Aplicamos controles de acesso, criptografia em trânsito, privilégios mínimos, registros de auditoria e monitoramento.'
+        ]
+      },
+      {
+        heading: '5. Direitos e contato',
+        paragraphs: [
+          'O titular pode exercer os direitos previstos na LGPD pelos canais indicados na Política de Privacidade.',
+          'O Poker não é destinado a menores de 18 anos. Atualizações materiais deste documento poderão exigir novo aceite.'
+        ]
       },
     ],
   },
@@ -544,7 +770,11 @@ export const legalGroups = [
         description: 'Tratamento de dados pessoais e direitos LGPD.'
       },
       {href: '/cookies', label: 'Política de Cookies', description: legalDocuments.cookies.description},
-      {href: '/security-policy', label: 'Política de Segurança', description: legalDocuments.security.description},
+      {
+        href: '/security-policy',
+        label: 'Política de Segurança',
+        description: legalDocuments.security.description
+      },
       {
         href: '/acceptable-use',
         label: 'Política de Uso Aceitável',
@@ -582,7 +812,11 @@ export const legalGroups = [
         label: 'Privacidade do Poker',
         description: legalDocuments['poker-privacy'].description
       },
-      {href: '/products/poker-rules', label: 'Regras do Poker', description: legalDocuments['poker-rules'].description},
+      {
+        href: '/products/poker-rules',
+        label: 'Regras do Poker',
+        description: legalDocuments['poker-rules'].description
+      },
       {href: '/products/billing', label: 'CTech Billing', description: legalDocuments.billing.description},
     ]
   },

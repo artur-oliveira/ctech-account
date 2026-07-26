@@ -146,7 +146,7 @@ func Load() (*Config, error) {
 		CookieDomain:       os.Getenv("COOKIE_DOMAIN"),
 		RPID:               rpid,
 		RPOrigins:          rpOrigins,
-		FromEmail:          os.Getenv("FROM_EMAIL"),
+		FromEmail:          getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
 		AppURL:             getEnv("APP_URL", baseURL),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
