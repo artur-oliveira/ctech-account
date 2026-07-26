@@ -27,6 +27,7 @@ import (
 	apikeyDomain "gopkg.aoctech.app/account/api/internal/domain/apikey"
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
+	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	passKeyDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	totpDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
@@ -39,6 +40,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/account/api/internal/sms"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
@@ -152,9 +154,8 @@ func main() {
 	consentSvc := consentDomain.NewService(consentRepo)
 	totpSvc := totpDomain.NewService(db, cfg.TablePrefix)
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
-	// KYC document uploads need a bucket; without one, KYC submission is
-	// unavailable entirely (see kyc.Service.DocumentsEnabled) — verification is
-	// document-only now.
+	// KYC document uploads need a bucket; without one, Enhanced document
+	// verification is unavailable entirely (see kyc.Service.DocumentsEnabled).
 	var kycPresigner kycDomain.Presigner
 	if cfg.KYCDocumentsBucket != "" {
 		s3Cli, err := storage.NewS3(context.Background(), cfg.AWSRegion, cfg.KYCDocumentsBucket)
@@ -163,10 +164,23 @@ func main() {
 		}
 		kycPresigner = s3Cli
 	} else {
-		log.Println("KYC_DOCUMENTS_BUCKET not set — document verification disabled")
+		log.Println("KYC_DOCUMENTS_BUCKET not set — Enhanced document verification disabled")
 	}
 
-	kycSvc := kycDomain.NewService(kycRepo, kycPresigner)
+	// SMS OTP delivery needs PHONE_VERIFICATION_ENABLED=true; without it, every
+	// Basic/OTP route hard-blocks with 503 (see kyc.Service.PhoneVerificationEnabled).
+	var smsClient kycDomain.OTPSender
+	if cfg.PhoneVerificationEnabled {
+		cli, err := sms.New(context.Background(), cfg.AWSRegion)
+		if err != nil {
+			log.Fatalf("initializing SMS client: %v", err)
+		}
+		smsClient = cli
+	} else {
+		log.Println("PHONE_VERIFICATION_ENABLED=false — phone verification disabled")
+	}
+
+	kycSvc := kycDomain.NewService(kycRepo, kycPresigner, valkeyClient, smsClient, risk.NoopEvaluator{})
 	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, valkeyClient)
 
 	// Email client (optional — only active when FROM_EMAIL is set)
