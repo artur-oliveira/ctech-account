@@ -104,11 +104,14 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `PUT`    | `/v1.0/account/oauth-clients/:id`                   | Bearer   | Update name / redirect URIs / scopes / audience                                                          |
 | `DELETE` | `/v1.0/account/oauth-clients/:id`                   | Bearer   | Delete an OAuth application                                                                              |
 | `POST`   | `/v1.0/account/oauth-clients/:id/regenerate-secret` | Bearer   | Rotate the client secret (returned once)                                                                 |
-| `GET`    | `/v1.0/account/kyc`                                 | Bearer   | KYC status: `{state, level, method, cpf_masked, legal_name, birth_date, address, documents, rejection_reason, submitted_at, expires_at, verified_at}` (CPF masked `***.***.***-XX`) |
-| `POST`   | `/v1.0/account/kyc`                                 | Bearer + step-up | Submit identity data `{cpf, legal_name, birth_date, address}` → `pending_review` (requires `id_front`, `id_back` and all four `selfie_{up,down,left,right}` already uploaded) |
-| `POST`   | `/v1.0/account/kyc/documents`                       | Bearer + step-up | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_up`, `selfie_down`, `selfie_left`, `selfie_right` |
-| `POST`   | `/v1.0/account/kyc/documents/confirm`               | Bearer + step-up | `{document_id, type}` → records the upload (verified via HeadObject); documents may be uploaded before any identity data is submitted |
-| `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record (ctech-wallet withdrawal-key validation) — the only internal KYC route; approve/reject is a CLI-only action, see `cmd/kyc` |
+| `GET`    | `/v1.0/account/kyc`                                 | Bearer   | KYC status: `{state, level, cpf_masked, legal_name, birth_date, phone_masked, basic_verified_at, documents, rejection_reason, submitted_at, expires_at, verified_at}` |
+| `POST`   | `/v1.0/account/kyc/basic`                           | Bearer + step-up | Submit Basic identity data `{cpf, legal_name, birth_date, phone_number}` → validates CPF/age/phone, sends an SMS OTP, `basic/pending` |
+| `POST`   | `/v1.0/account/kyc/basic/verify-phone`              | Bearer + step-up | `{code}` → `basic/verified` on a correct 6-digit code |
+| `POST`   | `/v1.0/account/kyc/basic/resend-code`               | Bearer + step-up | Resends the OTP; 60s cooldown (`429` + `Retry-After`-equivalent `retry_after_seconds`) |
+| `POST`   | `/v1.0/account/kyc/documents`                       | Bearer + step-up | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_with_document`; requires `basic/verified` first |
+| `POST`   | `/v1.0/account/kyc/documents/confirm`               | Bearer + step-up | `{document_id, type}` → records the upload (verified via HeadObject) |
+| `POST`   | `/v1.0/account/kyc/enhanced`                        | Bearer + step-up | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending` |
+| `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation) |
 | `GET`    | `/v1.0/account/consents`                            | Bearer   | List connected apps (consent grants)                                                                     |
 | `DELETE` | `/v1.0/account/consents/:clientID`                  | Bearer   | Revoke a consent grant                                                                                   |
 | `POST`   | `/v1.0/auth/mfa/challenge`                          | —        | Exchange MFA token + TOTP code for session                                                               |
@@ -171,7 +174,7 @@ refresh tokens. Reuse of a stale refresh token returns `401 token-reuse`.
 Two scope families:
 
 - **OIDC identity scopes**: `openid`, `profile`, `email`, `kyc` — for humans, via the OAuth
-  flow. `kyc` adds the `kyc_level` claim (`""` | `verified`) to access tokens, id_tokens
+  flow. `kyc` adds the `kyc_level` claim (`""` | `"basic"` | `"verified"`) to access tokens, id_tokens
   and userinfo — CPF, birth date and legal name never enter tokens.
 - **Service scopes**: `service:resource:action` (e.g. `dfe:nfe:issue`, `account:*:read`) —
   permissions on a downstream resource server. `*` is allowed as a full resource or action
@@ -331,61 +334,27 @@ data-processing terms for ctech-dfe) live in each product's own repo/frontend.
 
 ### KYC (identity verification)
 
-**Manual-only, document-based.** KYC via Pix deposit was removed: the Pix webhook
-payload never carries the payer's CPF (only free-text `infoPagador`), so an automated
-CPF match is unsupportable. Every submission is reviewed by a human via `cmd/kyc` —
-there is no admin UI and no `internal:kyc` service scope anymore. Levels collapse to
-`none` (`""`) → `verified`, stored on the user — there is no intermediate `basic`.
+**Two-level Basic/Enhanced verification.** Splits KYC into two distinct levels to simplify user onboarding:
 
-**Upload-then-submit.** Unlike a typical form, documents are uploaded *before* the
-identity data:
+- **Basic KYC**: Users submit their CPF, full legal name, date of birth, and phone number (`POST /v1.0/account/kyc/basic`). The system validates the input, claims the CPF transactionally, and dispatches a 6-digit verification code via AWS SNS SMS. Entering this code (`POST /v1.0/account/kyc/basic/verify-phone`) verifies the phone and grants Basic access (`kyc_level = "basic"`). Valkey cache stores the OTP hashed with a 10-minute TTL, a 60-second resend cooldown (`429 kyc-resend-cooldown` with `retry_after_seconds`), and enforces a 5-attempt guess limit.
+- **Enhanced KYC**: Requires Basic verification to be completed first. Users upload three required documents: ID front, ID back, and a selfie holding the document (`POST /v1.0/account/kyc/documents` and `confirm`). A static photo of the selfie holding the document replaces the legacy four-clip video flow. Once all documents are uploaded, submitting the verification (`POST /v1.0/account/kyc/enhanced`) queues the profile for manual review (`kyc_level = "basic"`, state `under_review`).
 
-1. `POST /v1.0/account/kyc/documents` (presign) → browser PUTs straight to S3 →
-   `POST /v1.0/account/kyc/documents/confirm` (per document). Repeat for all six
-   required types: `id_front`, `id_back`, `selfie_up`, `selfie_down`, `selfie_left`,
-   `selfie_right`. Accepted content types: JPEG/PNG/HEIC/PDF and `video/webm`/`video/mp4`
-   (≤ 5 MiB each). The four selfie poses are short head-turn clips, not one static
-   photo — a printed photo or looped video can't turn on command, so this is the
-   liveness signal; the *reviewer* still judges real-vs-photo, no server-side ML.
-2. `POST /v1.0/account/kyc` (step-up required) — validates CPF check digits, rejects
-   repeated-digit sequences, requires age ≥ 18 and a full address (CEP + UF against
-   the 27 states), claims the CPF via a `CPF_{cpf}` uniqueness item in the same
-   DynamoDB transaction (1 CPF = 1 account; conflict → `409 cpf-already-registered`),
-   and is **rejected** (`409 kyc-not-submitted`) unless every required document is
-   already uploaded. On success: `kyc_doc_status = pending_review`, `kyc_level` stays
-   `""`.
+`GET /v1.0/account/kyc` returns the user-facing status details with masked CPF and phone, and a derived `state` representing the lifecycle: `not_started`, `awaiting_phone_verification`, `basic_verified`, `under_review`, `rejected`, and `verified`. If a pending Enhanced submission is not reviewed within 30 days (`SubmissionTTL`), it expires and reverts to `basic_verified` access. While a submission is under review, documents and resubmissions are locked (`409 kyc-submission-locked`). Rejection clears the uploaded documents and requires a fresh upload cycle.
 
-`GET /v1.0/account/kyc` returns a derived `state` the UI branches on: `not_started` |
-`awaiting_files` (some/all docs uploaded, not yet submitted) | `under_review` |
-`rejected` | `verified`. While a submission is under review, both re-uploading
-documents and resubmitting identity data are refused with `409 kyc-submission-locked`;
-a rejection or the 30-day expiry unlocks it (an expired pending submission reads back
-as `not_started` — its documents are still on file, so resubmitting just re-queues
-them). A **rejection clears the uploaded documents**, so resubmission requires a fresh
-upload cycle.
+An informational-only risk evaluation hook scores each submission at `SubmitBasic` and `SubmitEnhanced` based on client IP and user details (via a pluggable risk evaluator, defaulting to a zero-score no-op implementation) and persists the latest evaluation.
 
-**Manual review — `cmd/kyc`** (no HTTP route; a reviewer runs this locally from `api/`
-with a DynamoDB-scoped AWS session):
-
+**Manual review — `cmd/kyc`** (CLI tool, no HTTP endpoints):
+Reviewers list and review Enhanced submissions from a CLI environment:
 ```bash
 cd api
 AWS_REGION=... TABLE_PREFIX=production_ KYC_DOCUMENTS_BUCKET=... go run ./cmd/kyc list
-... go run ./cmd/kyc show <user_id>                          # raw CPF + presigned document URLs
-... go run ./cmd/kyc approve <user_id> [-note "looks good"]
-... go run ./cmd/kyc reject <user_id> -reason "blurry photo"
+... go run ./cmd/kyc show <user_id>                          # prints raw CPF, phone, risk, and S3 document URLs
+... go run ./cmd/kyc approve <user_id> [-note "looks good"]  # sets kyc_level=enhanced, status=verified
+... go run ./cmd/kyc reject <user_id> -reason "blurry photo"  # clears documents, sets status=rejected
 ```
 
-`list` and `approve`/`reject` work without `KYC_DOCUMENTS_BUCKET`; only `show` needs it.
-`list` runs a DynamoDB **Scan** filtered on `kyc_doc_status = pending_review` —
-acceptable for an offline operator tool, not a request path; a GSI on `kyc_doc_status`
-is the scale upgrade if this ever needs to run hot.
-
-`GET /v1.0/internal/kyc/:user_id` (scope `internal:account:kyc`) is the one
-surviving internal route — it hands ctech-wallet the raw CPF for withdrawal-key
-validation. Downstream services otherwise read the `kyc_level` claim from the JWT
-(scope `kyc`, values `""` | `verified`) — no callback to this service on the hot path;
-the level lands in tokens on the next refresh after approval. Audit events:
-`kyc.submitted`, `kyc.document_uploaded`, `kyc.verified`, `kyc.rejected`.
+`GET /v1.0/internal/kyc/:user_id` is the internal machine-to-machine route that returns the raw unmasked CPF, legal name, birth date, and phone number for withdrawal validations. Downstream JWT consumers map `kyc_level` claim values to `""` | `"basic"` | `"verified"` via `ClaimLevel` (no change in `ctech-wallet` or `ctech-dfe`).
+Audit events: `kyc.submitted`, `kyc.phone_verified`, `kyc.document_uploaded`, `kyc.verified`, `kyc.rejected`.
 
 ### Step-up authentication (recent MFA)
 
@@ -447,7 +416,8 @@ All configuration is read from environment variables at startup.
 | `PUBLIC_KEY_KID`    | No       | Key ID for the env-provided key (derived from the public key when unset). Ignored in SSM mode            |
 | `VALKEY_URL`        | Non-dev  | Redis-compatible URL; **required outside dev** — the API refuses to boot without it (OAuth codes, MFA tokens and rate limiting have no DynamoDB fallback) |
 | `FROM_EMAIL`        | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled |
-| `KYC_DOCUMENTS_BUCKET` | No    | Private S3 bucket for KYC identity documents and selfie clips. When unset, KYC submission is unavailable entirely — document review is the only path |
+| `KYC_DOCUMENTS_BUCKET` | No    | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable |
+| `PHONE_VERIFICATION_ENABLED` | No | `false` unless set to `true`. Gates AWS SNS phone verification — while false, every `/kyc/basic*` route returns `503`. Flip once production SNS SMS access is granted; no redeploy needed beyond the env var |
 | `AUDIENCE`          | No       | Expected `aud` claim on access tokens verified by this service (defaults to `BASE_URL`)                   |
 | `ACCESS_TOKEN_TTL`  | No       | Access token lifetime in seconds (default `900`)                                                          |
 | `REFRESH_TOKEN_TTL` | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure |
@@ -616,6 +586,7 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 ### 8 — Post-deploy
 
 - Rotate the signing key annually: `go run ./cmd/rotatekeys -env <env>` writes a new `jwk/active` and demotes the old to `jwk/previous` — no redeploy needed.
+- Once AWS grants production SNS SMS access, run `aws sns set-sms-attributes` once per account/region to set the monthly spend limit, then set `PHONE_VERIFICATION_ENABLED=true` in SSM — this is outside CDK's scope (no such resource exists to provision).
 - Enable DynamoDB Point-in-Time Recovery on all eight tables.
 - Set a CloudWatch alarm on the EC2/ALB error rate > 1%.
 
