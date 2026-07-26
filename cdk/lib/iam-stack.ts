@@ -87,6 +87,15 @@ export class IAMStack extends cdk.Stack {
       resources: [`${kycDocumentsBucketArn}/kyc/*`],
     }));
 
+    // SNS — phone-verification OTP SMS (direct-to-phone-number Publish).
+    // Resource must be * — a direct Publish to a PhoneNumber has no topic or
+    // other ARN to scope to; this is the documented AWS pattern, not a
+    // least-privilege gap.
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['sns:Publish'],
+      resources: ['*'],
+    }));
+
     // EC2 — update-realip.sh reads the AWS-managed CloudFront origin-facing
     // prefix list. Both actions are read-only and do not support resource-level
     // permissions, so Resource must be *.
