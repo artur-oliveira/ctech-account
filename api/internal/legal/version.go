@@ -5,8 +5,8 @@
 package legal
 
 const (
-	CurrentToSVersion     = "3.0"
-	CurrentPrivacyVersion = "3.0"
+	CurrentToSVersion     = "3.1"
+	CurrentPrivacyVersion = "3.1"
 )
 
 // Pending reports which documents a user still has to accept. Acceptance is an
