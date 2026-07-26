@@ -23,13 +23,16 @@ func NewKYCHandler(kycSvc *kyc.Service, auditSvc *audit.Service) *KYCHandler {
 	return &KYCHandler{kycSvc: kycSvc, audit: auditSvc}
 }
 
-// Register mounts the user-facing routes on the account group. Everything that
-// writes identity data sits behind step-up.
+// Register mounts the user-facing routes on the account group. Everything
+// that writes identity data sits behind step-up.
 func (h *KYCHandler) Register(account fiber.Router, stepUp fiber.Handler) {
 	account.Get("/kyc", h.get)
-	account.Post("/kyc", stepUp, h.submit)
+	account.Post("/kyc/basic", stepUp, h.submitBasic)
+	account.Post("/kyc/basic/verify-phone", stepUp, h.verifyPhone)
+	account.Post("/kyc/basic/resend-code", stepUp, h.resendCode)
 	account.Post("/kyc/documents", stepUp, h.presignDocument)
 	account.Post("/kyc/documents/confirm", stepUp, h.confirmDocument)
+	account.Post("/kyc/enhanced", stepUp, h.submitEnhanced)
 }
 
 // RegisterInternalGet mounts the one service-to-service route ctech-wallet
@@ -54,44 +57,74 @@ type addressRequest struct {
 	State      string `json:"state" validate:"required,len=2,alpha"`
 }
 
-type submitKYCRequest struct {
-	CPF       string         `json:"cpf" validate:"required,len=11,numeric"`
-	LegalName string         `json:"legal_name" validate:"required,min=3,max=200"`
-	BirthDate string         `json:"birth_date" validate:"required,datetime=2006-01-02"`
-	Address   addressRequest `json:"address" validate:"required"`
+func (r addressRequest) toDomain() kyc.Address {
+	return kyc.Address{
+		ZipCode:    r.ZipCode,
+		Street:     r.Street,
+		Number:     r.Number,
+		Complement: r.Complement,
+		District:   r.District,
+		City:       r.City,
+		State:      r.State,
+	}
 }
 
-// submit finalizes a submission that already has every required document
-// uploaded (see presignDocument/confirmDocument) and queues it for review.
-func (h *KYCHandler) submit(c fiber.Ctx) error {
+type submitBasicRequest struct {
+	CPF         string         `json:"cpf" validate:"required,len=11,numeric"`
+	LegalName   string         `json:"legal_name" validate:"required,min=3,max=200"`
+	BirthDate   string         `json:"birth_date" validate:"required,datetime=2006-01-02"`
+	PhoneNumber string         `json:"phone_number" validate:"required,e164"`
+	Address     addressRequest `json:"address" validate:"required"`
+}
+
+// submitBasic validates and stores CPF/name/birthdate/phone/address, then
+// sends an SMS OTP. Replaces the old single-tier POST /account/kyc.
+func (h *KYCHandler) submitBasic(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
-	var req submitKYCRequest
+	var req submitBasicRequest
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
 
-	sub := kyc.Submission{
-		CPF:       req.CPF,
-		LegalName: req.LegalName,
-		BirthDate: req.BirthDate,
-		Address: kyc.Address{
-			ZipCode:    req.Address.ZipCode,
-			Street:     req.Address.Street,
-			Number:     req.Address.Number,
-			Complement: req.Address.Complement,
-			District:   req.Address.District,
-			City:       req.Address.City,
-			State:      req.Address.State,
-		},
+	sub := kyc.BasicSubmission{
+		CPF: req.CPF, LegalName: req.LegalName, BirthDate: req.BirthDate,
+		PhoneNumber: req.PhoneNumber, Address: req.Address.toDomain(),
 	}
-
-	if err := h.kycSvc.Submit(c.Context(), userID, sub); err != nil {
+	if err := h.kycSvc.SubmitBasic(c.Context(), userID, clientIP(c), sub); err != nil {
 		return h.sendKYCError(c, err)
 	}
 
-	recordAudit(c, h.audit, userID, audit.EventKYCSubmitted, nil)
+	recordAudit(c, h.audit, userID, audit.EventKYCSubmitted, map[string]string{"level": kyc.LevelBasic})
+	return h.sendStatus(c, userID)
+}
 
+type verifyPhoneRequest struct {
+	Code string `json:"code" validate:"required,len=6,numeric"`
+}
+
+func (h *KYCHandler) verifyPhone(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
+	var req verifyPhoneRequest
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+
+	if err := h.kycSvc.VerifyPhone(c.Context(), userID, req.Code); err != nil {
+		return h.sendKYCError(c, err)
+	}
+
+	recordAudit(c, h.audit, userID, audit.EventKYCPhoneVerified, nil)
+	return h.sendStatus(c, userID)
+}
+
+func (h *KYCHandler) resendCode(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
+	if err := h.kycSvc.ResendCode(c.Context(), userID); err != nil {
+		return h.sendKYCError(c, err)
+	}
 	return h.sendStatus(c, userID)
 }
 
@@ -100,12 +133,12 @@ func (h *KYCHandler) get(c fiber.Ctx) error {
 }
 
 type presignDocumentRequest struct {
-	Type        string `json:"type" validate:"required,oneof=id_front id_back selfie_up selfie_down selfie_left selfie_right"`
+	Type        string `json:"type" validate:"required,oneof=id_front id_back selfie_with_document"`
 	ContentType string `json:"content_type" validate:"required"`
 }
 
-// presignDocument hands the browser a short-lived S3 upload URL. The API never
-// receives the file itself.
+// presignDocument hands the browser a short-lived S3 upload URL. The API
+// never receives the file itself.
 func (h *KYCHandler) presignDocument(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
@@ -130,12 +163,9 @@ func (h *KYCHandler) presignDocument(c fiber.Ctx) error {
 
 type confirmDocumentRequest struct {
 	DocumentID string `json:"document_id" validate:"required,uuid4"`
-	Type       string `json:"type" validate:"required,oneof=id_front id_back selfie_up selfie_down selfie_left selfie_right"`
+	Type       string `json:"type" validate:"required,oneof=id_front id_back selfie_with_document"`
 }
 
-// confirmDocument records an upload the service has verified landed in the
-// bucket. The submission stays awaiting_files until every required document
-// is present and the user calls submit.
 func (h *KYCHandler) confirmDocument(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
@@ -149,7 +179,19 @@ func (h *KYCHandler) confirmDocument(c fiber.Ctx) error {
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventKYCDocumentUploaded, map[string]string{"type": req.Type})
+	return h.sendStatus(c, userID)
+}
 
+// submitEnhanced finalizes an Enhanced submission that already has every
+// required document uploaded and queues it for human review.
+func (h *KYCHandler) submitEnhanced(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
+	if err := h.kycSvc.SubmitEnhanced(c.Context(), userID, clientIP(c)); err != nil {
+		return h.sendKYCError(c, err)
+	}
+
+	recordAudit(c, h.audit, userID, audit.EventKYCSubmitted, map[string]string{"level": kyc.LevelEnhanced})
 	return h.sendStatus(c, userID)
 }
 
@@ -161,13 +203,13 @@ func (h *KYCHandler) internalGet(c fiber.Ctx) error {
 		return h.sendKYCError(c, err)
 	}
 	return c.JSON(fiber.Map{
-		"level":      u.KYCLevel,
-		"method":     u.KYCMethod,
-		"doc_status": u.KYCDocStatus,
-		"cpf":        u.CPF,
-		"legal_name": u.LegalName,
-		"birth_date": u.BirthDate,
-		"address":    u.Address,
+		"level":        u.KYCLevel,
+		"status":       u.KYCStatus,
+		"cpf":          u.CPF,
+		"legal_name":   u.LegalName,
+		"birth_date":   u.BirthDate,
+		"phone_number": u.PhoneNumber,
+		"address":      u.Address,
 	})
 }
 
@@ -188,6 +230,8 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 		return apierror.ValidationFailed("cpf: invalid CPF.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidBirthDate):
 		return apierror.ValidationFailed("birth_date: invalid date.", c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrInvalidPhone):
+		return apierror.ValidationFailed("phone_number: invalid phone number.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidAddress):
 		return apierror.ValidationFailed("address: invalid address.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidMethod):
@@ -202,18 +246,30 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 		return apierror.AgeRequirementNotMet(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrAlreadyVerified):
 		return apierror.KYCAlreadyVerified(c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrBasicLocked):
+		return apierror.KYCAlreadyVerified(c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrBasicRequired):
+		return apierror.KYCBasicRequired(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrCPFConflict):
 		return apierror.CPFAlreadyRegistered(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrSubmissionLocked):
 		return apierror.KYCSubmissionLocked(c.Path()).Send(c)
-	case errors.Is(err, kyc.ErrNotSubmitted), errors.Is(err, kyc.ErrNoDocuments):
+	case errors.Is(err, kyc.ErrNotSubmitted), errors.Is(err, kyc.ErrNoDocuments), errors.Is(err, kyc.ErrNoOTPPending):
 		return apierror.KYCNotSubmitted(c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrInvalidCode), errors.Is(err, kyc.ErrTooManyAttempts):
+		return apierror.KYCInvalidCode(c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrResendCooldown):
+		return apierror.KYCResendCooldown(kyc.OTPResendCooldown, c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrPhoneVerificationUnavailable):
+		return apierror.KYCPhoneVerificationUnavailable(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentNotUploaded):
 		return apierror.KYCDocumentNotUploaded(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentTooLarge):
 		return apierror.KYCDocumentTooLarge(kyc.MaxDocumentBytes, c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrTooManyDocuments):
 		return apierror.ValidationFailed("documents: too many documents for this submission.", c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrDocumentTypeMismatch):
+		return apierror.KYCDocumentNotUploaded(c.Path()).Send(c)
 	case errors.Is(err, user.ErrNotFound):
 		return apierror.NotFound("User", c.Path()).Send(c)
 	}

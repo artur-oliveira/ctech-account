@@ -14,6 +14,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/apikey"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
+	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	authcode "gopkg.aoctech.app/account/api/internal/domain/oauth/code"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
@@ -382,7 +383,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		if err != nil {
 			return apierror.ServerError(c.Path()).Send(c)
 		}
-		kycLevel = u.KYCLevel
+		kycLevel = kyc.ClaimLevel(u.KYCLevel, u.KYCStatus)
 	}
 
 	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), clientID, scp, h.baseURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycLevel)
@@ -449,13 +450,13 @@ func accessTokenAudience(selfAudience string, oauthClient *oauthclient.OAuthClie
 	return append([]string{selfAudience}, oauthClient.EffectiveAudience()...)
 }
 
-// kycClaimFor returns the user's KYC level when the kyc scope was granted;
-// empty otherwise so the claim is omitted from the token.
+// kycClaimFor returns the token-facing kyc_level claim when the kyc scope was
+// granted; empty otherwise so the claim is omitted from the token.
 func kycClaimFor(u *user.User, scp []string) string {
 	if u == nil || !slices.Contains(scp, scopes.KYC) {
 		return ""
 	}
-	return u.KYCLevel
+	return kyc.ClaimLevel(u.KYCLevel, u.KYCStatus)
 }
 
 func verifyPKCE(verifier, challenge string) bool {

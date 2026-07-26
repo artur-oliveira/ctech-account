@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
+	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
@@ -38,8 +39,10 @@ func (h *UserInfoHandler) UserInfo(c fiber.Ctx) error {
 		"family_name":        u.LastName,
 		"email_verified":     u.EmailVerified,
 	}
-	if middleware.HasScope(c, scopes.KYC) && u.KYCLevel != "" {
-		resp["kyc_level"] = u.KYCLevel
+	if middleware.HasScope(c, scopes.KYC) {
+		if level := kyc.ClaimLevel(u.KYCLevel, u.KYCStatus); level != "" {
+			resp["kyc_level"] = level
+		}
 	}
 	return c.JSON(resp)
 }

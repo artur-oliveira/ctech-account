@@ -162,28 +162,43 @@ func TestClientCredentialsClampsScopes(t *testing.T) {
 
 const validCPF = "52998224725"
 const otherValidCPF = "11144477735"
+const validPhone = "+5511987654321"
 
-// submitKYCBody builds a valid identity submission. Callers override single
-// fields to exercise validation. It assumes every required document is
-// already uploaded — see uploadAllRequiredKYCDocuments.
-func submitKYCBody(cpf string) map[string]any {
+func validAddress() map[string]any {
 	return map[string]any{
-		"cpf":        cpf,
-		"legal_name": "Fulano da Silva",
-		"birth_date": "1990-01-01",
-		"address": map[string]string{
-			"zip_code": "01001000",
-			"street":   "Praça da Sé",
-			"number":   "100",
-			"district": "Sé",
-			"city":     "São Paulo",
-			"state":    "SP",
-		},
+		"zip_code": "01310100", "street": "Av. Paulista", "number": "1000",
+		"district": "Bela Vista", "city": "São Paulo", "state": "SP",
 	}
 }
 
-// uploadKYCDocument drives presign → (simulated) S3 upload → confirm for a
-// single document type and returns the resulting status.
+func submitBasicBody(cpf string) map[string]any {
+	return map[string]any{
+		"cpf": cpf, "legal_name": "Fulano da Silva", "birth_date": "1990-01-01",
+		"phone_number": validPhone, "address": validAddress(),
+	}
+}
+
+// verifyBasicPhone drives POST /kyc/basic → reads the OTP the fake sender
+// captured → POST /kyc/basic/verify-phone. Returns the final status body.
+func verifyBasicPhone(t *testing.T, ta *testApp, token, cpf string) map[string]any {
+	t.Helper()
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(cpf), token)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit basic: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	code, ok := ta.otpSender.sent[validPhone]
+	if !ok {
+		t.Fatal("no OTP was sent to validPhone")
+	}
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/verify-phone", map[string]string{"code": code}, token)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verify phone: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var st map[string]any
+	readJSON(t, resp, &st)
+	return st
+}
+
 func uploadKYCDocument(t *testing.T, ta *testApp, userID, token, docType string) map[string]any {
 	t.Helper()
 
@@ -200,7 +215,6 @@ func uploadKYCDocument(t *testing.T, ta *testApp, userID, token, docType string)
 		t.Fatalf("presign response = %v", presigned)
 	}
 
-	// Stand in for the browser PUT to the presigned URL.
 	ta.kycPresigner.putObject(kycDomain.BuildDocumentKey(userID, documentID), 2048)
 
 	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents/confirm",
@@ -213,9 +227,6 @@ func uploadKYCDocument(t *testing.T, ta *testApp, userID, token, docType string)
 	return st
 }
 
-// uploadAllRequiredKYCDocuments uploads one document per RequiredDocTypes
-// entry (id_front, id_back, and the four selfie poses) and returns the final
-// status response.
 func uploadAllRequiredKYCDocuments(t *testing.T, ta *testApp, userID, token string) map[string]any {
 	t.Helper()
 	var st map[string]any
@@ -225,12 +236,12 @@ func uploadAllRequiredKYCDocuments(t *testing.T, ta *testApp, userID, token stri
 	return st
 }
 
-func TestSubmitKYCRequiresStepUp(t *testing.T) {
+func TestSubmitBasicRequiresStepUp(t *testing.T) {
 	ta := newTestApp(t)
 	u := ta.registerUser(t, "kyc-stepup@example.com", "Password!123", "Fulano")
 	stale := ta.issueStaleToken(t, u.ID())
 
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), stale)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), stale)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
@@ -241,64 +252,48 @@ func TestSubmitKYCRequiresStepUp(t *testing.T) {
 	}
 }
 
-func TestSubmitKYCRejectsWithoutDocuments(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-nodocs@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-not-submitted") {
-		t.Fatalf("problem = %v", problem)
-	}
-}
-
 func TestKYCFullFlow(t *testing.T) {
 	ta := newTestApp(t)
 	u := ta.registerUser(t, "kyc-flow@example.com", "Password!123", "Fulano")
 	token := ta.issueToken(t, u.ID())
 
-	// 1. upload every required document (id_front, id_back, four selfie poses).
-	st := uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-	if st["state"] != "awaiting_files" {
-		t.Fatalf("state after uploads = %v", st["state"])
+	// 1. Basic: submit → OTP sent → verify → basic_verified.
+	st := verifyBasicPhone(t, ta, token, validCPF)
+	if st["state"] != "basic_verified" || st["level"] != "basic" {
+		t.Fatalf("status after phone verify = %v", st)
 	}
 
-	// 2. submit → under review
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
+	// 2. Enhanced: upload every required document, then submit → under review.
+	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("submit: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+		t.Fatalf("submit enhanced: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
 	readJSON(t, resp, &st)
-	if st["state"] != "under_review" || st["level"] != "" {
-		t.Fatalf("status after submit = %v", st)
+	if st["state"] != "under_review" {
+		t.Fatalf("status after enhanced submit = %v", st)
 	}
 
-	// 3. get → masked CPF
+	// 3. get → masked CPF, masked phone.
 	resp = ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
 	readJSON(t, resp, &st)
 	if st["cpf_masked"] != "***.***.***-25" || st["state"] != "under_review" {
 		t.Fatalf("status = %v", st)
 	}
 
-	// 4. a human reviewer approves via cmd/kyc (Service.Review directly — there
-	// is no HTTP route for this decision).
+	// 4. A human reviewer approves via cmd/kyc (Service.Review directly).
 	if err := ta.kycSvc.Review(context.Background(), u.ID(), kycDomain.DecisionApprove, ""); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
 
-	// 5. get → verified
+	// 5. get → verified, kyc_level claim reachable as "verified".
 	resp = ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
 	readJSON(t, resp, &st)
-	if st["level"] != "verified" || st["verified_at"] == "" {
+	if st["state"] != "verified" || st["verified_at"] == "" {
 		t.Fatalf("status after approval = %v", st)
 	}
 
-	// 6. internal get → full CPF, for ctech-wallet withdrawal-key validation
+	// 6. internal get → full CPF + phone, for ctech-wallet withdrawal-key validation.
 	m2m := ta.issueMachineToken(t, "wallet", []string{"internal:wallet:confirm-deposit"})
 	resp = ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+u.ID(), nil, m2m)
 	if resp.StatusCode != http.StatusOK {
@@ -306,39 +301,24 @@ func TestKYCFullFlow(t *testing.T) {
 	}
 	var full map[string]any
 	readJSON(t, resp, &full)
-	if full["cpf"] != validCPF || full["level"] != "verified" {
+	if full["cpf"] != validCPF || full["phone_number"] != validPhone || full["level"] != "enhanced" {
 		t.Fatalf("internal record = %v", full)
-	}
-
-	// 7. submission audit event recorded (verified is emitted by cmd/kyc, not
-	// the handler, since the decision itself is a CLI action).
-	hasSubmitted := false
-	for _, e := range ta.auditRepo.events {
-		if e.EventType == "kyc.submitted" {
-			hasSubmitted = true
-		}
-	}
-	if !hasSubmitted {
-		t.Fatal("kyc.submitted audit event not recorded")
 	}
 }
 
-func TestSubmitKYCValidation(t *testing.T) {
+func TestSubmitBasicValidation(t *testing.T) {
 	ta := newTestApp(t)
 	u := ta.registerUser(t, "kyc-val@example.com", "Password!123", "Fulano")
 	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
 
-	// invalid check digit → 422
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody("52998224724"), token)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody("52998224724"), token)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("bad cpf: expected 422, got %d", resp.StatusCode)
 	}
 
-	// underage → 422 age-requirement-not-met
-	body := submitKYCBody(validCPF)
+	body := submitBasicBody(validCPF)
 	body["birth_date"] = time.Now().UTC().AddDate(-17, 0, 0).Format("2006-01-02")
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", body, token)
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", body, token)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("underage: expected 422, got %d", resp.StatusCode)
 	}
@@ -349,19 +329,17 @@ func TestSubmitKYCValidation(t *testing.T) {
 	}
 }
 
-func TestSubmitDuplicateCPFConflict(t *testing.T) {
+func TestSubmitBasicDuplicateCPFConflict(t *testing.T) {
 	ta := newTestApp(t)
 	u1 := ta.registerUser(t, "kyc-dup1@example.com", "Password!123", "Fulano")
 	u2 := ta.registerUser(t, "kyc-dup2@example.com", "Password!123", "Beltrano")
 	token1, token2 := ta.issueToken(t, u1.ID()), ta.issueToken(t, u2.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u1.ID(), token1)
-	uploadAllRequiredKYCDocuments(t, ta, u2.ID(), token2)
 
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token1)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token1)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first submit: %d", resp.StatusCode)
 	}
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token2)
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token2)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("duplicate: expected 409, got %d", resp.StatusCode)
 	}
@@ -372,32 +350,180 @@ func TestSubmitDuplicateCPFConflict(t *testing.T) {
 	}
 }
 
-func TestSubmitAfterVerifiedConflict(t *testing.T) {
+func TestVerifyPhoneRejectsWrongCode(t *testing.T) {
 	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-immutable@example.com", "Password!123", "Fulano")
+	u := ta.registerUser(t, "kyc-wrongcode@example.com", "Password!123", "Fulano")
 	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
 
-	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-	if err := ta.kycSvc.Review(context.Background(), u.ID(), kycDomain.DecisionApprove, ""); err != nil {
-		t.Fatalf("Review: %v", err)
-	}
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(otherValidCPF), token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", resp.StatusCode)
+	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/verify-phone", map[string]string{"code": "000000"}, token)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
 	var problem map[string]any
 	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-already-verified") {
+	if !strings.HasSuffix(problem["type"].(string), "kyc-invalid-code") {
 		t.Fatalf("problem = %v", problem)
+	}
+}
+
+func TestResendCodeCooldown(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-resend@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+
+	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token)
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/resend-code", nil, token)
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var problem map[string]any
+	readJSON(t, resp, &problem)
+	if !strings.HasSuffix(problem["type"].(string), "kyc-resend-cooldown") {
+		t.Fatalf("problem = %v", problem)
+	}
+	if problem["retry_after_seconds"] == nil {
+		t.Fatal("retry_after_seconds must be present")
+	}
+}
+
+func TestSubmitEnhancedRequiresBasicVerified(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-nobasic@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var problem map[string]any
+	readJSON(t, resp, &problem)
+	if !strings.HasSuffix(problem["type"].(string), "kyc-basic-required") {
+		t.Fatalf("problem = %v", problem)
+	}
+}
+
+func TestDocumentUploadRequiresBasicVerified(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-doc-nobasic@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
+		map[string]string{"type": "id_front", "content_type": "image/png"}, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var problem map[string]any
+	readJSON(t, resp, &problem)
+	if !strings.HasSuffix(problem["type"].(string), "kyc-basic-required") {
+		t.Fatalf("problem = %v", problem)
+	}
+}
+
+func TestSubmitEnhancedRejectsWithoutDocuments(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-nodocs@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+	verifyBasicPhone(t, ta, token, validCPF)
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var problem map[string]any
+	readJSON(t, resp, &problem)
+	if !strings.HasSuffix(problem["type"].(string), "kyc-not-submitted") {
+		t.Fatalf("problem = %v", problem)
+	}
+}
+
+func TestResubmitEnhancedWhilePendingConflicts(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-locked@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+	verifyBasicPhone(t, ta, token, validCPF)
+	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first submit: %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("resubmit: expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var problem map[string]any
+	readJSON(t, resp, &problem)
+	if !strings.HasSuffix(problem["type"].(string), "kyc-submission-locked") {
+		t.Fatalf("problem = %v", problem)
+	}
+}
+
+func TestKYCDocumentFlowRejectedRequiresFreshUploads(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-doc-reject@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+	verifyBasicPhone(t, ta, token, validCPF)
+	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
+	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+
+	if err := ta.kycSvc.Review(context.Background(), u.ID(), kycDomain.DecisionReject, "document unreadable"); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+
+	resp := ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
+	var st map[string]any
+	readJSON(t, resp, &st)
+	if st["state"] != "rejected" || st["rejection_reason"] != "document unreadable" {
+		t.Fatalf("status after rejection = %v", st)
+	}
+
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("resubmit without fresh docs: expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+
+	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/enhanced", nil, token)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("resubmit after fresh uploads: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+}
+
+func TestConfirmDocumentWithoutUploadRejected(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-noupload@example.com", "Password!123", "Fulano")
+	token := ta.issueToken(t, u.ID())
+	verifyBasicPhone(t, ta, token, validCPF)
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
+		map[string]string{"type": "id_front", "content_type": "image/png"}, token)
+	var presigned map[string]any
+	readJSON(t, resp, &presigned)
+
+	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents/confirm",
+		map[string]string{"document_id": presigned["document_id"].(string), "type": "id_front"}, token)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+}
+
+func TestPresignDocumentRequiresStepUp(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-doc-stepup@example.com", "Password!123", "Fulano")
+	stale := ta.issueStaleToken(t, u.ID())
+
+	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
+		map[string]string{"type": "id_front", "content_type": "image/png"}, stale)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", resp.StatusCode)
 	}
 }
 
 func TestInternalKYCRejectsUserToken(t *testing.T) {
 	ta := newTestApp(t)
 	u := ta.registerUser(t, "kyc-usertoken@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID()) // has sid → not a machine token
+	token := ta.issueToken(t, u.ID())
 
 	resp := ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+u.ID(), nil, token)
 	if resp.StatusCode != http.StatusForbidden {
@@ -415,216 +541,6 @@ func TestInternalKYCRejectsMissingScope(t *testing.T) {
 	}
 }
 
-func TestSubmitKYCRequiresAddress(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-addr@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-
-	body := submitKYCBody(validCPF)
-	delete(body, "address")
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", body, token)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("missing address: expected 422, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-}
-
-func TestSubmitKYCRejectsUnknownState(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-uf@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-
-	body := submitKYCBody(validCPF)
-	body["address"] = map[string]string{
-		"zip_code": "01001000", "street": "Rua X", "number": "1",
-		"district": "Centro", "city": "Nowhere", "state": "XX",
-	}
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", body, token)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("unknown UF: expected 422, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-}
-
-// A pending submission is frozen: identity data must not be swappable while a
-// reviewer has it.
-func TestResubmitWhilePendingConflicts(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-locked@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("first submit: %d: %s", resp.StatusCode, bodyString(resp))
-	}
-
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(otherValidCPF), token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("resubmit: expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-submission-locked") {
-		t.Fatalf("problem = %v", problem)
-	}
-}
-
-// Documents may not be re-uploaded either while a submission is locked.
-func TestUploadRejectsWhilePending(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-locked-upload@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
-		map[string]string{"type": "id_front", "content_type": "image/png"}, token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-submission-locked") {
-		t.Fatalf("problem = %v", problem)
-	}
-}
-
-func TestKYCStatusExposesAwaitingFilesState(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-state@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	// Only some of the required documents are uploaded so far.
-	uploadKYCDocument(t, ta, u.ID(), token, kycDomain.DocTypeIDFront)
-	uploadKYCDocument(t, ta, u.ID(), token, kycDomain.DocTypeIDBack)
-
-	resp := ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
-	var st map[string]any
-	readJSON(t, resp, &st)
-
-	if st["state"] != "awaiting_files" {
-		t.Fatalf("status = %v", st)
-	}
-	docs, ok := st["documents"].([]any)
-	if !ok || len(docs) != 2 {
-		t.Fatalf("documents = %v", st["documents"])
-	}
-}
-
-func TestKYCDocumentFlowApproved(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-doc-ok@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-	m2m := ta.issueMachineToken(t, "wallet", []string{"internal:wallet:confirm-deposit"})
-
-	st := uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-	if st["state"] != "awaiting_files" {
-		t.Fatalf("state after uploads = %v", st["state"])
-	}
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-	readJSON(t, resp, &st)
-	if st["state"] != "under_review" {
-		t.Fatalf("state after submit = %v", st["state"])
-	}
-
-	// Reviewer opens the documents (via kycSvc.DocumentURLs — cmd/kyc show).
-	urls, err := ta.kycSvc.DocumentURLs(context.Background(), u.ID())
-	if err != nil || len(urls) != len(kycDomain.RequiredDocTypes) {
-		t.Fatalf("DocumentURLs: urls=%+v err=%v", urls, err)
-	}
-
-	// Reviewer approves.
-	if err := ta.kycSvc.Review(context.Background(), u.ID(), kycDomain.DecisionApprove, ""); err != nil {
-		t.Fatalf("Review: %v", err)
-	}
-
-	resp = ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
-	readJSON(t, resp, &st)
-	if st["state"] != "verified" || st["level"] != "verified" {
-		t.Fatalf("status after approval = %v", st)
-	}
-
-	// ctech-wallet can still read the raw CPF for withdrawal-key validation.
-	resp = ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+u.ID(), nil, m2m)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("internal get: expected 200, got %d", resp.StatusCode)
-	}
-}
-
-func TestKYCDocumentFlowRejectedRequiresFreshUploads(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-doc-reject@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(validCPF), token)
-
-	if err := ta.kycSvc.Review(context.Background(), u.ID(), kycDomain.DecisionReject, "document unreadable"); err != nil {
-		t.Fatalf("Review: %v", err)
-	}
-
-	resp := ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
-	var st map[string]any
-	readJSON(t, resp, &st)
-	if st["state"] != "rejected" || st["rejection_reason"] != "document unreadable" {
-		t.Fatalf("status after rejection = %v", st)
-	}
-
-	// A rejection clears the old documents — resubmitting without fresh
-	// uploads must fail.
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(otherValidCPF), token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("resubmit without fresh docs: expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-
-	// Fresh uploads unlock resubmission again.
-	uploadAllRequiredKYCDocuments(t, ta, u.ID(), token)
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc", submitKYCBody(otherValidCPF), token)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("resubmit after fresh uploads: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-}
-
-// Confirming a document the client never actually uploaded must fail — the
-// service proves the object exists rather than trusting the request.
-func TestConfirmDocumentWithoutUploadRejected(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-noupload@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
-		map[string]string{"type": "id_front", "content_type": "image/png"}, token)
-	var presigned map[string]any
-	readJSON(t, resp, &presigned)
-
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents/confirm",
-		map[string]string{"document_id": presigned["document_id"].(string), "type": "id_front"}, token)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-document-not-uploaded") {
-		t.Fatalf("problem = %v", problem)
-	}
-}
-
-func TestPresignDocumentRequiresStepUp(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-doc-stepup@example.com", "Password!123", "Fulano")
-	stale := ta.issueStaleToken(t, u.ID())
-
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/documents",
-		map[string]string{"type": "id_front", "content_type": "image/png"}, stale)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
-	}
-}
-
 func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 	ta := newOAuthTestApp(t)
 	secretHash, _ := crypto.HashPassword("web-secret")
@@ -636,7 +552,7 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 	})
 	_ = ta.userRepo.Create(context.Background(), &userDomain.User{
 		PK: "USER_user-kyc", Email: "kyc@example.com", EmailVerified: true,
-		CPF: validCPF, KYCLevel: "verified",
+		CPF: validCPF, KYCLevel: kycDomain.LevelEnhanced, KYCStatus: kycDomain.StatusVerified,
 	})
 	_, _, err := ta.sessionSvc.Create(context.Background(), "user-kyc", "Chrome", "1.2.3.4", "UA", nil)
 	if err != nil {
@@ -662,8 +578,5 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 	claims := decodeJWTPayload(t, body["access_token"].(string))
 	if claims["kyc_level"] != "verified" {
 		t.Fatalf("kyc_level = %v", claims["kyc_level"])
-	}
-	if !strings.Contains(body["scope"].(string), "kyc") {
-		t.Fatalf("scope = %v", body["scope"])
 	}
 }

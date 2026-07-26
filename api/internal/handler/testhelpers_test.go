@@ -31,6 +31,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
+	riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/handler"
@@ -123,6 +124,7 @@ type testApp struct {
 	clientRepo   *memClientRepo
 	kycPresigner *memPresigner
 	kycSvc       *kycDomain.Service
+	otpSender    *fakeOTPSender
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -177,7 +179,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	auditRepo := &memAuditRepo{}
 	auditSvc := audit.NewService(auditRepo)
 	kycPresigner := newMemPresigner()
-	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner)
+	otpSender := &fakeOTPSender{}
+	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner, cache.NewInMemory(), otpSender, riskDomain.NoopEvaluator{})
 
 	// WebAuthn instance for tests — uses localhost as RPID/origin.
 	wa, err := webauthn.New(&webauthn.Config{
@@ -243,7 +246,22 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		clientRepo:   sharedClientRepo,
 		kycPresigner: kycPresigner,
 		kycSvc:       kycSvc,
+		otpSender:    otpSender,
 	}
+}
+
+// fakeOTPSender captures the last code sent per phone number so tests can
+// read it back without a real SNS call.
+type fakeOTPSender struct {
+	sent map[string]string // phone -> last code
+}
+
+func (f *fakeOTPSender) SendOTP(_ context.Context, phone, code string) error {
+	if f.sent == nil {
+		f.sent = map[string]string{}
+	}
+	f.sent[phone] = code
+	return nil
 }
 
 // memKYCRepo implements kyc.Repository over the shared memUserRepo store with
@@ -280,7 +298,7 @@ func (m *memKYCRepo) DeletePendingDocument(_ context.Context, documentID string)
 	return nil
 }
 
-func (m *memKYCRepo) SaveSubmission(_ context.Context, userID string, rec kycDomain.Record, oldCPF string) error {
+func (m *memKYCRepo) SaveBasicSubmission(_ context.Context, userID string, rec kycDomain.BasicRecord, oldCPF string) error {
 	if owner, taken := m.cpfs[rec.CPF]; taken && owner != userID {
 		return kycDomain.ErrCPFConflict
 	}
@@ -293,23 +311,39 @@ func (m *memKYCRepo) SaveSubmission(_ context.Context, userID string, rec kycDom
 	}
 	m.cpfs[rec.CPF] = userID
 
-	u.CPF, u.LegalName, u.BirthDate = rec.CPF, rec.LegalName, rec.BirthDate
-	u.KYCMethod, u.KYCDocStatus = rec.Method, rec.DocStatus
-	u.KYCSubmittedAt, u.KYCExpiresAt = rec.SubmittedAt, rec.ExpiresAt
+	u.CPF, u.LegalName, u.BirthDate, u.PhoneNumber = rec.CPF, rec.LegalName, rec.BirthDate, rec.PhoneNumber
 	u.Address = rec.Address
-	// Documents were already uploaded and validated before Submit — only the
-	// stale rejection reason is cleared here.
-	u.KYCRejectionReason = ""
+	u.KYCLevel, u.KYCStatus = kycDomain.LevelBasic, kycDomain.StatusPending
+	u.KYCSubmittedAt = rec.SubmittedAt
+	u.KYCRejectionReason, u.PhoneVerifiedAt = "", ""
 	return nil
 }
 
-func (m *memKYCRepo) AddDocument(_ context.Context, userID string, doc kycDomain.Document, docStatus string) error {
+func (m *memKYCRepo) MarkPhoneVerified(_ context.Context, userID, verifiedAt string) error {
+	u, ok := m.users.byID[userID]
+	if !ok {
+		return userDomain.ErrNotFound
+	}
+	u.KYCStatus, u.PhoneVerifiedAt, u.KYCBasicVerifiedAt = kycDomain.StatusVerified, verifiedAt, verifiedAt
+	return nil
+}
+
+func (m *memKYCRepo) AddDocument(_ context.Context, userID string, doc kycDomain.Document) error {
 	u, ok := m.users.byID[userID]
 	if !ok {
 		return userDomain.ErrNotFound
 	}
 	u.KYCDocuments = append(u.KYCDocuments, doc)
-	u.KYCDocStatus = docStatus
+	return nil
+}
+
+func (m *memKYCRepo) SaveEnhancedSubmission(_ context.Context, userID, submittedAt, expiresAt string) error {
+	u, ok := m.users.byID[userID]
+	if !ok {
+		return userDomain.ErrNotFound
+	}
+	u.KYCLevel, u.KYCStatus = kycDomain.LevelEnhanced, kycDomain.StatusPending
+	u.KYCSubmittedAt, u.KYCExpiresAt, u.KYCRejectionReason = submittedAt, expiresAt, ""
 	return nil
 }
 
@@ -318,8 +352,7 @@ func (m *memKYCRepo) MarkVerified(_ context.Context, userID, verifiedAt string) 
 	if !ok {
 		return userDomain.ErrNotFound
 	}
-	u.KYCLevel, u.KYCVerifiedAt = kycDomain.LevelVerified, verifiedAt
-	u.KYCDocStatus, u.KYCRejectionReason = kycDomain.DocStatusNone, ""
+	u.KYCStatus, u.KYCVerifiedAt, u.KYCRejectionReason = kycDomain.StatusVerified, verifiedAt, ""
 	return nil
 }
 
@@ -328,15 +361,24 @@ func (m *memKYCRepo) MarkRejected(_ context.Context, userID, reason string) erro
 	if !ok {
 		return userDomain.ErrNotFound
 	}
-	u.KYCDocStatus, u.KYCRejectionReason = kycDomain.DocStatusRejected, reason
+	u.KYCStatus, u.KYCRejectionReason = kycDomain.StatusRejected, reason
 	u.KYCDocuments = nil
+	return nil
+}
+
+func (m *memKYCRepo) SaveRiskAssessment(_ context.Context, userID string, a riskDomain.Assessment) error {
+	u, ok := m.users.byID[userID]
+	if !ok {
+		return userDomain.ErrNotFound
+	}
+	u.KYCRiskScore, u.KYCRiskEvaluatedAt = a.Score, a.EvaluatedAt
 	return nil
 }
 
 func (m *memKYCRepo) ListPendingKYC(_ context.Context) ([]*userDomain.User, error) {
 	var out []*userDomain.User
 	for _, u := range m.users.byID {
-		if u.KYCDocStatus == kycDomain.DocStatusPendingReview {
+		if u.KYCLevel == kycDomain.LevelEnhanced && u.KYCStatus == kycDomain.StatusPending {
 			cp := *u
 			out = append(out, &cp)
 		}
@@ -417,6 +459,17 @@ func (ta *testApp) doWithToken(method, path string, body any, token string) *htt
 func (ta *testApp) issueToken(t *testing.T, userID string) string {
 	t.Helper()
 	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", []string{"openid", "profile"}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
+	if err != nil {
+		t.Fatalf("issuing token: %v", err)
+	}
+	return token
+}
+
+// issueTokenWithScopes mirrors issueToken but accepts an explicit scope
+// slice, for tests exercising scope-gated claims (e.g. the kyc scope).
+func (ta *testApp) issueTokenWithScopes(t *testing.T, userID string, scopes []string) string {
+	t.Helper()
+	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", scopes, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
