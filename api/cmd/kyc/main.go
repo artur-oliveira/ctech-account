@@ -21,9 +21,11 @@ import (
 	"os"
 	"strings"
 
+	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/database"
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
+	riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/storage"
 )
@@ -61,7 +63,7 @@ func main() {
 		}
 		presigner = s3Cli
 	}
-	kycSvc := kycDomain.NewService(kycRepo, presigner)
+	kycSvc := kycDomain.NewService(kycRepo, presigner, cache.NewInMemory(), nil, riskDomain.NoopEvaluator{})
 	auditSvc := auditDomain.NewService(auditDomain.NewRepository(db, tablePrefix))
 
 	switch os.Args[1] {
@@ -114,9 +116,13 @@ func runShow(ctx context.Context, kycSvc *kycDomain.Service, args []string) {
 	fmt.Printf("legal_name:   %s\n", u.LegalName)
 	fmt.Printf("cpf:          %s\n", u.CPF)
 	fmt.Printf("birth_date:   %s\n", u.BirthDate)
+	fmt.Printf("phone_number: %s\n", u.PhoneNumber)
 	fmt.Printf("address:      %+v\n", u.Address)
-	fmt.Printf("doc_status:   %s\n", u.KYCDocStatus)
+	fmt.Printf("level:        %s\n", u.KYCLevel)
+	fmt.Printf("status:       %s\n", u.KYCStatus)
 	fmt.Printf("submitted_at: %s\n", u.KYCSubmittedAt)
+	fmt.Printf("risk_score:   %d\n", u.KYCRiskScore)
+	fmt.Printf("risk_signals: %v\n", u.KYCRiskSignals)
 
 	urls, err := kycSvc.DocumentURLs(ctx, userID)
 	if errors.Is(err, kycDomain.ErrInvalidMethod) {
