@@ -26,6 +26,9 @@ type Problem struct {
 	// MaxAgeSeconds extends step-up-required responses with the freshness
 	// window the client must satisfy (see StepUpRequired).
 	MaxAgeSeconds int64 `json:"max_age_seconds,omitempty"`
+	// RetryAfterSeconds tells the client how long to wait before retrying a
+	// rate-limited request (see KYCResendCooldown).
+	RetryAfterSeconds int64 `json:"retry_after_seconds,omitempty"`
 }
 
 func (p *Problem) Error() string { return p.Detail }
@@ -186,12 +189,6 @@ func KYCAlreadyVerified(instance string) *Problem {
 		"Identity data cannot be changed after verification.", instance)
 }
 
-// KYCCPFMismatch → 409: presented CPF does not match the declared one.
-func KYCCPFMismatch(instance string) *Problem {
-	return newProblem("kyc-cpf-mismatch", "CPF Mismatch", http.StatusConflict,
-		"The presented CPF does not match the declared one.", instance)
-}
-
 // KYCNotSubmitted → 409: confirm called before any submission.
 func KYCNotSubmitted(instance string) *Problem {
 	return newProblem("kyc-not-submitted", "KYC Not Submitted", http.StatusConflict,
@@ -203,13 +200,6 @@ func KYCNotSubmitted(instance string) *Problem {
 func KYCSubmissionLocked(instance string) *Problem {
 	return newProblem("kyc-submission-locked", "Identity Verification Pending", http.StatusConflict,
 		"Your identity verification is pending. It cannot be changed until it is reviewed or expires.", instance)
-}
-
-// KYCWrongMethod → 409: the operation does not match the verification method
-// the user chose (e.g. a PIX confirmation for a document submission).
-func KYCWrongMethod(instance string) *Problem {
-	return newProblem("kyc-wrong-method", "Wrong Verification Method", http.StatusConflict,
-		"This operation does not match the verification method chosen by the user.", instance)
 }
 
 // KYCDocumentNotUploaded → 409: confirm called for an object that is not in the
@@ -243,4 +233,33 @@ func UnauthorizedClient(instance string) *Problem {
 func EmailNotVerified(instance string) *Problem {
 	return newProblem("email-not-verified", "Email Not Verified", http.StatusForbidden,
 		"Verify your email address before signing in. Check your inbox for the verification link.", instance)
+}
+
+// KYCBasicRequired → 409: Enhanced verification requires Basic to be
+// phone-verified first.
+func KYCBasicRequired(instance string) *Problem {
+	return newProblem("kyc-basic-required", "Basic Verification Required", http.StatusConflict,
+		"Complete phone-verified Basic identity verification before submitting Enhanced documents.", instance)
+}
+
+// KYCInvalidCode → 422: the submitted phone verification code is wrong,
+// expired, or its attempt budget was exhausted.
+func KYCInvalidCode(instance string) *Problem {
+	return newProblem("kyc-invalid-code", "Invalid Verification Code", http.StatusUnprocessableEntity,
+		"The verification code is invalid or has expired.", instance)
+}
+
+// KYCResendCooldown → 429: a verification code was already sent recently.
+func KYCResendCooldown(retryAfter time.Duration, instance string) *Problem {
+	p := newProblem("kyc-resend-cooldown", "Resend Cooldown", http.StatusTooManyRequests,
+		"A verification code was already sent. Wait before requesting another.", instance)
+	p.RetryAfterSeconds = int64(retryAfter.Seconds())
+	return p
+}
+
+// KYCPhoneVerificationUnavailable → 503: SMS phone verification is not
+// configured (PHONE_VERIFICATION_ENABLED=false).
+func KYCPhoneVerificationUnavailable(instance string) *Problem {
+	return newProblem("kyc-phone-verification-unavailable", "Phone Verification Unavailable", http.StatusServiceUnavailable,
+		"Phone verification is not available right now. Try again later.", instance)
 }
