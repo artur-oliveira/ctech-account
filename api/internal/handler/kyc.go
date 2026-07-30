@@ -196,7 +196,9 @@ func (h *KYCHandler) submitEnhanced(c fiber.Ctx) error {
 }
 
 // internalGet returns the full (unmasked) identity record — service-to-service
-// only; the wallet needs the raw CPF for withdrawal key validation.
+// only; the wallet needs the raw CPF for withdrawal key validation, and (for
+// Asaas BaaS subaccount onboarding) the email already collected at
+// registration alongside phone_number/address.
 func (h *KYCHandler) internalGet(c fiber.Ctx) error {
 	u, err := h.kycSvc.GetUser(c.Context(), c.Params("user_id"))
 	if err != nil {
@@ -208,6 +210,7 @@ func (h *KYCHandler) internalGet(c fiber.Ctx) error {
 		"cpf":          u.CPF,
 		"legal_name":   u.LegalName,
 		"birth_date":   u.BirthDate,
+		"email":        u.Email,
 		"phone_number": u.PhoneNumber,
 		"address":      u.Address,
 	})

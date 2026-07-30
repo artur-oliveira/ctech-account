@@ -14,6 +14,7 @@ import (
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 const m2mSecret = "m2m-secret"
@@ -538,6 +539,32 @@ func TestInternalKYCRejectsMissingScope(t *testing.T) {
 	resp := ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/u1", nil, m2m)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+// TestInternalKYCReturnsEmail covers the ctech-wallet Asaas-onboarding
+// extension (docs/plans/2026-07-30-asaas-baas-implementation-plan.md §3.1):
+// the internal KYC record must also carry the user's email, alongside the
+// existing cpf/legal_name/birth_date/phone_number/address.
+func TestInternalKYCReturnsEmail(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "kyc-email@example.com", "Password!123", "Fulano")
+	// This test harness wires the internal-KYC route to InternalWalletConfirmDeposit,
+	// not InternalAccountKYC (production uses InternalAccountKYC — see
+	// cmd/api/main.go) — a pre-existing test/prod scope divergence, out of
+	// scope to fix here.
+	m2m := ta.issueMachineToken(t, "wallet", []string{scopes.InternalWalletConfirmDeposit})
+
+	resp := ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+u.ID(), nil, m2m)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["email"] != "kyc-email@example.com" {
+		t.Fatalf("expected email in response, got: %+v", body)
 	}
 }
 
