@@ -150,8 +150,10 @@ var defaultCatalog = []ServiceScopes{
 			{InternalWalletDebit, "Debit value for sandbox wallet", "Debitar valores da carteira virtual"},
 			{"internal:wallet:balance", "Check wallet balance", "Ver saldo da carteira"},
 			{"internal:wallet:debit-real", "Debit value for real wallet", "Debitar valores da carteira (Dinheiro real)"},
+			{"internal:wallet:game-status", "Check wallet game status", "Verifica status da carteira de jogos"},
 			{"internal:wallet:game-hold", "Hold value for game wallet", "Reserva os valores da carteira de jogos"},
 			{"internal:wallet:game-cashout", "Cashout value for real wallet", "Retorna valores para a carteira de jogos"},
+			{"internal:wallet:sandbox-purchase", "Purchases sandbox credits", "Compra créditos sandbox"},
 		},
 	},
 }
