@@ -18,13 +18,13 @@ import (
 // resolved by the token's kid header. Keys are hot-reloadable (Reload) so the
 // rotation loop can swap them without a restart.
 type JWTService struct {
-	mu           sync.RWMutex
-	active       *keystore.Key
-	previous     *keystore.Key // nil until first rotation
-	selfAudience string        // Verify() rejects tokens whose aud doesn't contain this value
-	issuer       string        // Verify() rejects tokens whose iss doesn't match this value
+	mu             sync.RWMutex
+	active         *keystore.Key
+	previous       *keystore.Key // nil until first rotation
+	selfAudience   string        // Verify() rejects tokens whose aud doesn't contain this value
+	issuer         string        // Verify() rejects tokens whose iss doesn't match this value
 	accessTokenTTL time.Duration
-	idTokenTTL    time.Duration
+	idTokenTTL     time.Duration
 }
 
 // NewJWTService wraps the single key loaded by config (RSA_PRIVATE_KEY env —
@@ -48,12 +48,12 @@ func NewJWTServiceWithKeys(cfg *config.Config, active, previous *keystore.Key) (
 		accessTTL = 15 * time.Minute
 	}
 	return &JWTService{
-		active:        active,
-		previous:      previous,
-		selfAudience:  cfg.Audience,
-		issuer:        cfg.BaseURL,
+		active:         active,
+		previous:       previous,
+		selfAudience:   cfg.Audience,
+		issuer:         cfg.BaseURL,
 		accessTokenTTL: accessTTL,
-		idTokenTTL:    time.Hour,
+		idTokenTTL:     time.Hour,
 	}, nil
 }
 
@@ -75,15 +75,15 @@ func (j *JWTService) Reload(active, previous *keystore.Key) {
 func (j *JWTService) SignAccessToken(userID, sessionID, clientID string, scopes []string, issuer string, audience []string, authTime, lastMFAAt int64, amr []string, kycLevel string) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
-		"sub":      userID,
-		"sid":      sessionID,
-		"scope":    strings.Join(scopes, " "),
-		"iss":      issuer,
-		"aud":      audience,
-		"azp":      clientID,
+		"sub":       userID,
+		"sid":       sessionID,
+		"scope":     strings.Join(scopes, " "),
+		"iss":       issuer,
+		"aud":       audience,
+		"azp":       clientID,
 		"token_use": "access",
-		"iat":      now.Unix(),
-		"exp":      now.Add(j.accessTokenTTL).Unix(),
+		"iat":       now.Unix(),
+		"exp":       now.Add(j.accessTokenTTL).Unix(),
 	}
 	if authTime > 0 {
 		claims["auth_time"] = authTime
@@ -160,7 +160,7 @@ func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 		opts = append(opts, jwt.WithIssuer(j.issuer))
 	}
 	parsed, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+		if token.Method != jwt.SigningMethodRS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		kid, _ := token.Header["kid"].(string)
@@ -169,7 +169,7 @@ func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 			return nil, fmt.Errorf("unknown kid %q", kid)
 		}
 		return pub, nil
-	}, opts...)
+	}, append(opts, jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))...)
 	if err != nil {
 		return nil, fmt.Errorf("verifying token: %w", err)
 	}
