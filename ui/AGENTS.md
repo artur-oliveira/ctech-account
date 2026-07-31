@@ -210,3 +210,11 @@ npx eslint src --ext .ts,.tsx  # zero errors/warnings
 - [ ] `render` prop used (not `asChild`)
 - [ ] Tokens and cookies never logged or exposed to client JS
 - [ ] Cross-project impact reviewed (ui ↔ Go API ↔ cdk)
+
+## Mandatory Documentation Policy
+
+**Every code change MUST be documented.**
+
+There are NO exceptions.
+
+Any modification affecting behavior, architecture, APIs, integrations, configuration, deployment, security, business rules, or developer workflow MUST include the corresponding documentation update in the same change.

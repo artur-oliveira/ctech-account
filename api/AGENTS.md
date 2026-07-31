@@ -186,3 +186,11 @@ Never commit: RSA private keys (`key.pem`), JWT secrets, AWS credentials, real u
 - [ ] `validate.Struct(req)` in every body-parsing handler
 - [ ] `../README.md` updated if routes or config vars changed
 - [ ] Cross-project impact reviewed (ui ↔ cdk ↔ ctech-dfe)
+
+## Mandatory Documentation Policy
+
+**Every code change MUST be documented.**
+
+There are NO exceptions.
+
+Any modification affecting behavior, architecture, APIs, integrations, configuration, deployment, security, business rules, or developer workflow MUST include the corresponding documentation update in the same change.

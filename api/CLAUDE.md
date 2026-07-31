@@ -195,3 +195,11 @@ Before touching: identify risks + side effects, verify backward compatibility wi
 - [ ] `validate.Struct(req)` called in every handler that parses a body
 - [ ] `../README.md` updated if routes or config vars changed
 - [ ] Cross-project impact reviewed (ui ↔ cdk ↔ ctech-dfe)
+
+## Mandatory Documentation Policy
+
+**Every code change MUST be documented.**
+
+There are NO exceptions.
+
+Any modification affecting behavior, architecture, APIs, integrations, configuration, deployment, security, business rules, or developer workflow MUST include the corresponding documentation update in the same change.

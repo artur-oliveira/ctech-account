@@ -230,3 +230,11 @@ Before touching: identify risks + side effects, verify backward compatibility.
 - [ ] `render` prop used instead of `asChild` for ShadCN components
 - [ ] Tokens and cookies never logged or exposed beyond what's already documented above
 - [ ] Cross-project impact reviewed (ui ↔ Go API ↔ cdk)
+
+## Mandatory Documentation Policy
+
+**Every code change MUST be documented.**
+
+There are NO exceptions.
+
+Any modification affecting behavior, architecture, APIs, integrations, configuration, deployment, security, business rules, or developer workflow MUST include the corresponding documentation update in the same change.
