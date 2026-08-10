@@ -32,6 +32,12 @@ const KYC_DOCUMENTS_BUCKET = `${ENVIRONMENT}-ctech-account-kyc-documents`;
 
 const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 
+// Cost allocation tags — applied to every resource in every stack.
+// Requires manual activation as a cost allocation tag in the Billing console
+// (Billing > Cost Allocation Tags) before it appears as a Cost Explorer group-by key.
+cdk.Tags.of(app).add('Project', 'ctech-account');
+cdk.Tags.of(app).add('Environment', ENVIRONMENT);
+
 const BASE_DOMAIN = 'aoctech.app';
 
 const domainForEnv = (environment: Environment, prefix: string) => {
