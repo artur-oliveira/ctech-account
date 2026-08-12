@@ -63,7 +63,7 @@ export class OidcStack extends cdk.Stack {
       resources: ['arn:aws:s3:::*-ctech-account-frontend/*'],
     }));
 
-    // SSM — read VPC ID and ALB listener ARN at synth time
+    // SSM — read VPC ID and shared edge-SG ID at synth time
     deployRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
       resources: ['arn:aws:ssm:*:*:parameter/ctech/*'],

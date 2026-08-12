@@ -2,7 +2,9 @@
 
 Centralized OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 
-Built with **Go 1.26** and **Fiber v3**. Runs on an EC2 Auto Scaling Group behind a shared Application Load Balancer and CloudFront. There is no Lambda or API Gateway.
+Built with **Go 1.26** and **Fiber v3**. Runs on an EC2 Auto Scaling Group routed by
+the CTech HAProxy edge load balancer, with CloudFront for the frontend. There is no
+Lambda or API Gateway.
 
 ---
 
@@ -512,7 +514,9 @@ npx cdk bootstrap aws://ACCOUNT_ID/$REGION
 npx cdk deploy --all
 ```
 
-This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group behind a shared Application Load Balancer and CloudFront, IAM roles, and SSM read permissions. There is no Lambda or API Gateway.
+This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group registered with
+the CTech HAProxy edge load balancer, CloudFront, IAM roles, and SSM read permissions.
+There is no Lambda or API Gateway.
 
 ### 4 — Seed the `accounts-ui` OAuth client in DynamoDB
 
@@ -551,7 +555,7 @@ AWS_REGION=$REGION TABLE_PREFIX=production_ VALKEY_URL=$VALKEY_URL go run ./cmd/
 ### 5 — Configure the SPA environment (EC2 Auto Scaling Group / CloudFront)
 
 ```bash
-# In production CloudFront forwards /v1.0/* and /.well-known/* to the ALB, so the SPA calls the API same-origin:
+# In production CloudFront forwards /v1.0/* and /.well-known/* to HAProxy, so the SPA calls the API same-origin:
 NEXT_PUBLIC_API_URL=https://accounts.aoctech.app
 OAUTH_CLIENT_ID=accounts-ui
 BASE_URL=https://accounts.aoctech.app
@@ -571,13 +575,13 @@ npm run build  # verify clean build before deploy (static export)
 
 ```bash
 # Backend health
-curl -s https://<alb-or-cloudfront-url>/v1.0/health-check | jq .
+curl -s https://<haproxy-or-cloudfront-url>/v1.0/health-check | jq .
 
 # OIDC discovery
-curl -s https://<alb-or-cloudfront-url>/.well-known/openid-configuration | jq .issuer
+curl -s https://<haproxy-or-cloudfront-url>/.well-known/openid-configuration | jq .issuer
 
 # JWKS (confirm your kid matches the `kid` in /ctech-account/{env}/jwk/active)
-curl -s https://<alb-or-cloudfront-url>/.well-known/jwks.json | jq '.keys[0].kid'
+curl -s https://<haproxy-or-cloudfront-url>/.well-known/jwks.json | jq '.keys[0].kid'
 
 # Frontend
 curl -sI https://accounts.aoctech.app/login  # expect 200
@@ -588,7 +592,7 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 - Rotate the signing key annually: `go run ./cmd/rotatekeys -env <env>` writes a new `jwk/active` and demotes the old to `jwk/previous` — no redeploy needed.
 - Once AWS grants production SNS SMS access, run `aws sns set-sms-attributes` once per account/region to set the monthly spend limit, then set `PHONE_VERIFICATION_ENABLED=true` in SSM — this is outside CDK's scope (no such resource exists to provision).
 - Enable DynamoDB Point-in-Time Recovery on all eight tables.
-- Set a CloudWatch alarm on the EC2/ALB error rate > 1%.
+- Set a CloudWatch alarm on the EC2 and HAProxy error rate > 1%.
 
 ---
 

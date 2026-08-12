@@ -9,7 +9,7 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 ## Role
 
 Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
-DynamoDB tables, an EC2 ASG (Go API) behind a **shared** ALB, S3 + CloudFront
+DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**, S3 + CloudFront
 (frontend), IAM roles, GitHub Actions OIDC, a private KYC documents bucket, and the
 shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
 `README.md`; this file is the quick reference.
@@ -25,7 +25,7 @@ cdk/
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
 │   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template behind the SHARED ALB
+│   ├── compute-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
@@ -79,8 +79,7 @@ Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no
 | Hardcoded ARN in cross-stack reference      | Use CDK export/import (`Fn.importValue`)      |
 | Wildcard `*` in IAM resource ARN            | Scope to the specific table/bucket ARN        |
 | Adding IAM policy inline in compute stack   | Define in `iam-stack.ts`, pass role as prop   |
-| Re-implementing EC2/ASG/ALB wiring          | Reuse `@aoctech/cdk` `PrivateIpv4Ec2Service`  |
-| Reusing ALB listener priority 15/35         | ctech-account uses **25** (dfe=15, wallet=35) |
+| Reintroducing ALB listener/target-group wiring | Use the HAProxy route `/ctech/{env}/lbalancer/routes/account` instead |
 | `cdk deploy --all` without `cdk synth` first | Always `cdk synth` → review → deploy         |
 
 ---

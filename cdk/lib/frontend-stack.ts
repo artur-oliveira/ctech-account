@@ -8,7 +8,7 @@ import {Environment} from './types';
 import {Duration} from "aws-cdk-lib";
 
 /**
- * Request paths CloudFront forwards to the ALB instead of S3.
+ * Request paths CloudFront forwards to HAProxy instead of S3.
  *
  * The API is mounted at /v1.0 (api/cmd/api/main.go: app.Group("/v1.0")) and the OIDC
  * discovery documents at the root (api/internal/handler/wellknown.go:
@@ -30,9 +30,9 @@ interface FrontendStackProps extends cdk.StackProps {
   environment: Environment;
   certificateArn: string;
   domainName: string;       // e.g. accounts.aoctech.app
-  // Public API host on the shared ALB, e.g. "accounts-api.aoctech.app".
+  // Public API host routed by HAProxy, e.g. "accounts-api.aoctech.app".
   // Used as the API origin: ALL_VIEWER_EXCEPT_HOST_HEADER makes CloudFront send
-  // this as the Host header, which is what the ALB listener rule matches on.
+  // this as the Host header, which HAProxy uses to select the backend.
   apiDomainName: string;
   // Virtual-hosted S3 endpoint the KYC bucket is reached at, e.g.
   // "dev-ctech-account-kyc-documents.s3.us-east-1.amazonaws.com". The browser

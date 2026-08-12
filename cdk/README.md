@@ -9,7 +9,7 @@ Entry point: `bin/ctech-account.ts`. App: `CtechAccount-{ENV}-<Stack>`.
 > **Divergence vs older CLAUDE.md/AGENTS.md (now fixed):** this repo does **not**
 > use a single-table design. It provisions **eight separate DynamoDB tables** (see
 > §Tables). There is **no Lambda and no API Gateway** anywhere in this CDK — the API
-> runs on an **EC2 Auto Scaling Group behind a shared Application Load Balancer**, and
+> runs on an **EC2 Auto Scaling Group routed by the CTech HAProxy edge load balancer**, and
 > the SSM signing-key path is `/ctech-account/{env}/jwk/*` (not `rsa-private-key`).
 
 ---
@@ -26,7 +26,7 @@ All stacks are instantiated in `bin/ctech-account.ts`. `Environment` ∈
 | `DynamoDBStack` | `lib/dynamodb-stack.ts` | 8 DynamoDB tables + GSIs (OnDemand) |
 | `KYCStack` | `lib/kyc-stack.ts` | 1 private S3 bucket for KYC identity documents |
 | `IAMStack` | `lib/iam-stack.ts` | EC2 instance profile + least-privilege inline policies |
-| `ComputeStack` | `lib/compute-stack.ts` | EC2 ASG + Launch Template + nginx, behind the **shared** ALB |
+| `ComputeStack` | `lib/compute-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
 | `FrontendStack` | `lib/frontend-stack.ts` | S3 (static export) + CloudFront + URL-rewrite function |
 
 **`lib/s3-stack.ts` (`S3Stack`) is NOT instantiated** in `bin/ctech-account.ts`. The
@@ -40,20 +40,22 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 
 ---
 
-## 2. Compute — EC2 ASG + shared ALB (`lib/compute-stack.ts`)
+## 2. Compute — EC2 ASG + HAProxy route (`lib/compute-stack.ts`)
 
-- **Shared ALB, not owned here.** The HTTPS listener ARN and ALB security group are
-  imported from SSM at synth time (`compute-stack.ts:55`):
-  - `/ctech/{env}/alb/https-listener-arn`
-  - `/ctech/{env}/network/alb-sg-id`
-- **Listener-rule priority = 25** (`bin/ctech-account.ts:108`), chosen so it does not
-  collide with `py-dfe-api` (15) or `ctech-wallet-api` (35).
-- Uses the shared `@aoctech/cdk` `PrivateIpv4Ec2Service` construct
-  (`compute-stack.ts:361`) — an EC2 ASG + ALB target group pattern (no NAT gateway).
-  **The instance type is set inside `@aoctech/cdk` and is not visible in this repo**
-  (hypothesis: a `t3`/`t4g` small/medium — verify in that package before cost math).
-- **Capacity:** min 1, max **3 in prod**, max 1 otherwise (`compute-stack.ts:379`).
-- **Health check:** `/v1.0/health-check`, healthy HTTP 200 (`compute-stack.ts:376`).
+- **No ALB listener, listener rule, or target group is created or imported.** HAProxy
+  discovers the healthy ASG instances from its bootstrap route
+  `/ctech/{env}/lbalancer/routes/account`, owned by `ctech-lbalancer`. Its default
+  registration targets this ASG, port 8080, `/v1.0/health-check`, HTTP 200, and
+  `autoHeal: true`.
+- The retained `/ctech/{env}/network/alb-sg-id` parameter now identifies the shared
+  edge SG trusted by service instances. Its historical name is intentionally kept
+  until every service has migrated without downtime.
+- The ASG, launch template, instance SG, log groups, HTTP status metric filters, and
+  CPU target tracking are defined directly in this stack. It uses a `t4g.micro`,
+  3-GiB gp3 root volume, private IPv4, and IPv6 egress (no NAT gateway).
+- **Capacity:** min 1, max **3 in prod**, max 1 otherwise.
+- **Health check:** HAProxy probes `/v1.0/health-check` and accepts HTTP 200. With
+  `autoHeal: true`, three unhealthy reconciliations request ASG replacement.
 - **User data** (`compute-stack.ts:81`) installs nginx + CloudWatch/SSM agents, writes
   an nginx config that listens on `:8080` and reverse-proxies to the Go binary on
   `:8000`, then a `start.sh` that (a) pulls secrets from SSM and (b) execs
@@ -74,7 +76,7 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   - Valkey URL from `valkeyUrlSsmPath` = **`/ctech/{env}/valkey/url`**
     (`bin/ctech-account.ts:107`); only fetched when that path is provided.
 - **nginx rate limiting** (`compute-stack.ts:134`): `limit_req_zone` 20 r/s per
-  `$binary_remote_addr` (real viewer IP, rewritten by the realip module from the ALB),
+  `$binary_remote_addr` (real viewer IP, rewritten by the realip module from HAProxy),
   `burst=200`, plus `limit_conn_zone` 100 conn/IP. Applies to all non-health routes.
 - **Valkey required in non-dev** is enforced by the **Go API at boot**
   (`api/cmd/api/main.go:70`), not by CDK. CDK just supplies the URL via SSM.
@@ -128,7 +130,7 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 | Action(s) | Resource | Purpose |
 |-----------|----------|---------|
 | `dynamodb:GetItem/PutItem/UpdateItem/DeleteItem/Query/BatchGetItem/BatchWriteItem/TransactWriteItems/DescribeTable` | every table ARN + `*/index/*` | all read/write + CPF uniqueness transaction |
-| `ssm:GetParameter` | `/ctech-account/{env}/*`, `/ctech/{env}/*` | runtime config + shared ALB/VPC params |
+| `ssm:GetParameter` | `/ctech-account/{env}/*`, `/ctech/{env}/*` | runtime config + shared network params |
 | `ssm:PutParameter` | `/ctech-account/{env}/jwk/*` | JWK auto-rotation writes |
 | `ses:SendEmail/SendRawEmail` | `arn:aws:ses:*:*:identity/*` | verification / password-reset emails |
 | `s3:GetObject` | `{deploymentsBucket}/ctech-account/*` | pull release artifacts |
@@ -149,8 +151,8 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
     (`frontend-stack.ts:76`) that maps clean URLs to `.html` using a **KeyValueStore**
     (`{env}-ctech-account-routes`) populated by the frontend CI after sync. Unknown
     routes → `/404.html`.
-  - `/v1.0/*` and `/.well-known/*` → API origin `accounts-api.aoctech.app` (the shared
-    ALB), `CACHING_DISABLED`, `ALL_VIEWER_EXCEPT_HOST_HEADER` (forwards cookies,
+  - `/v1.0/*` and `/.well-known/*` → API origin `accounts-api.aoctech.app` (HAProxy),
+    `CACHING_DISABLED`, `ALL_VIEWER_EXCEPT_HOST_HEADER` (forwards cookies,
     Authorization, body), `ALLOW_ALL` methods. Service-to-service callers use
     `accounts-api.aoctech.app` directly (no edge round trip).
 - **Security headers policy** (`frontend-stack.ts:115`): HSTS (preload, include
@@ -209,13 +211,12 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
 
 ## 9. Rough monthly cost (estimates — us-east-1)
 
-> Illustrative only; instance type lives in `@aoctech/cdk` (unknown from this repo).
-> Verify against the actual launch template before budgeting.
+> Illustrative only; verify pricing against the deployed launch template before budgeting.
 
 | Resource | Driver | Est. monthly |
 |----------|--------|--------------|
-| EC2 ASG (1–3 × general-purpose, e.g. t3.small/medium) | always-on, prod max 3 | ~$15–$60 |
-| Shared ALB (cost shared across ctech services) | hourly + LCU | ~$16–$25 (shared) |
+| EC2 ASG (1–3 × t4g.micro) | always-on, prod max 3 | ~$6–$20 |
+| HAProxy edge | shared EC2 + request traffic | owned by `ctech-lbalancer` |
 | CloudFront (PriceClass_100, S3 + API passthrough) | requests + egress | ~$1–$20 (low traffic) |
 | S3 (frontend + deployments + logs + KYC docs) | storage + GETs | ~$1–$10 |
 | DynamoDB OnDemand (8 tables, warm cap 1000 RU/WU each) | request units | ~$5–$40 at low volume |
@@ -238,6 +239,7 @@ bound the bill. KYC bucket lifecycle (5-yr expire) keeps storage bounded.
 - **No jest tests present** despite the `test` script.
 - **`gha-infra` role is `AdministratorAccess`** — intentional for `cdk deploy`, scoped
   to the infra workflow only.
-- Shared ALB + listener priority 25 means `ctech-account` coexists with `py-dfe-api`
-  (15) and `ctech-wallet-api` (35) on the same listener — do not reuse those
-  priorities.
+- The account route is currently one of `ctech-lbalancer`'s bootstrap routes. Do not
+  create `/ctech/{env}/lbalancer/routes/account` here until its CloudFormation
+  ownership has been explicitly transferred; two stacks cannot own the same SSM
+  parameter.

@@ -99,19 +99,17 @@ iamStack.addDependency(dynamodbStack);
 iamStack.addDependency(kycStack);
 
 // =====================
-// Compute (EC2 + ASG, shared ALB from ctech-cdk)
+// Compute (EC2 + ASG, routed by ctech-lbalancer HAProxy)
 // =====================
 const computeStack = new ComputeStack(app, id('Compute'), {
     env,
     environment: ENVIRONMENT,
     vpcId: CTECH_VPC_ID,
-    domainName: domainForEnv(ENVIRONMENT, 'accounts-api'), // accounts-api.aoctech.app → ALB
     instanceProfileName: iamStack.instanceProfileName,
     deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
     logsBucketName: CTECH_LOGS_BUCKET,
     kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
     valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
-    listenerRulePriority: 25, // py-dfe-api uses 15, ctech-wallet-api uses 35
     description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 computeStack.addDependency(iamStack);
@@ -119,9 +117,9 @@ computeStack.addDependency(iamStack);
 // =====================
 // Frontend (S3 + CloudFront)
 // accounts.aoctech.app/             → UI (S3)
-// accounts.aoctech.app/v1.0/*       → API (ALB) — browsers, same-origin, no CORS
-// accounts.aoctech.app/.well-known/ → API (ALB) — OIDC discovery at the issuer host
-// accounts-api.aoctech.app          → API (ALB) direct — service-to-service + public API
+// accounts.aoctech.app/v1.0/*       → API (HAProxy) — browsers, same-origin, no CORS
+// accounts.aoctech.app/.well-known/ → API (HAProxy) — OIDC discovery at the issuer host
+// accounts-api.aoctech.app          → API (HAProxy) direct — service-to-service + public API
 // =====================
 new FrontendStack(app, id('Frontend'), {
     env,

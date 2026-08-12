@@ -1,11 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import {Construct} from 'constructs';
 import {
-  PrivateIpv4Ec2Service,
   addCloudWatchAgentDualStackOverride,
   addDualStackSsmAgentCommands,
   addRealipRefreshCommands,
@@ -16,7 +16,6 @@ import {Environment} from './types';
 interface ComputeStackProps extends cdk.StackProps {
   environment: Environment;
   vpcId: string;
-  domainName: string;
   instanceProfileName: string;
   deploymentsBucketName: string;
   logsBucketName: string;
@@ -24,13 +23,14 @@ interface ComputeStackProps extends cdk.StackProps {
   // document verification path and only offers PIX-match.
   kycDocumentsBucketName: string;
   valkeyUrlSsmPath?: string;
-  // ALB listener rule priority — must not conflict with py-dfe-api (priority 15) or
-  // ctech-wallet-api (priority 35). Default bumped 20 → 25: the v2 migration to
-  // PrivateIpv4Ec2Service creates a new ListenerRule under a new logical ID while
-  // the old one (still priority 20) is still live, and ALB rejects two rules on
-  // the same listener sharing a priority.
-  listenerRulePriority?: number;
 }
+
+const HTTP_STATUS_METRIC_PATTERNS: ReadonlyArray<[string, string]> = [
+  ['HTTP2XX', '{ ($.status >= 200) && ($.status < 300) }'],
+  ['HTTP3XX', '{ ($.status >= 300) && ($.status < 400) }'],
+  ['HTTP4XX', '{ ($.status >= 400) && ($.status < 500) }'],
+  ['HTTP5XX', '{ $.status >= 500 }'],
+];
 
 export class ComputeStack extends cdk.Stack {
   public readonly asgName: string;
@@ -41,39 +41,28 @@ export class ComputeStack extends cdk.Stack {
     const {
       environment,
       vpcId,
-      domainName,
       instanceProfileName,
       deploymentsBucketName,
       logsBucketName,
       kycDocumentsBucketName,
       valkeyUrlSsmPath,
-      listenerRulePriority = 25,
     } = props;
 
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {vpcId});
 
-    const albSgId = ssm.StringParameter.valueForStringParameter(
+    // This is the edge SG formerly attached to the shared ALB. It remains the
+    // trusted source in each service SG while HAProxy takes over routing.
+    const edgeSgId = ssm.StringParameter.valueForStringParameter(
       this, `/ctech/${environment}/network/alb-sg-id`,
     );
-    const albSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'AlbSg', albSgId);
-
-    const httpsListenerArn = ssm.StringParameter.valueForStringParameter(
-      this, `/ctech/${environment}/alb/https-listener-arn`,
-    );
-    const httpsListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
-      this, 'HttpsListener',
-      {listenerArn: httpsListenerArn, securityGroup: albSg},
-    );
+    const edgeSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'EdgeSg', edgeSgId);
 
     const isProd = environment === 'prod';
-    // Bumped names (v2): moving the ASG/SG/log groups into PrivateIpv4Ec2Service
-    // changes their CloudFormation logical IDs, which CloudFormation treats as
-    // delete-old/create-new. Explicit physical names must differ from the old
-    // ones or the create side of that swap collides with the still-live old
-    // resource (and the listener priority bump below avoids the same collision
-    // on the ALB rule).
-    const svcName = 'ctech-account-v2';
-    this.asgName = `${environment}-ctech-account-v2`;
+    // Keep the existing v2 physical names and logical IDs so this migration only
+    // removes ALB resources; the ASG, instances, security group, and log groups
+    // are updated in place.
+    const svcName = 'ctech-account';
+    this.asgName = `${environment}-ctech-account`;
     const logRetention = isProd ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.ONE_WEEK;
     const logGroupApp = `/${svcName}/${environment}/app`;
     const logGroupNginx = `/${svcName}/${environment}/nginx`;
@@ -113,7 +102,7 @@ export class ComputeStack extends cdk.Stack {
       `    include /etc/nginx/mime.types;`,
       `    default_type application/octet-stream;`,
       ``,
-      `    # Written by /opt/app/update-realip.sh: set_real_ip_from for the ALB and for`,
+      `    # Written by /opt/app/update-realip.sh: set_real_ip_from for HAProxy and for`,
       `    # CloudFront's origin-facing ranges, so $remote_addr below is the real viewer`,
       `    # IP and not the proxy's. The glob keeps nginx bootable if the file is absent.`,
       `    include /etc/nginx/conf.d/realip*.conf;`,
@@ -131,9 +120,9 @@ export class ComputeStack extends cdk.Stack {
       `    open_file_cache_min_uses 2;`,
       `    open_file_cache_errors on;`,
       ``,
-      `    # $binary_remote_addr is the viewer's IP, not the ALB's, only because the`,
+      `    # $binary_remote_addr is the viewer's IP, not HAProxy's, only because the`,
       `    # realip module rewrote it (see the include above). Without that the whole`,
-      `    # req_by_ip zone collapses onto the ALB's private IP and the rate becomes a`,
+      `    # req_by_ip zone collapses onto HAProxy's private IP and the rate becomes a`,
       `    # shared ceiling for every client at once — on the login and token routes.`,
       `    limit_req_zone  $binary_remote_addr zone=req_by_ip:10m  rate=20r/s;`,
       `    limit_conn_zone $binary_remote_addr zone=conn_by_ip:10m;`,
@@ -361,38 +350,94 @@ export class ComputeStack extends cdk.Stack {
       `aws s3api head-object --bucket "${deploymentsBucketName}" --key "ctech-account/current.zip" 2>/dev/null && /opt/app/deploy.sh ctech-account/current.zip || echo "No bootstrap artifact, waiting for first deploy"`,
     );
 
-    // ── Shared no-NAT-Gateway EC2/ASG pattern (@aoctech/cdk) ───────────────────
-    const service = new PrivateIpv4Ec2Service(this, 'ApiService', {
+    // HAProxy discovers healthy ASG members from the account route supplied by
+    // ctech-lbalancer's default registrations.
+    // Do not use PrivateIpv4Ec2Service here: it creates an ALB target group and
+    // listener rule, both of which are retired by this migration.
+    const serviceSg = new ec2.SecurityGroup(this, 'ApiServiceSg', {
       vpc,
-      albSg,
-      httpsListener,
       securityGroupName: `${environment}-${svcName}-sg`,
-      securityGroupDescription: 'ctech-account instances',
-      appPort: 8080,
-      instanceProfileName,
+      description: 'ctech-account instances',
+      allowAllOutbound: true,
+      allowAllIpv6Outbound: true,
+    });
+    serviceSg.addIngressRule(edgeSg, ec2.Port.tcp(8080), 'HAProxy edge to app');
+
+    const appLogGroup = new logs.LogGroup(this, 'ApiServiceAppLogGroup', {
+      logGroupName: logGroupApp,
+      retention: logRetention,
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+    const nginxLogGroup = new logs.LogGroup(this, 'ApiServiceNginxLogGroup', {
+      logGroupName: logGroupNginx,
+      retention: logRetention,
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+    for (const [name, pattern] of HTTP_STATUS_METRIC_PATTERNS) {
+      new logs.MetricFilter(this, `ApiService${name}Filter`, {
+        logGroup: nginxLogGroup,
+        metricNamespace: `CtechAccount/${environment}`,
+        metricName: name,
+        filterPattern: logs.FilterPattern.literal(pattern),
+        metricValue: '1',
+        defaultValue: 0,
+      });
+    }
+
+    const launchTemplate = new ec2.LaunchTemplate(this, 'ApiServiceLaunchTemplate', {
+      launchTemplateName: `${this.asgName}-lt`,
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),
+      machineImage: ec2.MachineImage.latestAmazonLinux2023({
+        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+        edition: ec2.AmazonLinuxEdition.MINIMAL,
+      }),
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: ec2.BlockDeviceVolume.ebs(3, {
+          volumeType: ec2.EbsDeviceVolumeType.GP3,
+          deleteOnTermination: true,
+        }),
+      }],
       userData,
-      logGroupAppName: logGroupApp,
-      logGroupNginxName: logGroupNginx,
-      logRetention,
-      logRemovalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-      metricNamespace: `CtechAccount/${environment}`,
-      targetGroupName: `${this.asgName}-tg`,
-      healthCheckPath: '/v1.0/health-check',
-      healthyHttpCodes: '200',
-      asgName: this.asgName,
+      instanceProfile: iam.InstanceProfile.fromInstanceProfileName(
+        this, 'ApiServiceInstanceProfile', instanceProfileName,
+      ),
+      requireImdsv2: true,
+      securityGroup: serviceSg,
+    });
+    const cfnLaunchTemplate = launchTemplate.node.defaultChild as ec2.CfnLaunchTemplate;
+    cfnLaunchTemplate.addPropertyDeletionOverride('LaunchTemplateData.SecurityGroupIds');
+    cfnLaunchTemplate.addPropertyOverride('LaunchTemplateData.NetworkInterfaces', [{
+      DeviceIndex: 0,
+      Groups: [serviceSg.securityGroupId],
+      AssociatePublicIpAddress: false,
+      Ipv6AddressCount: 1,
+    }]);
+
+    const asg = new autoscaling.AutoScalingGroup(this, 'ApiServiceASG', {
+      autoScalingGroupName: this.asgName,
+      vpc,
+      vpcSubnets: {subnetType: ec2.SubnetType.PUBLIC},
+      launchTemplate,
       minCapacity: 1,
       maxCapacity: isProd ? 3 : 1,
-      domainName,
-      listenerRulePriority,
+      cooldown: cdk.Duration.seconds(120),
+      healthChecks: autoscaling.HealthChecks.ec2({gracePeriod: cdk.Duration.seconds(120)}),
     });
+    if (isProd) {
+      asg.scaleOnCpuUtilization('ApiServiceCpuTargetTracking', {
+        targetUtilizationPercent: 60,
+        cooldown: cdk.Duration.minutes(3),
+      });
+    }
 
-    new cdk.CfnOutput(this, 'AsgName', {value: service.asgName, exportName: `${id}-asg-name`});
+    new cdk.CfnOutput(this, 'AsgName', {value: asg.autoScalingGroupName, exportName: `${id}-asg-name`});
     new cdk.CfnOutput(this, 'AppLogGroupName', {
-      value: service.appLogGroup.logGroupName,
+      value: appLogGroup.logGroupName,
       exportName: `${id}-app-log-group`,
     });
     new cdk.CfnOutput(this, 'NginxLogGroupName', {
-      value: service.nginxLogGroup.logGroupName,
+      value: nginxLogGroup.logGroupName,
       exportName: `${id}-nginx-log-group`,
     });
   }

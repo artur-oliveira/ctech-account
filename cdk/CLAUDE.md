@@ -9,7 +9,7 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 ## Role
 
 Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
-DynamoDB tables, an EC2 ASG (Go API) behind a **shared** Application Load Balancer,
+DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**,
 S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, a private KYC documents
 bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
 
@@ -33,7 +33,7 @@ cdk/
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
 │   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template behind the SHARED ALB
+│   ├── compute-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
@@ -67,14 +67,13 @@ This repo is TypeScript/CDK, so the Go-layer DRY rules (reuse `ctech-go-common`
 helpers, RFC 7807 `problem` helpers, conditional DynamoDB writes, Valkey-required)
 live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalents:
 
-- **Reuse shared `@aoctech/cdk` constructs** (`PrivateIpv4Ec2Service`, OIDC provider
-  import, dual-stack helpers) instead of re-implementing EC2/ASG/ALB wiring. This is
-  the CDK analogue of "reuse `ctech-go-common`" — one pattern across ctech-dfe,
-  ctech-wallet, ctech-account.
+- **Reuse shared `@aoctech/cdk` helpers** (OIDC provider import and dual-stack user-data
+  helpers). The EC2/ASG wiring is local because `PrivateIpv4Ec2Service` creates the
+  retired ALB target group and listener rule.
 - **No duplicate stack constructs.** If two stacks need the same resource shape, extract
   a construct class — don't paste the same `new …` block twice.
-- **No magic strings / numbers.** Environment name, table/bucket/role names, listener
-  priorities, SSM paths, and the ACM cert ARN all derive from a single source
+- **No magic strings / numbers.** Environment name, table/bucket/role names, SSM paths,
+  and the ACM cert ARN all derive from a single source
   (`bin/ctech-account.ts` constants / `ENVIRONMENT`) — never hardcoded inline.
 - **Stack-to-stack references use CDK exports/imports** (`Fn.importValue`) — never
   hardcoded ARNs.
@@ -119,8 +118,9 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 
 ### EC2 / ASG (compute-stack)
 
-- Pattern mirrors `ApiStackV2` from ctech-dfe: EC2 ASG + ALB target group.
-- Combined EC2 + ELB health checks with `gracePeriod: 120s`.
+- Native EC2 ASG + launch template, registered in `ctech-lbalancer`'s account route.
+- EC2 health checks with `gracePeriod: 120s`; HAProxy performs application health
+  checks and requests replacement through its `autoHeal` route policy.
 - Go binary deployed as `ctech-account` (systemd service, auto-bootstrap from S3).
 - `AutoRollback: true` on instance refresh.
 
@@ -179,7 +179,7 @@ See `../README.md` §First Deploy for the full ordered checklist.
 - SSM parameters must exist before deploying the compute stack. Signing keys live at
   `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) — **not** `rsa-private-key`.
   Runtime config (base-url, allowed-origins, app-url, google-*, cookie-domain,
-  from-email, internal-token) lives under `/ctech-account/{env}/*`; the shared ALB/VPC
+  from-email, internal-token) lives under `/ctech-account/{env}/*`; the shared edge-SG/VPC
   params under `/ctech/{env}/*`; the Valkey URL under `/ctech/{env}/valkey/url`.
 - `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy (see `../README.md`).
 - Go binary must be named `ctech-account` on EC2 (systemd service name matches).
@@ -193,7 +193,7 @@ See `../README.md` §First Deploy for the full ordered checklist.
 
 - DynamoDB table definition (schema changes are destructive without migration)
 - IAM instance profile (least privilege — over-permissioning is a security risk)
-- ASG / ALB health check config (rolling deploy safety)
+- ASG / HAProxy health check config (rolling deploy safety)
 - `RemovalPolicy` on any resource
 - CloudFront + S3 OAC config
 
