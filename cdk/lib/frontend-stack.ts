@@ -1,11 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
+import {Duration} from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import {Construct} from 'constructs';
 import {Environment} from './types';
-import {Duration} from "aws-cdk-lib";
 
 /**
  * Request paths CloudFront forwards to HAProxy instead of S3.
@@ -38,7 +38,7 @@ interface FrontendStackProps extends cdk.StackProps {
   // "dev-ctech-account-kyc-documents.s3.us-east-1.amazonaws.com". The browser
   // PUTs identity documents straight to this origin via a presigned URL
   // (kyc-stack.ts), so CSP connect-src must allow it or the fetch is blocked.
-  kycBucketDomain: string;
+  extraConnectSrc: string[];
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -49,7 +49,7 @@ export class FrontendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props);
 
-    const {environment, certificateArn, domainName, apiDomainName, kycBucketDomain} = props;
+    const {environment, certificateArn, domainName, apiDomainName, extraConnectSrc} = props;
     const isProd = environment === 'prod';
 
     this.bucket = new s3.Bucket(this, 'Bucket', {
@@ -109,19 +109,21 @@ async function handler(event) {
       keepaliveTimeout: API_ORIGIN_KEEPALIVE_TIMEOUT,
     });
 
+    const extraConnectSrcStr: string = [
+      apiDomainName,
+      ...extraConnectSrc
+    ].map(it => `https://${it}`).join(' ')
     // Security response headers (HSTS, X-Frame-Options, X-Content-Type-Options,
     // Referrer-Policy, CSP) for the statically generated frontend. These MUST live
     // at CloudFront: next.config.ts headers() only run on server-rendered
     // responses, and the SSG assets are served straight from the edge. CSP
     // connect-src allows the app's own origin plus any extra trusted origins
-    // (e.g. viacep for address lookup) passed via the `securityExtraConnectSrc`
     // CDK context — required so cross-origin fetches are not blocked in prod.
-    const extraConnectSrc = (this.node.tryGetContext('securityExtraConnectSrc') as string | undefined) ?? '';
     const securityHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
       responseHeadersPolicyName: `${environment}-CtechAccount-security-headers`,
       securityHeadersBehavior: {
-        contentTypeOptions: { override: true },
-        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        contentTypeOptions: {override: true},
+        frameOptions: {frameOption: cloudfront.HeadersFrameOption.DENY, override: true},
         strictTransportSecurity: {
           accessControlMaxAge: Duration.seconds(63072000),
           includeSubdomains: true,
@@ -144,7 +146,7 @@ async function handler(event) {
             "media-src 'self' blob:",
             "style-src 'self' 'unsafe-inline'",
             "script-src 'self' 'unsafe-inline'",
-            `connect-src 'self' https://${kycBucketDomain}${extraConnectSrc ? ' ' + extraConnectSrc : ''}`,
+            `connect-src 'self' ${extraConnectSrcStr}`,
           ].join('; '),
           override: true,
         },
