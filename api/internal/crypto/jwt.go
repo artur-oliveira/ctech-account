@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/keystore"
+	"gopkg.aoctech.app/account/api/internal/utils"
 )
 
 // JWTService signs with the active key and verifies against active+previous,
@@ -51,7 +52,7 @@ func NewJWTServiceWithKeys(cfg *config.Config, active, previous *keystore.Key) (
 		active:         active,
 		previous:       previous,
 		selfAudience:   cfg.Audience,
-		issuer:         cfg.BaseURL,
+		issuer:         cfg.AppURL,
 		accessTokenTTL: accessTTL,
 		idTokenTTL:     time.Hour,
 	}, nil
@@ -79,7 +80,7 @@ func (j *JWTService) SignAccessToken(userID, sessionID, clientID string, scopes 
 		"sid":       sessionID,
 		"scope":     strings.Join(scopes, " "),
 		"iss":       issuer,
-		"aud":       audience,
+		"aud":       utils.DeduplicateInPlace(audience),
 		"azp":       clientID,
 		"token_use": "access",
 		"iat":       now.Unix(),
