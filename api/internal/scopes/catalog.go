@@ -106,7 +106,7 @@ var defaultCatalog = []ServiceScopes{
 	{
 		Service:  "dfe",
 		Name:     "CTech DFe",
-		Audience: "https://dfe-api.aoctech.app",
+		Audience: "https://dfe.aoctech.app",
 		Scopes: []ScopeEntry{
 			{"dfe:nfes:read", "Read NF-e documents and their events", "Consultar NF-e e seus eventos"},
 			{"dfe:nfes:write", "Issue and cancel NF-e documents", "Emitir e cancelar NF-e"},
@@ -133,7 +133,7 @@ var defaultCatalog = []ServiceScopes{
 	{
 		Service:  "internal:account",
 		Name:     "Internal — CTech Account",
-		Audience: "https://accounts-api.aoctech.app",
+		Audience: "https://accounts.aoctech.app",
 		Internal: true,
 		Scopes: []ScopeEntry{
 			{InternalAccountKYC, "Check KYC details", "Obter detalhes do KYC"},
@@ -142,7 +142,7 @@ var defaultCatalog = []ServiceScopes{
 	{
 		Service:  "internal:wallet",
 		Name:     "Internal — CTech Wallet",
-		Audience: "https://wallet-api.aoctech.app",
+		Audience: "https://wallet.aoctech.app",
 		Internal: true,
 		Scopes: []ScopeEntry{
 			{InternalWalletConfirmDeposit, "Confirm deposits to real wallet", "Confirmar depósito na carteira"},
