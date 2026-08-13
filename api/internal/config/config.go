@@ -162,7 +162,7 @@ func Load() (*Config, error) {
 
 		PublicKeyKID:             kid,
 		BaseURL:                  baseURL,
-		Audience:                 getEnv("AUDIENCE", baseURL),
+		Audience:                 getEnv("AUDIENCE", appURL),
 		AllowedOrigins:           origins,
 		Port:                     port,
 		CookieSecure:             getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
