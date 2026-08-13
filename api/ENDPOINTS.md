@@ -1,6 +1,6 @@
 # API Endpoints — `ctech-account`
 
-Anchored to the code as of 2026-07-20. Traced from route registration
+Anchored to the code as of 2026-08-12. Traced from route registration
 (`api/cmd/api/main.go`) through each handler in `api/internal/handler` →
 service → repository. The only source of truth is the implementation; where the
 code and the prose README diverge, the code wins (see "Divergences" at the end).
@@ -19,8 +19,9 @@ code and the prose README diverge, the code wins (see "Divergences" at the end).
     carrying the scope (`middleware/auth.go:148`).
   - `RequireRecentMFA(maxAge)` — JWT `last_mfa_at` claim within `maxAge`
     (default 5 min, `middleware/stepup.go:11`).
-  - Rate limiters: `login`/`pwreset`/`token` count only failures (5 / 15 min / IP,
-    `middleware/ratelimit.go:31`); `/account/*` uses `perUserLimiter` (100 / min / user).
+  - Rate limiters: `login`/`pwreset`/`token` count only failures (5 / 15 min / IP);
+    discoverable passkey challenge creation counts every request (20 / min / IP);
+    `/account/*` uses `perUserLimiter` (100 / min / user).
 - **Cookies** (`internal/handler/helpers.go`):
   - `ctech_session` — HttpOnly SSO session token. Set on login/register/MFA/social.
     Read by `GET /authorize`, `GET /auth/end-session`, `POST /auth/logout`.
@@ -87,9 +88,10 @@ Side effects: DynamoDB user write; if `FROM_EMAIL` set, async verification email
 Request `{ email, password }` (`auth.go:129`). Hard gate: unverified email →
 `403 email-not-verified` (`auth.go:144`). Invalid creds → generic `InvalidCredentials`
 (`auth.go:154`, no account-exists signal).
-- If user has TOTP **or** a passkey enrolled → `200 { requires_mfa:true, mfa_token, mfa_methods:[...] }`
+- If user has TOTP enrolled → `200 { requires_mfa:true, mfa_token, mfa_methods:["totp"] }`
   and a single-use `mfa_token` is stored in Valkey (`mfa_token:<hash>`, TTL 5 min,
-  `auth.go:175`). **No cookie yet.**
+  `auth.go`). **No cookie yet.** A passkey never gates a password login as a
+  second factor.
 - Else issues a session: sets `ctech_session` + `ctech_auth` cookies, returns
   `200 { user_id, email, first_name, last_name, session_id }` (`auth.go:204`).
 Side effects: DynamoDB session create; async geo enrichment (`helpers.go:67`);
@@ -108,14 +110,6 @@ RP-initiated logout (`auth.go:404`). Revokes session, clears cookies, redirects 
 Request `{ mfa_token, code }` (`auth.go:225`). Consumes the `mfa_token` atomically
 (single-use), validates TOTP, issues session (`ctech_session` + `ctech_auth`),
 returns user info (`auth.go:230`).
-
-### `POST /v1.0/auth/mfa/passkey/begin`
-Request `{ mfa_token }` (`auth.go:276`). Peeks (does **not** consume) the
-`mfa_token`, returns `{ session_token, options }` WebAuthn assertion challenge.
-
-### `POST /v1.0/auth/mfa/passkey/complete`
-Query `mfa_token`, `session_token`; body = raw WebAuthn assertion JSON (`auth.go:318`).
-Consumes `mfa_token`, finishes passkey auth, issues session.
 
 ### `POST /v1.0/auth/verify-email`
 Request `{ token }` (`auth.go:443`). Consumes `ev:<hash>` Valkey token (single-use),
@@ -341,11 +335,17 @@ Query `session_token`; body = raw WebAuthn assertion. Finishes passkey auth,
 ---
 
 ## Passkey auth — `POST /v1.0/auth/passkeys/*` (no `RequireAuth`)
-- `POST /v1.0/auth/passkeys/authenticate/begin` → `{ session_token, options }`.
+- `POST /v1.0/auth/passkeys/authenticate/begin` *(20 req/min/IP)* →
+  `{ session_token, options }` discoverable challenge. The login UI uses the
+  same route for its explicit button and Conditional WebAuthn/autofill. There is
+  deliberately no `{email} → has_passkey` endpoint: a positive answer would
+  enumerate registered accounts and their authentication method.
 - `POST /v1.0/auth/passkeys/authenticate/complete` → query `session_token`; body =
   raw WebAuthn assertion. If the user also has TOTP enabled, returns an `mfa_token`
   (routes them to the MFA step); otherwise issues a session (`ctech_session` +
-  `ctech_auth`) and returns user info (`passkey.go:200`).
+  `ctech_auth`) and returns user info. Successful and failed attempts are written
+  to the audit log. AMR is `["webauthn"]` without TOTP and
+  `["webauthn","otp"]` after the TOTP hand-off.
 
 ---
 

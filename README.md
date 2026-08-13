@@ -116,13 +116,11 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation) |
 | `GET`    | `/v1.0/account/consents`                            | Bearer   | List connected apps (consent grants)                                                                     |
 | `DELETE` | `/v1.0/account/consents/:clientID`                  | Bearer   | Revoke a consent grant                                                                                   |
-| `POST`   | `/v1.0/auth/mfa/challenge`                          | —        | Exchange MFA token + TOTP code for session                                                               |
-| `POST`   | `/v1.0/auth/mfa/passkey/begin`                      | —        | Begin passkey assertion as 2nd factor                                                                    |
-| `POST`   | `/v1.0/auth/mfa/passkey/complete`                   | —        | Complete passkey assertion → session cookie                                                              |
+| `POST`   | `/v1.0/auth/mfa/challenge`                          | —        | Exchange MFA token + TOTP code for session (TOTP is the only MFA method — passkey is never a second factor) |
 | `POST`   | `/v1.0/auth/step-up`                                | Bearer   | Step-up challenge: `{method:"totp",code}` → stamps fresh MFA proof on the session (rate-limited)         |
 | `POST`   | `/v1.0/auth/step-up/passkeys/begin`                 | Bearer   | Step-up WebAuthn assertion challenge for the current user                                                |
 | `POST`   | `/v1.0/auth/step-up/passkeys/complete`              | Bearer   | Validate step-up assertion → stamps fresh MFA proof                                                      |
-| `POST`   | `/v1.0/auth/passkeys/authenticate/begin`            | —        | WebAuthn discoverable login challenge                                                                    |
+| `POST`   | `/v1.0/auth/passkeys/authenticate/begin`            | —        | Discoverable WebAuthn challenge used by the explicit passkey button and privacy-preserving Conditional UI — passkey is a primary, password-replacing factor |
 | `POST`   | `/v1.0/auth/passkeys/authenticate/complete`         | —        | Validate assertion → session cookie                                                                      |
 | `GET`    | `/v1.0/account/mfa/totp/setup`                      | Bearer   | Generate TOTP provisioning URI                                                                           |
 | `POST`   | `/v1.0/account/mfa/totp/confirm`                    | Bearer   | Activate TOTP + get backup codes                                                                         |
@@ -371,6 +369,11 @@ token with the fresh claim, and retries. Users with no MFA enrolled get
 `403 mfa-enrollment-required` from the challenge. `grant_type=api_key`
 tokens carry none of these claims and can never pass step-up.
 
+Login AMR preserves the complete authentication chain: password + TOTP issues
+`["pwd","otp"]`, passkey alone issues `["webauthn"]`, and passkey + TOTP issues
+`["webauthn","otp"]`. Passkey is never represented as password and is never a
+second-factor gate after a password login.
+
 Every security-relevant event (logins, MFA challenges, password/MFA/key/client
 mutations, session revocations, token-reuse detections) is recorded in the
 `{env}_account_audit` table (TTL 400 days) and exposed to the account owner at
@@ -410,8 +413,9 @@ All configuration is read from environment variables at startup.
 |---------------------|----------|-----------------------------------------------------------------------------------------------------------|
 | `ENVIRONMENT`       | Yes      | `dev`, `stage`, or `prod`                                                                                  |
 | `APP_VERSION`       | No       | Release identifier reported as `releaseId` on the health check (default `0.0.1`). Format `YYMMDDHHMM:<7-char commit>`, written by CI into `release.env` inside the deployment artifact and sourced by `start.sh` |
-| `BASE_URL`          | Yes      | Go API public URL, e.g. `https://accountsapi.aoctech.app`                                                 |
-| `APP_URL`           | No       | Frontend URL for login redirects (defaults to `BASE_URL`)                                                 |
+| `BASE_URL`          | Yes      | Go API's **own** public URL, e.g. `https://accountsapi.aoctech.app`. Used for the OAuth issuer/`Audience` default — never the browser-facing origin |
+| `APP_URL`           | No       | Frontend **SPA** URL, e.g. `https://accounts.aoctech.app` (defaults to `BASE_URL`, which is only correct when API and SPA share an origin, e.g. local dev). This is the origin WebAuthn ceremonies actually run on — `RPID`/`RPOrigins` derive from this, not from `BASE_URL` |
+| `WEBAUTHN_RPID`     | No       | WebAuthn Relying Party ID (registrable domain, e.g. `aoctech.app`). Defaults to `APP_URL`'s hostname. Set explicitly if multiple SPA subdomains must share credentials; the EC2 bootstrap reads the optional `/ctech-account/{env}/webauthn-rpid` SSM parameter |
 | `PORT`              | No       | HTTP port (default `8001`)                                                                                |
 | `DYNAMO_TABLE`      | Yes      | DynamoDB table name                                                                                       |
 | `RSA_PRIVATE_KEY`   | Dev only | PEM-encoded RSA private key (RS256). When set, single-key dev mode — no rotation. When absent, keys load from SSM `/ctech-account/{env}/jwk/*` |
@@ -558,10 +562,13 @@ AWS_REGION=$REGION TABLE_PREFIX=production_ VALKEY_URL=$VALKEY_URL go run ./cmd/
 # In production CloudFront forwards /v1.0/* and /.well-known/* to HAProxy, so the SPA calls the API same-origin:
 NEXT_PUBLIC_API_URL=https://accounts.aoctech.app
 OAUTH_CLIENT_ID=accounts-ui
-BASE_URL=https://accounts.aoctech.app
 ```
 
 Set these as build environment variables for the static-export SPA (or your container/deploy pipeline) — there is no Vercel or ECS runtime.
+
+Separately, on the **API's** own deployment config, set `APP_URL=https://accounts.aoctech.app` (the SPA's real origin) alongside `BASE_URL=https://accountsapi.aoctech.app` (the API's own origin) — see the Configuration table above. `APP_URL` is what WebAuthn's RPID derives from; a `BASE_URL`/`APP_URL` mixup here breaks every passkey ceremony in production with a `SecurityError`.
+Only create `/ctech-account/{env}/webauthn-rpid` when credentials must be shared by
+multiple SPA subdomains; otherwise leaving it absent is the safest configuration.
 
 ### 6 — Deploy the static-export frontend
 

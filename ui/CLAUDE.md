@@ -214,7 +214,12 @@ Run: `npm test` from `ui/`.
 - [`@aoctech/auth-client`](../../ctech-oauth-client) itself — shared by ctech-dfe and ctech-wallet too;
   a change here ships to all three SPAs once they bump the dependency
 - `lib/mutations.ts` — all mutations
-- Login MFA flow and passkey authentication
+- `login/page.tsx` — passkey is a first-factor, password-replacing login. The email input uses
+  `autocomplete="username webauthn"` and starts discoverable Conditional WebAuthn when supported,
+  allowing the browser to offer a passkey without an account-enumerating email probe. Password,
+  Google and an explicit passkey button remain available as fallbacks. MFA no longer offers passkey
+  as a second factor — `login/mfa/page.tsx` is TOTP-only. See
+  `../docs/plans/2026-08-12-passkey-first-factor-login.md`.
 
 Before touching: identify risks + side effects, verify backward compatibility.
 

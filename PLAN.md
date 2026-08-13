@@ -78,7 +78,8 @@
 - [x] `POST /v1.0/auth/mfa/challenge` — validates mfa_token + TOTP code → creates session + sets cookie
 - [x] `POST /v1.0/auth/passkeys/authenticate/begin` — discoverable login challenge
 - [x] `POST /v1.0/auth/passkeys/authenticate/complete` — validates assertion → creates session
-- [x] PassKey authentication in `GET /v1.0/authorize` flow — passkey login button on /login; after successful auth ctech_session cookie is set, /authorize redirects to callback normally
+- [x] Passkey-first login in `GET /v1.0/authorize` flow — explicit button plus privacy-preserving Conditional UI/autofill; no email-enrollment probe; after successful auth `ctech_session` is set and `/authorize` redirects normally
+- [x] Passkey + TOTP preserves AMR as `["webauthn","otp"]` (password + TOTP remains `["pwd","otp"]`)
 
 ---
 
@@ -145,6 +146,7 @@ See `PYDFE_MIGRATION.md` for the full plan.
 | `/ctech/{env}/valkey/url`                   | String       | Valkey connection URL (existing, from ctech-cdk)          |
 | `/ctech-account/{env}/from-email`           | String       | SES verified sender address (FROM_EMAIL)                  |
 | `/ctech-account/{env}/app-url`              | String       | Public base URL, e.g. https://accounts.aoctech.app |
+| `/ctech-account/{env}/webauthn-rpid`        | String       | Optional shared WebAuthn RP ID; defaults to the app-url hostname |
 | `/ctech-account/{env}/google-client-id`     | String       | Google OAuth 2.0 client ID                                |
 | `/ctech-account/{env}/google-client-secret` | SecureString | Google OAuth 2.0 client secret                            |
 

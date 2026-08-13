@@ -1,6 +1,6 @@
 'use client'
 
-import {Suspense, useState, SyntheticEvent} from 'react'
+import {Suspense, SyntheticEvent, useCallback, useEffect, useRef, useState} from 'react'
 import {useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
@@ -24,6 +24,16 @@ import {Fingerprint} from 'lucide-react'
 /** The API answers 403 when the password is correct but the email is unverified. */
 const HTTP_FORBIDDEN = 403
 
+type AuthContinuation = {
+  requires_mfa?: boolean
+  mfa_token?: string
+  mfa_methods?: string[]
+}
+
+function isPasskeyCancellation(error: unknown): boolean {
+  return error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NotAllowedError')
+}
+
 function LoginForm() {
   const {t} = useTranslation()
   const params = useSearchParams()
@@ -34,9 +44,14 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState('')
+  const [errorVariant, setErrorVariant] = useState<'default' | 'destructive'>('destructive')
   // Set when the API rejects a valid password because the address is unverified,
   // so we can offer to resend the link instead of just showing an error.
   const [unverifiedEmail, setUnverifiedEmail] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const conditionalAbortRef = useRef<AbortController | null>(null)
+  const authFlowStartedRef = useRef(false)
 
   // OAuth errors the API reports by redirecting back with ?error=… (e.g. a
   // cancelled Google sign-in, or a Google account whose email the provider
@@ -51,6 +66,69 @@ function LoginForm() {
     ? (oauthErrorMessages[oauthErrorCode] ?? t('errors.loginFailed'))
     : ''
 
+  const continueAfterAuthentication = useCallback(async (result: AuthContinuation) => {
+    if (authFlowStartedRef.current) return
+    authFlowStartedRef.current = true
+    try {
+      if (result.requires_mfa && result.mfa_token) {
+        sessionStorage.setItem(MFA_TOKEN_KEY, result.mfa_token)
+        sessionStorage.setItem(MFA_METHODS_KEY, JSON.stringify(result.mfa_methods ?? []))
+        sessionStorage.setItem(CONTINUE_URL_KEY, continueURL)
+        window.location.href = `/login/mfa?continue=${encodeURIComponent(continueURL)}`
+        return
+      }
+      await startOAuthFlow(continueURL)
+    } catch (continuationError) {
+      authFlowStartedRef.current = false
+      throw continuationError
+    }
+  }, [continueURL])
+
+  useEffect(() => {
+    if (typeof PublicKeyCredential === 'undefined') return
+    const conditionalAPI = PublicKeyCredential as typeof PublicKeyCredential & {
+      isConditionalMediationAvailable?: () => Promise<boolean>
+    }
+    if (!conditionalAPI.isConditionalMediationAvailable) return
+
+    const controller = new AbortController()
+    conditionalAbortRef.current = controller
+    let active = true
+
+    async function startConditionalPasskey() {
+      try {
+        if (!await conditionalAPI.isConditionalMediationAvailable?.() || !active) return
+        const {session_token, options} = await beginPasskeyAuthAPI()
+        if (!active) return
+        const credential = await buildAssertionCredential(options, {
+          mediation: 'conditional',
+          signal: controller.signal,
+        })
+        if (!active) return
+
+        setPasskeyLoading(true)
+        const result = await completePasskeyAuthAPI(session_token, credential)
+        await continueAfterAuthentication(result)
+      } catch (conditionalError) {
+        // Conditional mediation is progressive enhancement. Unsupported,
+        // cancelled, rate-limited or offline initialization must leave the
+        // password and explicit passkey controls fully usable.
+        if (!active || isPasskeyCancellation(conditionalError)) return
+        if (authFlowStartedRef.current) {
+          authFlowStartedRef.current = false
+        }
+        setPasskeyLoading(false)
+      }
+    }
+
+    void startConditionalPasskey()
+    return () => {
+      active = false
+      controller.abort()
+      if (conditionalAbortRef.current === controller) conditionalAbortRef.current = null
+    }
+  }, [continueAfterAuthentication])
+
   async function handleResendVerification() {
     if (!unverifiedEmail) return
     try {
@@ -63,37 +141,21 @@ function LoginForm() {
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
+    conditionalAbortRef.current?.abort()
     setError('')
+    setErrorVariant('destructive')
     setUnverifiedEmail('')
     setLoading(true)
-    const fd = new FormData(e.currentTarget)
-    const email = fd.get('email') as string
 
     try {
-      const {data} = await api.post<{
-        requires_mfa: boolean
-        mfa_token?: string
-        mfa_methods?: string[]
-      }>('/v1.0/auth/login', {
-        email,
-        password: fd.get('password'),
-      })
-
-      if (data.requires_mfa && data.mfa_token) {
-        sessionStorage.setItem(MFA_TOKEN_KEY, data.mfa_token)
-        sessionStorage.setItem(MFA_METHODS_KEY, JSON.stringify(data.mfa_methods ?? []))
-        sessionStorage.setItem(CONTINUE_URL_KEY, continueURL)
-        window.location.href = `/login/mfa?continue=${encodeURIComponent(continueURL)}`
-        return
-      }
-
-      await startOAuthFlow(continueURL)
-    } catch (err) {
-      if (isAxiosError(err)) {
-        if (err.response?.status === HTTP_FORBIDDEN) {
+      const {data} = await api.post<AuthContinuation>('/v1.0/auth/login', {email, password})
+      await continueAfterAuthentication(data)
+    } catch (submitError) {
+      if (isAxiosError(submitError)) {
+        if (submitError.response?.status === HTTP_FORBIDDEN) {
           setUnverifiedEmail(email)
         }
-        setError(err.response?.data?.detail ?? t('errors.loginFailed'))
+        setError(submitError.response?.data?.detail ?? t('errors.loginFailed'))
       } else {
         setError(t('errors.network'))
       }
@@ -102,23 +164,21 @@ function LoginForm() {
   }
 
   async function handlePasskeyLogin() {
+    conditionalAbortRef.current?.abort()
     setError('')
+    setErrorVariant('destructive')
     setPasskeyLoading(true)
     try {
       const {session_token, options} = await beginPasskeyAuthAPI()
       const credential = await buildAssertionCredential(options)
       const result = await completePasskeyAuthAPI(session_token, credential)
-      if (result?.requires_mfa && result?.mfa_token) {
-        sessionStorage.setItem(MFA_TOKEN_KEY, result.mfa_token)
-        sessionStorage.setItem(MFA_METHODS_KEY, JSON.stringify(result.mfa_methods ?? []))
-        sessionStorage.setItem(CONTINUE_URL_KEY, continueURL)
-        window.location.href = `/login/mfa?continue=${encodeURIComponent(continueURL)}`
-        return
-      }
-      await startOAuthFlow(continueURL)
-    } catch (err) {
-      if (isAxiosError(err)) {
-        setError(err.response?.data?.detail ?? t('errors.loginFailed'))
+      await continueAfterAuthentication(result)
+    } catch (passkeyError) {
+      if (isPasskeyCancellation(passkeyError)) {
+        setErrorVariant('default')
+        setError(t('login.passkeyCancelled'))
+      } else if (isAxiosError(passkeyError)) {
+        setError(passkeyError.response?.data?.detail ?? t('errors.loginFailed'))
       } else {
         setError(t('errors.network'))
       }
@@ -131,14 +191,14 @@ function LoginForm() {
   return (
     <div className="space-y-4">
       {displayError && (
-        <Alert variant="destructive">
+        <Alert variant={error ? errorVariant : 'destructive'}>
           <AlertDescription className="space-y-2">
             <span className="block">{displayError}</span>
             {unverifiedEmail && (
               <button
                 type="button"
                 onClick={handleResendVerification}
-                className="underline underline-offset-4 font-medium"
+                className="inline-flex min-h-6 items-center font-medium underline underline-offset-4 max-sm:min-h-11"
               >
                 {t('login.resendVerification')}
               </button>
@@ -154,17 +214,22 @@ function LoginForm() {
             id="email"
             name="email"
             type="email"
-            autoComplete="email"
+            autoComplete="username webauthn"
             required
             placeholder={t('login.emailPlaceholder')}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="max-sm:h-11"
           />
         </div>
 
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="password">{t('common.password')}</Label>
-            <Link href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4">
+            <Link
+              href="/forgot-password"
+              className="inline-flex min-h-6 items-center text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground max-sm:min-h-11"
+            >
               {t('login.forgotPassword')}
             </Link>
           </div>
@@ -174,18 +239,20 @@ function LoginForm() {
             type="password"
             autoComplete="current-password"
             required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="max-sm:h-11"
           />
         </div>
 
-        <Button type="submit" className="w-full" disabled={loading || passkeyLoading}>
+        <Button type="submit" className="w-full max-sm:min-h-11" disabled={loading || passkeyLoading}>
           {loading ? t('login.submitting') : t('login.submit')}
         </Button>
       </form>
 
       <div className="relative">
         <Separator/>
-        <span
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
           {t('login.or')}
         </span>
       </div>
@@ -193,7 +260,7 @@ function LoginForm() {
       <Button
         type="button"
         variant="outline"
-        className="w-full"
+        className="w-full max-sm:min-h-11"
         onClick={handlePasskeyLogin}
         disabled={loading || passkeyLoading}
       >
@@ -231,7 +298,7 @@ export default function LoginPage() {
               {t('login.noAccount')}{' '}
               <Link
                 href="/register"
-                className="text-foreground underline underline-offset-4 hover:text-primary"
+                className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-primary max-sm:min-h-11"
               >
                 {t('login.createOne')}
               </Link>

@@ -19,6 +19,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/valkey-io/valkey-go v1.0.76
 	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.57.0
 	gopkg.aoctech.app/api-commons v1.4.1
 )
 
@@ -60,7 +61,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.73.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )

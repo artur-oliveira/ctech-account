@@ -125,6 +125,7 @@ type testApp struct {
 	kycPresigner *memPresigner
 	kycSvc       *kycDomain.Service
 	otpSender    *fakeOTPSender
+	passkeyRepo  *memPasskeyRepo
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -199,6 +200,9 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
 				return problem.Send(c)
 			}
+			if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
+				return apierror.NewFromFiber(fiberErr, c.Path()).Send(c)
+			}
 			return apierror.ServerError(c.Path()).Send(c)
 		},
 	})
@@ -207,7 +211,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	sharedClientRepo := newMemClientRepo()
 
 	v1 := app.Group("/v1.0")
-	handler.NewAuthHandler(userSvc, sessionSvc, noop, passkeySvc, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
+	handler.NewAuthHandler(userSvc, sessionSvc, noop, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
@@ -247,6 +251,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		kycPresigner: kycPresigner,
 		kycSvc:       kycSvc,
 		otpSender:    otpSender,
+		passkeyRepo:  passkeyRepo,
 	}
 }
 
@@ -486,6 +491,23 @@ func (ta *testApp) registerUser(t *testing.T, email, password, firstName string)
 	}
 	u.EmailVerified = true
 	return u
+}
+
+// addPasskey inserts a minimal credential directly into the in-memory
+// repository, bypassing the full WebAuthn registration ceremony — enough for
+// tests that only need HasPasskeys/ListByUserID to report a passkey exists.
+func (ta *testApp) addPasskey(t *testing.T, userID, name string) {
+	t.Helper()
+	credID := []byte(name + userID)
+	cred := &passKeyDomain.Credential{
+		PK:        passKeyDomain.BuildPK(userID),
+		SK:        passKeyDomain.BuildSK(credID),
+		Name:      name,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := ta.passkeyRepo.Create(context.Background(), cred); err != nil {
+		t.Fatalf("adding passkey: %v", err)
+	}
 }
 
 func (ta *testApp) registerUnverifiedUser(t *testing.T, email, password, firstName string) *userDomain.User {

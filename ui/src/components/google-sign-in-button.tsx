@@ -23,7 +23,7 @@ export function GoogleSignInButton({
     <Button
       type="button"
       variant="outline"
-      className="w-full"
+      className="w-full max-sm:min-h-11"
       onClick={() => {
         window.location.href = `${API_URL}${GOOGLE_AUTH_PATH}?continue=${encodeURIComponent(continueURL)}`
       }}

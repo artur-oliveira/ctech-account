@@ -47,6 +47,10 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   `/ctech/{env}/lbalancer/routes/account`, owned by `ctech-lbalancer`. Its default
   registration targets this ASG, port 8080, `/v1.0/health-check`, HTTP 200, and
   `autoHeal: true`.
+- `PrivateIpv4Ec2Service` cannot be used here because its current contract always
+  creates the retired ALB resources. The infrastructure CI guard permits the
+  private-IPv4 launch-template override only in `lib/compute-stack.ts` and still
+  rejects copies elsewhere.
 - The retained `/ctech/{env}/network/alb-sg-id` parameter now identifies the shared
   edge SG trusted by service instances. Its historical name is intentionally kept
   until every service has migrated without downtime.
@@ -69,6 +73,7 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   - `/ctech-account/{env}/base-url`
   - `/ctech-account/{env}/allowed-origins`
   - `/ctech-account/{env}/app-url`
+  - `/ctech-account/{env}/webauthn-rpid` (optional; defaults to the `app-url` hostname)
   - `/ctech-account/{env}/google-client-id`
   - `/ctech-account/{env}/google-client-secret` (SecureString)
   - `/ctech-account/{env}/cookie-domain`

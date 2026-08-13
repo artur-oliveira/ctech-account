@@ -60,6 +60,7 @@
     "or": "ou",
     "passkey": "Entrar com chave de acesso",
     "passkeyPending": "Autenticando…",
+    "passkeyCancelled": "O login com chave de acesso foi cancelado. Tente novamente ou use sua senha.",
     "forgotPassword": "Esqueci a senha",
     "google": "Continuar com Google",
     "resendVerification": "Reenviar e-mail de verificação",
@@ -90,8 +91,6 @@
   "mfa": {
     "title": "Autenticação em dois fatores",
     "description": "Verifique sua identidade para continuar.",
-    "passkey": "Verificar com chave de acesso",
-    "passkeyPending": "Autenticando…",
     "code": "Código de verificação",
     "submit": "Verificar",
     "submitting": "Verificando…",

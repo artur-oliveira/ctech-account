@@ -5,12 +5,15 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"log"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 )
 
@@ -38,7 +41,8 @@ type Config struct {
 	CookieDomain   string
 	// WebAuthn Relying on Party settings.
 	// RPID is the registerable domain (e.g. "aoctech.app"). Passkeys registered here
-	// can be used on any subdomain of RPID. Defaults to the host portion of BaseURL.
+	// can be used on any subdomain of RPID. Defaults to the host portion of AppURL
+	// (the browser-facing SPA origin) — never BaseURL, which is this API's own origin.
 	RPID      string
 	RPOrigins []string
 
@@ -122,17 +126,28 @@ func Load() (*Config, error) {
 	tablePrefix = strings.TrimSuffix(tablePrefix, "_")
 
 	baseURL := getEnv("BASE_URL", "http://localhost:8001")
+	// appURL is the browser-facing SPA origin — distinct from baseURL (this
+	// API's own origin). WebAuthn RPID/RPOrigins must reflect the origin the
+	// ceremony actually runs on (the SPA), never the API's own hostname, or
+	// every passkey ceremony fails with a SecurityError in any deployment
+	// where the API and SPA sit on different subdomains (prod: accountsapi.*
+	// vs accounts.*). Locally both default to the same value, masking the bug.
+	appURL := getEnv("APP_URL", baseURL)
 
 	rpid := os.Getenv("WEBAUTHN_RPID")
 	if rpid == "" {
-		if parsed, err := url.Parse(baseURL); err == nil {
+		if parsed, err := url.Parse(appURL); err == nil {
 			rpid = parsed.Hostname()
 		}
 	}
 
-	rpOrigins := []string{baseURL}
+	rpOrigins := []string{appURL}
 	for _, o := range origins {
 		rpOrigins = append(rpOrigins, o)
+	}
+
+	if rpid != "" && !isRegistrableMatch(rpid, rpOrigins) {
+		log.Printf("config: WEBAUTHN_RPID %q does not match any RPOrigins entry %v — WebAuthn ceremonies will fail with a SecurityError", rpid, rpOrigins)
 	}
 
 	phoneVerificationEnabled, _ := strconv.ParseBool(getEnv("PHONE_VERIFICATION_ENABLED", "false"))
@@ -145,25 +160,25 @@ func Load() (*Config, error) {
 		ValkeyURL:     os.Getenv("VALKEY_URL"),
 		RSAPrivateKey: privateKey,
 
-		PublicKeyKID:       kid,
-		BaseURL:            baseURL,
-		Audience:           getEnv("AUDIENCE", baseURL),
-		AllowedOrigins:     origins,
-		Port:               port,
-		CookieSecure:       getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
-		CookieDomain:       os.Getenv("COOKIE_DOMAIN"),
-		RPID:               rpid,
-		RPOrigins:          rpOrigins,
-		FromEmail:          getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
-		AppURL:             getEnv("APP_URL", baseURL),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		KYCDocumentsBucket: os.Getenv("KYC_DOCUMENTS_BUCKET"),
+		PublicKeyKID:             kid,
+		BaseURL:                  baseURL,
+		Audience:                 getEnv("AUDIENCE", baseURL),
+		AllowedOrigins:           origins,
+		Port:                     port,
+		CookieSecure:             getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
+		CookieDomain:             os.Getenv("COOKIE_DOMAIN"),
+		RPID:                     rpid,
+		RPOrigins:                rpOrigins,
+		FromEmail:                getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
+		AppURL:                   appURL,
+		GoogleClientID:           os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:       os.Getenv("GOOGLE_CLIENT_SECRET"),
+		KYCDocumentsBucket:       os.Getenv("KYC_DOCUMENTS_BUCKET"),
 		PhoneVerificationEnabled: phoneVerificationEnabled,
-		TrustedProxies:     trustedProxies,
-		TOTPIssuer:         TOTPIssuer,
-		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
-		AccessTokenTTL:     accessTokenTTL,
+		TrustedProxies:           trustedProxies,
+		TOTPIssuer:               TOTPIssuer,
+		SelfClientID:             getEnv("SELF_CLIENT_ID", "accounts"),
+		AccessTokenTTL:           accessTokenTTL,
 	}, nil
 }
 
@@ -220,4 +235,35 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// isRegistrableMatch reports whether rpid is the registrable domain (or an
+// exact match) of at least one origin's hostname in origins — i.e. whether
+// WebAuthn's RPID-vs-origin check can ever succeed for this configuration.
+func isRegistrableMatch(rpid string, origins []string) bool {
+	rpid = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(rpid), "."))
+	if rpid == "" {
+		return false
+	}
+	if rpid != "localhost" && net.ParseIP(rpid) == nil {
+		public, _ := publicsuffix.PublicSuffix(rpid)
+		if public == rpid {
+			return false
+		}
+	}
+	for _, o := range origins {
+		parsed, err := url.Parse(o)
+		if err != nil {
+			continue
+		}
+		host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+		if host == rpid {
+			return true
+		}
+		if !strings.HasSuffix(host, "."+rpid) {
+			continue
+		}
+		return true
+	}
+	return false
 }

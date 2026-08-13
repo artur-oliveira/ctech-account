@@ -208,6 +208,7 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 
 	userID, _, err := h.passkeySvc.FinishAuthentication(c.Context(), sessionToken, c.Body())
 	if err != nil {
+		recordAuditAnon(c, h.audit, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
 		switch {
 		case errors.Is(err, passkey.ErrSessionExpired):
 			return apierror.InvalidToken("Authentication session expired. Please start over.", c.Path()).Send(c)
@@ -224,12 +225,14 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 	}
 
 	if !u.IsEnabled {
+		recordAudit(c, h.audit, userID, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
 		return apierror.AccountDisabled(c.Path()).Send(c)
 	}
 
 	// Passkey is the first factor; TOTP (if configured) is required as the second.
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), userID); totpErr == nil && totpSecret.IsSetup() {
-		return issueMFAToken(c, h.cache, userID, "Passkey", clientIP(c), c.Get("User-Agent"), []string{"totp"})
+		recordAudit(c, h.audit, userID, audit.EventLoginMFARequired, map[string]string{"method": session.AMRWebAuthn})
+		return issueMFAToken(c, h.cache, userID, "Passkey", clientIP(c), c.Get("User-Agent"), session.AMRWebAuthn, []string{session.AMRTOTP})
 	}
 
 	ip := clientIP(c)
@@ -238,6 +241,7 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
+	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, map[string]string{"method": session.AMRWebAuthn, "session_id": sess.ID()})
 
 	setSessionCookies(c, h.cfg, rawToken)
 

@@ -30,10 +30,14 @@ func SkipRateLimitCount(c fiber.Ctx) {
 
 // Rate limiting defaults (see README / PLAN.md).
 const (
-	FailedLoginMax       = 5
-	FailedLoginWindow    = 15 * time.Minute
-	PerUserMax           = 100
-	PerUserWindow        = time.Minute
+	FailedLoginMax    = 5
+	FailedLoginWindow = 15 * time.Minute
+	PerUserMax        = 100
+	PerUserWindow     = time.Minute
+	// PasskeyBeginMax/Window bound discoverable WebAuthn challenge creation per
+	// IP. Conditional UI starts one challenge per login-page load.
+	PasskeyBeginMax      = 20
+	PasskeyBeginWindow   = time.Minute
 	rateLimitExceededMsg = "Too many requests. Please slow down and try again later."
 )
 

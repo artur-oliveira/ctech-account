@@ -3,6 +3,8 @@ package handler_test
 import (
 	"net/http"
 	"testing"
+
+	"gopkg.aoctech.app/account/api/internal/domain/audit"
 )
 
 // ── GET /v1.0/account/mfa/passkeys ─────────────────────────────────────────────
@@ -139,6 +141,14 @@ func TestPasskeyDelete_NotFound_500(t *testing.T) {
 
 // ── POST /v1.0/auth/passkeys/authenticate/begin ─────────────────────────────────
 
+func TestPasskeyEnrollmentProbeIsNotExposed(t *testing.T) {
+	ta := newTestApp(t)
+	resp := ta.do(http.MethodPost, "/v1.0/auth/passkeys/check", map[string]any{"email": "nobody@test.com"})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("enumerating endpoint must not exist: got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+}
+
 func TestPasskeyAuthBegin_200(t *testing.T) {
 	ta := newTestApp(t)
 
@@ -181,5 +191,11 @@ func TestPasskeyAuthComplete_ExpiredSession_401(t *testing.T) {
 		[]byte(`{"id":"dGVzdA","rawId":"dGVzdA","response":{},"type":"public-key"}`))
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	if len(ta.auditRepo.events) != 1 || ta.auditRepo.events[0].EventType != audit.EventLoginFailed {
+		t.Fatalf("expected one login.failed audit event, got %+v", ta.auditRepo.events)
+	}
+	if ta.auditRepo.events[0].Metadata["method"] != "webauthn" {
+		t.Fatalf("audit method = %q, want webauthn", ta.auditRepo.events[0].Metadata["method"])
 	}
 }

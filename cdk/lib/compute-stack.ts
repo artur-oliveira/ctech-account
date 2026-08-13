@@ -229,6 +229,9 @@ export class ComputeStack extends cdk.Stack {
       `BASE_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/base-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
       `ALLOWED_ORIGINS=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/allowed-origins" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
       `APP_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
+      // Optional shared-domain override. When absent, the API safely derives
+      // the WebAuthn RP ID from APP_URL's hostname.
+      `WEBAUTHN_RPID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/webauthn-rpid" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-id" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-secret" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `COOKIE_DOMAIN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/cookie-domain" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
@@ -241,6 +244,7 @@ export class ComputeStack extends cdk.Stack {
       `export BASE_URL`,
       `export ALLOWED_ORIGINS`,
       `export APP_URL`,
+      `export WEBAUTHN_RPID`,
       `export INTERNAL_TOKEN`,
       `export GOOGLE_CLIENT_ID`,
       `export GOOGLE_CLIENT_SECRET`,

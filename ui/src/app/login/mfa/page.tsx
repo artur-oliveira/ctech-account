@@ -9,15 +9,12 @@ import {Label} from '@/components/ui/label'
 import {OTPInput} from '@/components/ui/otp-input'
 import {Card, CardContent} from '@/components/ui/card'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Separator} from '@/components/ui/separator'
 import {isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
-import {beginMFAPasskeyAPI, completeMFAPasskeyAPI, mfaChallengeAPI} from '@/lib/mutations'
-import {buildAssertionCredential} from '@/lib/webauthn'
+import {mfaChallengeAPI} from '@/lib/mutations'
 import {sanitizeContinue} from '@/lib/safe-redirect'
-import {MFA_METHODS_KEY, MFA_METHOD_PASSKEY, MFA_METHOD_TOTP, MFA_TOKEN_KEY} from '@/lib/constants'
+import {MFA_METHODS_KEY, MFA_METHOD_TOTP, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useSessionItem} from '@/hooks/use-session-item'
-import {Fingerprint} from 'lucide-react'
 
 const MFA_CODE_LENGTH = 6
 
@@ -41,41 +38,13 @@ function MFAForm() {
   const params = useSearchParams()
   const continueURL = sanitizeContinue(params.get('continue'))
   const [loading, setLoading] = useState(false)
-  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState('')
   const [code, setCode] = useState('')
   // null while prerendering and hydrating — see useSessionItem.
   const rawMethods = useSessionItem(MFA_METHODS_KEY)
   const methods = useMemo(() => parseMethods(rawMethods), [rawMethods])
 
-  const hasPasskey = methods?.includes(MFA_METHOD_PASSKEY) ?? false
   const hasTOTP = methods?.includes(MFA_METHOD_TOTP) ?? false
-
-  async function handlePasskey() {
-    setError('')
-    setPasskeyLoading(true)
-    const mfaToken = sessionStorage.getItem(MFA_TOKEN_KEY)
-    if (!mfaToken) {
-      setError(t('errors.sessionExpired'))
-      setPasskeyLoading(false)
-      return
-    }
-    try {
-      const {session_token, options} = await beginMFAPasskeyAPI(mfaToken)
-      const credential = await buildAssertionCredential(options)
-      await completeMFAPasskeyAPI(mfaToken, session_token, credential)
-      sessionStorage.removeItem(MFA_TOKEN_KEY)
-      sessionStorage.removeItem(MFA_METHODS_KEY)
-      await startOAuthFlow(continueURL)
-    } catch (err) {
-      if (isAxiosError(err)) {
-        setError(err.response?.data?.detail ?? t('errors.mfaFailed'))
-      } else {
-        setError(t('errors.network'))
-      }
-      setPasskeyLoading(false)
-    }
-  }
 
   async function handleTOTP(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -107,7 +76,7 @@ function MFAForm() {
 
   // Landing here without a challenge in sessionStorage (direct navigation, reload
   // after the token was consumed) would otherwise render an empty card.
-  if (!hasPasskey && !hasTOTP) {
+  if (!hasTOTP) {
     return (
       <div className="space-y-4">
         <Alert variant="destructive">
@@ -126,46 +95,22 @@ function MFAForm() {
         </Alert>
       )}
 
-      {hasPasskey && (
-        <Button
-          type="button"
-          className="w-full"
-          onClick={handlePasskey}
-          disabled={loading || passkeyLoading}
-        >
-          <Fingerprint className="size-4"/>
-          {passkeyLoading ? t('mfa.passkeyPending') : t('mfa.passkey')}
-        </Button>
-      )}
-
-      {hasPasskey && hasTOTP && (
-        <div className="relative">
-          <Separator/>
-          <span
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-            {t('login.or')}
-          </span>
+      <form onSubmit={handleTOTP} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="code">{t('mfa.code')}</Label>
+          <OTPInput
+            id="code"
+            value={code}
+            onChange={setCode}
+            disabled={loading}
+            className="justify-center"
+          />
         </div>
-      )}
-
-      {hasTOTP && (
-        <form onSubmit={handleTOTP} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="code">{t('mfa.code')}</Label>
-            <OTPInput
-              id="code"
-              value={code}
-              onChange={setCode}
-              disabled={loading || passkeyLoading}
-              className="justify-center"
-            />
-          </div>
-          <Button type="submit" variant={hasPasskey ? 'outline' : 'default'} className="w-full"
-                  disabled={loading || passkeyLoading || code.length < MFA_CODE_LENGTH}>
-            {loading ? t('mfa.submitting') : t('mfa.submit')}
-          </Button>
-        </form>
-      )}
+        <Button type="submit" className="w-full"
+                disabled={loading || code.length < MFA_CODE_LENGTH}>
+          {loading ? t('mfa.submitting') : t('mfa.submit')}
+        </Button>
+      </form>
     </div>
   )
 }

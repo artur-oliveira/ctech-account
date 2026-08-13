@@ -42,8 +42,8 @@ jobs:
         working-directory: cdk
         run: |
           FAIL=0
-          if grep -rn "AssociatePublicIpAddress" --include="*.ts" lib/ bin/ 2>/dev/null; then
-            echo "::error::Hand-rolled AssociatePublicIpAddress found — use PrivateIpv4Ec2Service from @aoctech/cdk instead"
+          if grep -rn "AssociatePublicIpAddress" --include="*.ts" --exclude="compute-stack.ts" lib/ bin/ 2>/dev/null; then
+            echo "::error::Hand-rolled AssociatePublicIpAddress found outside the HAProxy compute stack"
             FAIL=1
           fi
           if grep -rEn "max(Read|Write)RequestUnits: [0-9]{1,2}[,}]" --include="*.ts" lib/ 2>/dev/null; then
@@ -110,8 +110,8 @@ jobs:
         working-directory: cdk
         run: |
           FAIL=0
-          if grep -rn "AssociatePublicIpAddress" --include="*.ts" lib/ bin/ 2>/dev/null; then
-            echo "::error::Hand-rolled AssociatePublicIpAddress found — use PrivateIpv4Ec2Service from @aoctech/cdk instead"
+          if grep -rn "AssociatePublicIpAddress" --include="*.ts" --exclude="compute-stack.ts" lib/ bin/ 2>/dev/null; then
+            echo "::error::Hand-rolled AssociatePublicIpAddress found outside the HAProxy compute stack"
             FAIL=1
           fi
           if grep -rEn "max(Read|Write)RequestUnits: [0-9]{1,2}[,}]" --include="*.ts" lib/ 2>/dev/null; then

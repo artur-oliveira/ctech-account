@@ -27,12 +27,12 @@ import (
 	apikeyDomain "gopkg.aoctech.app/account/api/internal/domain/apikey"
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
-	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	passKeyDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	totpDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	authcodeDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/code"
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
+	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
@@ -197,7 +197,7 @@ func main() {
 	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
 	auditRepo := auditDomain.NewRepository(db, cfg.TablePrefix)
 	auditSvc := auditDomain.NewService(auditRepo)
-	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, passkeySvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)
+	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)
 	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg, auditSvc)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, consentSvc, userSvc, valkeyClient, cfg.AppURL, cfg.BaseURL, cfg.CookieDomain, auditSvc)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, apiKeySvc, scopesCatalogSvc, jwtSvc, cfg.BaseURL, cfg, auditSvc)
@@ -292,11 +292,18 @@ func main() {
 		Cache: valkeyClient, Prefix: "user", Max: middleware.PerUserMax,
 		Window: middleware.PerUserWindow, KeyFunc: middleware.GetUserID, CountOnlyFailures: false, FailClosed: true,
 	})
+	// Conditional WebAuthn starts a discoverable challenge when the login page
+	// loads. Bound the public Valkey-writing endpoint without probing an email.
+	passkeyBeginLimiter := middleware.RateLimit(middleware.RateLimitConfig{
+		Cache: valkeyClient, Prefix: "passkeybegin", Max: middleware.PasskeyBeginMax,
+		Window: middleware.PasskeyBeginWindow, KeyFunc: ipKey, CountOnlyFailures: false, FailClosed: true,
+	})
 	v1.Use("/auth/login", authLimiter)
 	v1.Use("/auth/mfa/challenge", authLimiter)
 	v1.Use("/auth/forgot-password", pwResetLimiter)
 	v1.Use("/auth/reset-password", pwResetLimiter)
 	v1.Use("/auth/resend-verification", pwResetLimiter)
+	v1.Use("/auth/passkeys/authenticate/begin", passkeyBeginLimiter)
 	v1.Use("/token", tokenLimiter)
 
 	handler.NewScopesHandler(scopesCatalogSvc).Register(v1)

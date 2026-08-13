@@ -167,6 +167,34 @@ func TestLogin_Success(t *testing.T) {
 	}
 }
 
+// TestLogin_PasskeyNoTOTP_DirectSession_200 is a regression test: a passkey is
+// no longer a valid second factor, so a user with a passkey and no TOTP must
+// log in with a password exactly as if they had no MFA registered at all —
+// never a requires_mfa response advertising an unreachable "passkey" method.
+func TestLogin_PasskeyNoTOTP_DirectSession_200(t *testing.T) {
+	app := newTestApp(t)
+	u := app.registerUser(t, "passkey-login@example.com", "password123", "Pat")
+	app.addPasskey(t, u.ID(), "YubiKey")
+
+	resp := app.do(http.MethodPost, "/v1.0/auth/login", map[string]any{
+		"email":    "passkey-login@example.com",
+		"password": "password123",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+		return
+	}
+
+	var body map[string]any
+	readJSON(t, resp, &body)
+	if _, requiresMFA := body["requires_mfa"]; requiresMFA {
+		t.Errorf("expected a direct session, got requires_mfa response: %v", body)
+	}
+	if body["user_id"] == "" {
+		t.Error("expected user_id in response")
+	}
+}
+
 func TestLogin_InvalidCredentials_401(t *testing.T) {
 	app := newTestApp(t)
 	app.registerUser(t, "wrong@example.com", "correct", "C")

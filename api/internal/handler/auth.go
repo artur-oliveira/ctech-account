@@ -13,7 +13,6 @@ import (
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
-	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
@@ -37,13 +36,15 @@ type mfaTokenPayload struct {
 	DeviceName string `json:"device_name"`
 	IP         string `json:"ip"`
 	UserAgent  string `json:"user_agent"`
+	// PrimaryAMR preserves the first factor across the TOTP hand-off. Without
+	// it, a passkey-first login was incorrectly persisted as [pwd, otp].
+	PrimaryAMR string `json:"primary_amr"`
 }
 
 type AuthHandler struct {
 	userSvc    *user.Service
 	sessionSvc *session.Service
 	totpSvc    TOTPService
-	passkeySvc *passkey.Service
 	clientRepo oauthclient.Repository
 	cache      *cache.Client
 	cfg        *config.Config
@@ -51,8 +52,8 @@ type AuthHandler struct {
 	audit      *audit.Service
 }
 
-func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, passkeySvc *passkey.Service, clientRepo oauthclient.Repository, valkeyCache *cache.Client, cfg *config.Config, emailCli *email.Client, auditSvc *audit.Service) *AuthHandler {
-	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, passkeySvc: passkeySvc, clientRepo: clientRepo, cache: valkeyCache, cfg: cfg, emailCli: emailCli, audit: auditSvc}
+func NewAuthHandler(userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, clientRepo oauthclient.Repository, valkeyCache *cache.Client, cfg *config.Config, emailCli *email.Client, auditSvc *audit.Service) *AuthHandler {
+	return &AuthHandler{userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, clientRepo: clientRepo, cache: valkeyCache, cfg: cfg, emailCli: emailCli, audit: auditSvc}
 }
 
 func (h *AuthHandler) Register(v1 fiber.Router) {
@@ -62,8 +63,6 @@ func (h *AuthHandler) Register(v1 fiber.Router) {
 	auth.Post("/logout", h.logout)
 	auth.Get("/end-session", h.endSession)
 	auth.Post("/mfa/challenge", h.mfaChallenge)
-	auth.Post("/mfa/passkey/begin", h.mfaPasskeyBegin)
-	auth.Post("/mfa/passkey/complete", h.mfaPasskeyComplete)
 	auth.Post("/verify-email", h.verifyEmail)
 	auth.Post("/resend-verification", h.resendVerification)
 	auth.Post("/forgot-password", h.forgotPassword)
@@ -154,17 +153,17 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		return apierror.InvalidCredentials(c.Path()).Send(c)
 	}
 
+	// Passkey is never a second factor here: a passkey-holding account signs in
+	// through the standalone first-factor flow (PasskeyHandler.authenticateComplete),
+	// never by gating a password login. Only TOTP can require an MFA step.
 	var methods []string
-	if hasKeys, _ := h.passkeySvc.HasPasskeys(c.Context(), u.ID()); hasKeys {
-		methods = append(methods, "passkey")
-	}
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID()); totpErr == nil && totpSecret.IsSetup() {
 		methods = append(methods, "totp")
 	}
 
 	if len(methods) > 0 {
 		recordAudit(c, h.audit, u.ID(), audit.EventLoginMFARequired, nil)
-		return issueMFAToken(c, h.cache, u.ID(), parseDeviceName(c.Get("User-Agent")), clientIP(c), c.Get("User-Agent"), methods)
+		return issueMFAToken(c, h.cache, u.ID(), parseDeviceName(c.Get("User-Agent")), clientIP(c), c.Get("User-Agent"), session.AMRPassword, methods)
 	}
 
 	return h.issueSession(c, u)
@@ -172,7 +171,7 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 
 // issueMFAToken stores a short-lived MFA token in Valkey and sends the challenge response.
 // Shared by AuthHandler (password login) and PasskeyHandler (passkey login with TOTP required).
-func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, ip, userAgent string, methods []string) error {
+func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, ip, userAgent, primaryAMR string, methods []string) error {
 	if cacheClient == nil || !cacheClient.Enabled() {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -187,6 +186,7 @@ func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, i
 		DeviceName: deviceName,
 		IP:         ip,
 		UserAgent:  userAgent,
+		PrimaryAMR: primaryAMR,
 	}
 
 	if err := cacheClient.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
@@ -255,7 +255,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRPassword, session.AMRTOTP})
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, mfaSessionAMR(payload))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -273,103 +273,19 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	})
 }
 
-type mfaPasskeyBeginRequest struct {
-	MFAToken string `json:"mfa_token" validate:"required"`
-}
-
-// mfaPasskeyBegin peeks at the mfa_token (does not consume it) and returns a
-// user-specific WebAuthn challenge. The mfa_token is consumed in mfaPasskeyComplete.
-func (h *AuthHandler) mfaPasskeyBegin(c fiber.Ctx) error {
-	var req mfaPasskeyBeginRequest
-	if err := parseBody(c, &req); err != nil {
-		return err
-	}
-
-	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServerError(c.Path()).Send(c)
-	}
-
-	hashHex := crypto.HashToken(req.MFAToken)
-	var payload mfaTokenPayload
-	if err := h.cache.Get(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
-		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
-	}
-
-	optionsJSON, sessionToken, err := h.passkeySvc.BeginUserAuthentication(c.Context(), payload.UserID)
-	if err != nil {
-		switch {
-		case errors.Is(err, passkey.ErrCacheRequired):
-			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).Send(c)
-		case errors.Is(err, passkey.ErrNoCredentials):
-			return apierror.InvalidRequest("No passkeys registered for this account.", c.Path()).Send(c)
-		default:
-			return apierror.ServerError(c.Path()).Send(c)
+// mfaSessionAMR reconstructs the complete authentication chain after TOTP.
+// Tokens issued by an older instance during a rolling deploy have no
+// primary_amr; DeviceName distinguishes the old passkey hand-off from the
+// normal password path for the token's remaining five-minute lifetime.
+func mfaSessionAMR(payload mfaTokenPayload) []string {
+	primary := payload.PrimaryAMR
+	if primary != session.AMRPassword && primary != session.AMRWebAuthn {
+		primary = session.AMRPassword
+		if payload.DeviceName == "Passkey" {
+			primary = session.AMRWebAuthn
 		}
 	}
-
-	return c.JSON(fiber.Map{
-		"session_token": sessionToken,
-		"options":       string(optionsJSON),
-	})
-}
-
-// mfaPasskeyComplete consumes the mfa_token, validates the passkey assertion, and issues a session.
-// Query params: mfa_token, session_token. Body: raw WebAuthn assertion JSON.
-func (h *AuthHandler) mfaPasskeyComplete(c fiber.Ctx) error {
-	mfaToken := c.Query("mfa_token")
-	sessionToken := c.Query("session_token")
-
-	if mfaToken == "" || sessionToken == "" {
-		return apierror.InvalidRequest("mfa_token and session_token query params are required.", c.Path()).Send(c)
-	}
-	if len(c.Body()) == 0 {
-		return apierror.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
-	}
-
-	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServerError(c.Path()).Send(c)
-	}
-
-	hashHex := crypto.HashToken(mfaToken)
-	var payload mfaTokenPayload
-	// GetDel consumes the MFA token atomically (single use, replay-safe).
-	if err := h.cache.GetDel(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
-		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
-	}
-
-	if err := h.passkeySvc.FinishUserAuthentication(c.Context(), payload.UserID, sessionToken, c.Body()); err != nil {
-		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "passkey"})
-		switch {
-		case errors.Is(err, passkey.ErrSessionExpired):
-			return apierror.InvalidToken("Passkey session expired. Please try again.", c.Path()).Send(c)
-		case errors.Is(err, passkey.ErrInvalidResponse):
-			return apierror.InvalidRequest("Invalid passkey response.", c.Path()).Send(c)
-		default:
-			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).Send(c)
-		}
-	}
-
-	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
-	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
-	}
-
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRPassword, session.AMRWebAuthn})
-	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
-	}
-	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), payload.IP)
-	recordAudit(c, h.audit, u.ID(), audit.EventMFAChallengeSuccess, map[string]string{"method": "passkey", "session_id": sess.ID()})
-
-	setSessionCookies(c, h.cfg, rawToken)
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"user_id":    u.ID(),
-		"email":      u.Email,
-		"first_name": u.FirstName,
-		"last_name":  u.LastName,
-		"session_id": sess.ID(),
-	})
+	return []string{primary, session.AMRTOTP}
 }
 
 func (h *AuthHandler) logout(c fiber.Ctx) error {

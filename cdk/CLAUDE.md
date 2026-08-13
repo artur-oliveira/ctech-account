@@ -178,7 +178,7 @@ See `../README.md` §First Deploy for the full ordered checklist.
 
 - SSM parameters must exist before deploying the compute stack. Signing keys live at
   `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) — **not** `rsa-private-key`.
-  Runtime config (base-url, allowed-origins, app-url, google-*, cookie-domain,
+  Runtime config (base-url, allowed-origins, app-url, optional webauthn-rpid, google-*, cookie-domain,
   from-email, internal-token) lives under `/ctech-account/{env}/*`; the shared edge-SG/VPC
   params under `/ctech/{env}/*`; the Valkey URL under `/ctech/{env}/valkey/url`.
 - `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy (see `../README.md`).

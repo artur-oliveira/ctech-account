@@ -54,7 +54,10 @@ export async function buildRegistrationCredential(optionsJSON: string) {
   }
 }
 
-export async function buildAssertionCredential(optionsJSON: string) {
+export async function buildAssertionCredential(
+  optionsJSON: string,
+  request: {mediation?: CredentialMediationRequirement; signal?: AbortSignal} = {},
+) {
   const pk = JSON.parse(optionsJSON).publicKey as {
     challenge: string
     timeout?: number
@@ -64,6 +67,8 @@ export async function buildAssertionCredential(optionsJSON: string) {
   }
 
   const getOptions: CredentialRequestOptions = {
+    mediation: request.mediation,
+    signal: request.signal,
     publicKey: {
       ...pk,
       challenge: base64urlToArrayBuffer(pk.challenge),
