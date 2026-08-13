@@ -154,6 +154,7 @@ var defaultCatalog = []ServiceScopes{
 			{"internal:wallet:game-hold", "Hold value for game wallet", "Reserva os valores da carteira de jogos"},
 			{"internal:wallet:game-cashout", "Cashout value for real wallet", "Retorna valores para a carteira de jogos"},
 			{"internal:wallet:sandbox-purchase", "Purchases sandbox credits", "Compra créditos sandbox"},
+			{"internal:wallet:product-purchase", "Purchase product", "Compra de produtos"},
 		},
 	},
 }
