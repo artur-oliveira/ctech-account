@@ -6,12 +6,13 @@ import (
 )
 
 type WellKnownHandler struct {
-	jwtSvc  *crypto.JWTService
-	baseURL string
+	jwtSvc    *crypto.JWTService
+	baseURL   string
+	issuerURL string
 }
 
-func NewWellKnownHandler(jwtSvc *crypto.JWTService, baseURL string) *WellKnownHandler {
-	return &WellKnownHandler{jwtSvc: jwtSvc, baseURL: baseURL}
+func NewWellKnownHandler(jwtSvc *crypto.JWTService, baseURL, issuerURL string) *WellKnownHandler {
+	return &WellKnownHandler{jwtSvc: jwtSvc, baseURL: baseURL, issuerURL: issuerURL}
 }
 
 func (h *WellKnownHandler) Register(app *fiber.App) {
@@ -23,7 +24,7 @@ func (h *WellKnownHandler) Register(app *fiber.App) {
 func (h *WellKnownHandler) Configuration(c fiber.Ctx) error {
 	issuer := h.baseURL
 	return c.JSON(fiber.Map{
-		"issuer":                                issuer,
+		"issuer":                                h.issuerURL,
 		"authorization_endpoint":                issuer + "/v1.0/authorize",
 		"token_endpoint":                        issuer + "/v1.0/token",
 		"userinfo_endpoint":                     issuer + "/v1.0/userinfo",

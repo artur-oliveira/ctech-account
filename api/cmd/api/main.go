@@ -194,7 +194,7 @@ func main() {
 	}
 
 	// Handlers
-	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL)
+	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL)
 	auditRepo := auditDomain.NewRepository(db, cfg.TablePrefix)
 	auditSvc := auditDomain.NewService(auditRepo)
 	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)

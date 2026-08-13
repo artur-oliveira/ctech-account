@@ -231,7 +231,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	kycH.Register(account, stepUp)
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))
 
-	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL).Register(app)
+	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL).Register(app)
 
 	socialCache := cache.NewInMemory()
 	handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc).Register(v1)
