@@ -32,7 +32,7 @@ func TestLoadWebAuthnDefaultsToBrowserFacingAppURL(t *testing.T) {
 	if len(cfg.RPOrigins) != 1 || cfg.RPOrigins[0] != "https://accounts.aoctech.app" {
 		t.Fatalf("RPOrigins = %v, want only the SPA origin", cfg.RPOrigins)
 	}
-	if cfg.Audience != "https://accountsapi.aoctech.app" {
+	if cfg.Audience != "https://accounts.aoctech.app" {
 		t.Fatalf("Audience = %q, want API origin", cfg.Audience)
 	}
 }

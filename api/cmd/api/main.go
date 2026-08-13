@@ -200,7 +200,7 @@ func main() {
 	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)
 	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg, auditSvc)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, consentSvc, userSvc, valkeyClient, cfg.AppURL, cfg.BaseURL, cfg.CookieDomain, auditSvc)
-	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, apiKeySvc, scopesCatalogSvc, jwtSvc, cfg.BaseURL, cfg, auditSvc)
+	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, apiKeySvc, scopesCatalogSvc, jwtSvc, cfg.AppURL, cfg, auditSvc)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc, auditSvc)
 	profileH := handler.NewProfileHandler(userSvc, sessionSvc, auditSvc)

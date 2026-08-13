@@ -54,7 +54,7 @@ type TokenHandler struct {
 	apiKeySvc  *apikey.Service
 	catalogSvc *scopes.CatalogService
 	jwtSvc     *crypto.JWTService
-	baseURL    string
+	issuerURL  string
 	cfg        *config.Config
 	audit      *audit.Service
 }
@@ -67,7 +67,7 @@ func NewTokenHandler(
 	apiKeySvc *apikey.Service,
 	catalogSvc *scopes.CatalogService,
 	jwtSvc *crypto.JWTService,
-	baseURL string,
+	issuerURL string,
 	cfg *config.Config,
 	auditSvc *audit.Service,
 ) *TokenHandler {
@@ -79,7 +79,7 @@ func NewTokenHandler(
 		apiKeySvc:  apiKeySvc,
 		catalogSvc: catalogSvc,
 		jwtSvc:     jwtSvc,
-		baseURL:    baseURL,
+		issuerURL:  issuerURL,
 		cfg:        cfg,
 		audit:      auditSvc,
 	}
@@ -127,7 +127,7 @@ func (h *TokenHandler) apiKeyExchange(c fiber.Ctx) error {
 	}
 	audience := append([]string{h.cfg.Audience}, serviceAudiences...)
 
-	accessToken, err := h.jwtSvc.SignAccessToken(k.UserID(), k.ID(), apiKeyClientID, k.Scopes, h.baseURL, audience, 0, 0, nil, "")
+	accessToken, err := h.jwtSvc.SignAccessToken(k.UserID(), k.ID(), apiKeyClientID, k.Scopes, h.issuerURL, audience, 0, 0, nil, "")
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -181,7 +181,7 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 	// sub = client_id, no session: internal middleware relies on the empty sid
 	// to tell machine tokens from user tokens. No step-up claims, no kyc_level,
 	// no refresh token.
-	accessToken, err := h.jwtSvc.SignAccessToken(clientID, "", clientID, scp, h.baseURL, audience, 0, 0, nil, "")
+	accessToken, err := h.jwtSvc.SignAccessToken(clientID, "", clientID, scp, h.issuerURL, audience, 0, 0, nil, "")
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -263,7 +263,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.InvalidGrant("Session no longer exists.", c.Path()).Send(c)
 	}
 
-	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.baseURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycClaimFor(u, ac.Scopes))
+	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycClaimFor(u, ac.Scopes))
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
@@ -271,7 +271,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	idToken := ""
 	if slices.Contains(ac.Scopes, "openid") {
 		idToken, err = h.jwtSvc.SignIDToken(
-			ac.UserID, u.Email, u.FullName(), u.DisplayOrFullName(), u.FirstName, u.LastName, u.EmailVerified, clientID, ac.Nonce, h.baseURL, kycClaimFor(u, ac.Scopes),
+			ac.UserID, u.Email, u.FullName(), u.DisplayOrFullName(), u.FirstName, u.LastName, u.EmailVerified, clientID, ac.Nonce, h.issuerURL, kycClaimFor(u, ac.Scopes),
 		)
 		if err != nil {
 			return apierror.ServerError(c.Path()).Send(c)
@@ -386,7 +386,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		kycLevel = kyc.ClaimLevel(u.KYCLevel, u.KYCStatus)
 	}
 
-	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), clientID, scp, h.baseURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycLevel)
+	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), clientID, scp, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycLevel)
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
