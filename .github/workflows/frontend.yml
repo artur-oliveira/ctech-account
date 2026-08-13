@@ -40,6 +40,7 @@ jobs:
       # forwards /v1.0/* to the ALB, so the browser talks same-origin and never
       # needs CORS. accounts-api stays reachable directly for service-to-service
       # callers (JWKS from ctech-dfe / ctech-wallet) and the public API.
+
       - name: Set environment
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
