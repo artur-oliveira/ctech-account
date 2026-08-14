@@ -95,8 +95,8 @@ const iamStack = new IAMStack(app, id('IAM'), {
   kycDocumentsBucketArn: `arn:aws:s3:::${KYC_DOCUMENTS_BUCKET}`,
   description: `ctech-account IAM - ${ENVIRONMENT}`,
 });
-iamStack.addDependency(dynamodbStack);
-iamStack.addDependency(kycStack);
+iamStack.addStackDependency(dynamodbStack);
+iamStack.addStackDependency(kycStack);
 
 // =====================
 // Compute (EC2 + ASG, routed by ctech-lbalancer HAProxy)
@@ -112,7 +112,7 @@ const computeStack = new ComputeStack(app, id('Compute'), {
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
-computeStack.addDependency(iamStack);
+computeStack.addStackDependency(iamStack);
 
 // =====================
 // Frontend (S3 + CloudFront)

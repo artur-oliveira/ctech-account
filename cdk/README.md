@@ -47,26 +47,29 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   `/ctech/{env}/lbalancer/routes/account`, owned by `ctech-lbalancer`. Its default
   registration targets this ASG, port 8080, `/v1.0/health-check`, HTTP 200, and
   `autoHeal: true`.
-- `PrivateIpv4Ec2Service` cannot be used here because its current contract always
-  creates the retired ALB resources. The infrastructure CI guard permits the
-  private-IPv4 launch-template override only in `lib/compute-stack.ts` and still
-  rejects copies elsewhere.
+- `HaproxyEc2Service` from `@aoctech/cdk` owns the common security group, log
+  groups, encrypted launch template, ASG and CPU target tracking. Route creation is
+  intentionally omitted because `/ctech/{env}/lbalancer/routes/account` remains
+  owned by `ctech-lbalancer`.
 - The retained `/ctech/{env}/network/alb-sg-id` parameter now identifies the shared
   edge SG trusted by service instances. Its historical name is intentionally kept
   until every service has migrated without downtime.
-- The ASG, launch template, instance SG, log groups, HTTP status metric filters, and
-  CPU target tracking are defined directly in this stack. It uses a `t4g.micro`,
-  3-GiB gp3 root volume, private IPv4, and IPv6 egress (no NAT gateway).
+- The service uses a `t4g.micro`, encrypted 3-GiB gp3 root volume, private IPv4,
+  and IPv6 egress (no NAT gateway). Account-specific nginx, bootstrap/deploy
+  scripts and alarms remain local.
 - **Capacity:** min 1, max **3 in prod**, max 1 otherwise.
 - **Health check:** HAProxy probes `/v1.0/health-check` and accepts HTTP 200. With
   `autoHeal: true`, three unhealthy reconciliations request ASG replacement.
-- **User data** (`compute-stack.ts:81`) installs nginx + CloudWatch/SSM agents, writes
+- **User data** installs nginx + CloudWatch/SSM agents, downloads only the
+  official Cloudflare Origin CA RSA root, verifies its pinned SHA-256 and
+  installs it into the system trust store for
+  `*.internal.aoctech.app`, writes
   an nginx config that listens on `:8080` and reverse-proxies to the Go binary on
   `:8000`, then a `start.sh` that (a) pulls secrets from SSM and (b) execs
   `/opt/app/current/bootstrap` (the Go binary). `deploy.sh` pulls a release zip from
   the deployments bucket and restarts the `app` systemd service
   (`compute-stack.ts:261`).
-- CloudWatch Agent publishes four bounded 60-second host series under
+- `buildCloudWatchAgentConfig` publishes four bounded 60-second host series under
   `CtechAccount/<env>/Host`: memory %, swap %, root-disk %, and application RSS.
   EC2's native `CPUUtilization`/`CPUCreditBalance` remain the CPU source.
 - **Runtime config is read from SSM inside `start.sh`** (`compute-stack.ts:229`) and
@@ -150,8 +153,10 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 
 ## 6. Frontend — S3 + CloudFront (`lib/frontend-stack.ts`)
 
-- S3 bucket `{env}-ctech-account-frontend`, `BLOCK_ALL`, OAC
-  (`frontend-stack.ts:50`). Static export from `ui/` (no server).
+- `createNextjsStaticFrontend` from `@aoctech/cdk` creates the private S3 bucket,
+  OAC, route KVS, rewrite function, security headers and distribution. Static
+  export comes from `ui/` (no server); this stack only supplies account-specific
+  API behaviors and CSP additions.
 - CloudFront distribution `accounts.aoctech.app` (prod) with cert `us-east-1`
   (`bin/ctech-account.ts:20`, `frontend-stack.ts:179`). `PriceClass_100`, TLS 1.2 2021.
 - **Path routing** (`frontend-stack.ts:22`):
@@ -206,14 +211,18 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
   exists but `test/` is absent) — `cdk synth` is the only automated gate.
 
 ### First-deploy prerequisites (outside CDK)
-1. Seed signing keys in SSM `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) via
+1. From `ctech-cdk`, create/update the shared service URL parameters:
+   `CTECH_AWS_PROFILE=ctech ./scripts/configure-service-url-parameters.sh {env}`.
+   Internal transport/JWKS parameters use `*.internal.aoctech.app`; public
+   issuer/browser parameters remain public by design.
+2. Seed signing keys in SSM `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) via
    `api/cmd/rotatekeys` (see root `README.md` §First Deploy).
-2. Seed the `accounts` OAuth client (the SPA default — `SELF_CLIENT_ID`/`NEXT_PUBLIC_OAUTH_CLIENT_ID` both default to `accounts`) in `{env}_account_oauth_clients`
+3. Seed the `accounts` OAuth client (the SPA default — `SELF_CLIENT_ID`/`NEXT_PUBLIC_OAUTH_CLIENT_ID` both default to `accounts`) in `{env}_account_oauth_clients`
    (`CLIENT_accounts`, `first_party: true`).
-3. Seed the scope catalog in `{env}_ctech_scopes` via `api/cmd/seedscopes`.
-4. Set the SSM params listed in §2 (base-url, allowed-origins, app-url,
+4. Seed the scope catalog in `{env}_ctech_scopes` via `api/cmd/seedscopes`.
+5. Set the remaining SSM params listed in §2 (base-url, allowed-origins, app-url,
    google-*, cookie-domain, from-email, internal-token) and `/ctech/{env}/valkey/url`.
-5. Enable DynamoDB PITR on the 8 tables in prod.
+6. Enable DynamoDB PITR on the 8 tables in prod.
 
 ---
 
