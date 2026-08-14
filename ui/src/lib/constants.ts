@@ -7,6 +7,15 @@ export const CONTINUE_URL_KEY = 'continue_url'
 
 export const MFA_METHOD_TOTP = 'totp'
 
+// Passkey login currently returns the RFC 8176 AMR value (`otp`) while
+// password login returns the challenge label (`totp`). Accept both until the
+// API response is normalized so an otherwise valid challenge is never lost.
+export const MFA_METHOD_OTP_AMR = 'otp'
+
+export function isTOTPMFAMethod(method: string): boolean {
+  return method === MFA_METHOD_TOTP || method === MFA_METHOD_OTP_AMR
+}
+
 // KYC — must stay in step with api/internal/domain/kyc/model.go.
 export const CPF_DIGITS = 11
 

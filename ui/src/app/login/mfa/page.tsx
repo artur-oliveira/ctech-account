@@ -13,7 +13,7 @@ import {isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
 import {mfaChallengeAPI} from '@/lib/mutations'
 import {sanitizeContinue} from '@/lib/safe-redirect'
-import {MFA_METHODS_KEY, MFA_METHOD_TOTP, MFA_TOKEN_KEY} from '@/lib/constants'
+import {isTOTPMFAMethod, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useSessionItem} from '@/hooks/use-session-item'
 
 const MFA_CODE_LENGTH = 6
@@ -44,7 +44,7 @@ function MFAForm() {
   const rawMethods = useSessionItem(MFA_METHODS_KEY)
   const methods = useMemo(() => parseMethods(rawMethods), [rawMethods])
 
-  const hasTOTP = methods?.includes(MFA_METHOD_TOTP) ?? false
+  const hasTOTP = methods?.some(isTOTPMFAMethod) ?? false
 
   async function handleTOTP(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()

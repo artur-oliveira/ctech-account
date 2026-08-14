@@ -42,6 +42,15 @@ describe('MFAPage — TOTP-only', () => {
     expect(screen.getByRole('button', { name: 'Verify' })).toBeInTheDocument()
   })
 
+  it('accepts the otp AMR value returned after passkey authentication', async () => {
+    seedSession(['otp'])
+    render(<MFAPage />)
+
+    await screen.findByLabelText('Digit 1')
+    expect(screen.getByRole('button', { name: 'Verify' })).toBeInTheDocument()
+    expect(screen.queryByText('Session expired. Please sign in again.')).not.toBeInTheDocument()
+  })
+
   it('never renders a passkey option even if the backend still sends "passkey" as a method', async () => {
     seedSession(['passkey'])
     render(<MFAPage />)

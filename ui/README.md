@@ -46,14 +46,23 @@ Zustand auth/step-up stores, and the complete auth flow.
 
 **Auth flow in one paragraph.** It is a static-export SPA (no server). The
 in-memory access token lives only in `store/auth.ts` (never `localStorage`);
-the refresh token is the HttpOnly `ctech_rt` cookie set by the Go API. Login
-(`POST /v1.0/auth/login`) either issues the SSO `ctech_session` cookie
-directly or, when MFA is enrolled, hands off to the OAuth PKCE dance via
-`@aoctech/auth-client` (`lib/oauth-client.ts`), which redirects to
-`GET /v1.0/authorize` and exchanges the code at `POST /v1.0/token`. A
-background `AuthInitializer` silent-refreshes from `ctech_rt` on boot; the
-`lib/axios.ts` interceptor auto-refreshes on 401 and opens the step-up
-(`max_age=0`) dialog on a `403 step-up-required`. The OAuth `client_id` is
-`CLIENT_ID` (`lib/env.ts`) = `NEXT_PUBLIC_OAUTH_CLIENT_ID` (default `accounts`).
+the refresh token is the HttpOnly `ctech_rt` cookie set by the Go API. Password
+and passkey login can either issue the SSO `ctech_session` cookie directly or
+return an MFA continuation. The SPA stores that short-lived continuation only
+in `sessionStorage`, verifies the TOTP code at `/login/mfa`, then starts the
+OAuth PKCE dance via `@aoctech/auth-client` (`lib/oauth-client.ts`). The MFA UI
+accepts both the `totp` challenge label and the RFC 8176 `otp` AMR value so
+passkey + TOTP works across deployed API versions. OAuth redirects through
+`GET /v1.0/authorize` and exchanges the code at `POST /v1.0/token`. A background
+`AuthInitializer` silent-refreshes from `ctech_rt` on boot; the `lib/axios.ts`
+interceptor auto-refreshes on 401 and opens the step-up (`max_age=0`) dialog on
+a `403 step-up-required`. The OAuth `client_id` is `CLIENT_ID` (`lib/env.ts`) =
+`NEXT_PUBLIC_OAUTH_CLIENT_ID` (default `accounts`).
+
+Passkey enrollment asks for a recognizable name before opening the browser's
+WebAuthn security prompt and persists that name through the existing register
+begin/complete API. The current API exposes list, register, and delete only;
+renaming an already registered passkey requires a dedicated authenticated API
+mutation before the UI can safely offer edit-in-place across devices.
 
 For the API surface, see `../api/ENDPOINTS.md` and `../api/README.md`.
