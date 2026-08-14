@@ -34,6 +34,8 @@ function CallbackHandler() {
         const continueURL = sanitizeContinue(returnTo)
         useAuthStore.getState().setAccessToken(accessToken)
         if (continueURL.startsWith('/v1.0/')) {
+          // This targets the Go API/OAuth endpoint, not a Next.js page.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.href = `${API_URL}${continueURL}`
         } else {
           router.replace(continueURL)

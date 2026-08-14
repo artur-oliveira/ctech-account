@@ -152,7 +152,7 @@ func TestCatalog(t *testing.T) {
 	}
 
 	auds, _ := svc.AudiencesFor(ctx, []string{"dfe:nfes:read", "account:profile:read"})
-	if len(auds) != 1 || auds[0] != "https://dfe-api.aoctech.app" {
+	if len(auds) != 1 || auds[0] != "https://dfe.aoctech.app" {
 		t.Errorf("expected dfe audience only, got %v", auds)
 	}
 }
@@ -218,7 +218,7 @@ func TestAudiencesForResolvesInternalScopeBySubService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AudiencesFor: %v", err)
 	}
-	if len(auds) != 1 || auds[0] != "https://wallet-api.aoctech.app" {
+	if len(auds) != 1 || auds[0] != "https://wallet.aoctech.app" {
 		t.Fatalf("expected wallet audience only, got %v", auds)
 	}
 }

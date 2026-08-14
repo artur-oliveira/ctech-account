@@ -1,7 +1,7 @@
 'use client'
 
 import {Suspense, SyntheticEvent, useCallback, useEffect, useRef, useState} from 'react'
-import {useSearchParams} from 'next/navigation'
+import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
 import {Button} from '@/components/ui/button'
@@ -36,6 +36,7 @@ function isPasskeyCancellation(error: unknown): boolean {
 
 function LoginForm() {
   const {t} = useTranslation()
+  const router = useRouter()
   const params = useSearchParams()
   const rawContinue = params.get('continue')
   const continueURL = sanitizeContinue(rawContinue)
@@ -74,7 +75,7 @@ function LoginForm() {
         sessionStorage.setItem(MFA_TOKEN_KEY, result.mfa_token)
         sessionStorage.setItem(MFA_METHODS_KEY, JSON.stringify(result.mfa_methods ?? []))
         sessionStorage.setItem(CONTINUE_URL_KEY, continueURL)
-        window.location.href = `/login/mfa?continue=${encodeURIComponent(continueURL)}`
+        router.replace(`/login/mfa?continue=${encodeURIComponent(continueURL)}`)
         return
       }
       await startOAuthFlow(continueURL)
@@ -82,7 +83,7 @@ function LoginForm() {
       authFlowStartedRef.current = false
       throw continuationError
     }
-  }, [continueURL])
+  }, [continueURL, router])
 
   useEffect(() => {
     if (typeof PublicKeyCredential === 'undefined') return

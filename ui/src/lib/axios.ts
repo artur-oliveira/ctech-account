@@ -49,6 +49,8 @@ api.interceptors.response.use(
       }
       useAuthStore.getState().clearAuth()
       clearAuthHint()
+      // A failed refresh must restart the document with all in-memory auth state cleared.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       if (typeof window !== 'undefined') window.location.href = '/login'
       return Promise.reject(error)
     }

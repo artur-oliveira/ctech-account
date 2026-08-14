@@ -10,6 +10,8 @@ export async function startOAuthFlow(continueURL: string = '/account'): Promise<
   // OAuth round-trip first burns the caller's max_age window before the
   // browser ever gets back to it, bouncing step-up back to /login.
   if (continueURL.startsWith('/v1.0/')) {
+    // OAuth authorization is served by the Go API and requires a document navigation.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `${API_URL}${continueURL}`
     return
   }

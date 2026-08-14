@@ -576,7 +576,7 @@ func TestAPIKeyExchange(t *testing.T) {
 		t.Fatalf("decoding payload: %v", err)
 	}
 	claims := string(payload)
-	if !strings.Contains(claims, "https://dfe-api.aoctech.app") {
+	if !strings.Contains(claims, "https://dfe.aoctech.app") {
 		t.Fatalf("aud must include dfe audience, claims=%s", claims)
 	}
 	if !strings.Contains(claims, `"sub":"user-k"`) {

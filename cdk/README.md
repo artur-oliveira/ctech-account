@@ -66,6 +66,9 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   `/opt/app/current/bootstrap` (the Go binary). `deploy.sh` pulls a release zip from
   the deployments bucket and restarts the `app` systemd service
   (`compute-stack.ts:261`).
+- CloudWatch Agent publishes four bounded 60-second host series under
+  `CtechAccount/<env>/Host`: memory %, swap %, root-disk %, and application RSS.
+  EC2's native `CPUUtilization`/`CPUCreditBalance` remain the CPU source.
 - **Runtime config is read from SSM inside `start.sh`** (`compute-stack.ts:229`) and
   exported as environment variables — the Go API itself reads plain env vars (see
   `api/internal/config/config.go`). SSM paths resolved at boot:
