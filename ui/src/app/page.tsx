@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useTranslation } from 'react-i18next'
-import { ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -24,9 +24,7 @@ export default function Home() {
       <main className="flex flex-1 items-center px-6 py-12">
         <section className="mx-auto w-full max-w-md">
           <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <ShieldCheck aria-hidden="true" size={18} />
-            </div>
+            <Image src="/app.svg" alt="" aria-hidden="true" width={36} height={36} priority />
             <span className="font-semibold text-foreground">CTech Account</span>
           </div>
           <h1 className="mt-8 text-2xl font-semibold tracking-tight text-foreground">

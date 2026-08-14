@@ -236,7 +236,7 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 - **State:** confirming sets `pending` — both buttons disable until the mutation resolves, and overlay/Esc close is suppressed mid-flight. Focus is trapped by the Dialog; first focus lands on `Cancel`, not the destructive action.
 
 ### Navigation (signature)
-- **Style:** sticky top bar (h-14) + left sidebar (w-52, hidden on mobile). Active item = cobalt text + cobalt-tinted well; current section underlined in cobalt. Mobile collapses sidebar to a menu. The same vocabulary as tabs/buttons.
+- **Style:** sticky top bar (h-14) + left sidebar (w-52, hidden on mobile). The canonical `public/app.svg` double-C mark identifies the product beside “CTech Account” in the desktop sidebar and mobile top bar; landing-page identity must use the same asset, never a generic security icon. Active item = cobalt text + cobalt-tinted well; current section underlined in cobalt. Mobile collapses sidebar to a menu. The same vocabulary as tabs/buttons.
 
 ## 6. Do's and Don'ts
 

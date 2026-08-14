@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -67,17 +68,26 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
         <div className="mx-auto max-w-6xl flex h-14 items-center justify-between px-4">
-          <AccountMobileNav />
-          <Link href="/account" className="font-semibold text-sm">
-            {t('app.name')}
-          </Link>
-          <LanguageSwitcher />
-          <UserMenu user={user} />
+          <div className="flex items-center gap-2 md:hidden">
+            <AccountMobileNav />
+            <Link href="/account" className="flex items-center gap-2 font-semibold text-sm">
+              <Image src="/app.svg" alt="" aria-hidden="true" width={28} height={28} />
+              {t('app.name')}
+            </Link>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <LanguageSwitcher />
+            <UserMenu user={user} />
+          </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-6xl flex flex-1 w-full gap-8 px-4 py-8">
         <aside className="hidden md:block w-52 shrink-0">
+          <Link href="/account" className="mb-5 flex items-center gap-2.5 px-2 font-semibold text-sm">
+            <Image src="/app.svg" alt="" aria-hidden="true" width={32} height={32} />
+            {t('app.name')}
+          </Link>
           <AccountNav />
         </aside>
 
