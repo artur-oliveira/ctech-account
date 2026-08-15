@@ -73,8 +73,8 @@ export class ComputeStack extends cdk.Stack {
     userData.addCommands(
       'dnf install -y nginx amazon-cloudwatch-agent amazon-ssm-agent cronie unzip jq',
       'useradd --system --no-create-home --shell /sbin/nologin webapp',
-      'mkdir -p /opt/app/releases /var/log/app /etc/nginx/conf.d',
-      'chown -R webapp:webapp /opt/app /var/log/app',
+      'mkdir -p /opt/app/releases /var/log/app /etc/nginx/conf.d /var/lib/ctech-account',
+      'chown -R webapp:webapp /opt/app /var/log/app /var/lib/ctech-account',
       // AL2023 does not enable crond by default (unlike AL2) — without it
       // /etc/cron.daily/logrotate never fires and rotated logs never reach S3.
       'systemctl enable crond',
