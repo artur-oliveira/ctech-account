@@ -58,7 +58,7 @@ func (c *Client) SendAccountExistsEmail(ctx context.Context, to, firstName strin
 // device/country combination not seen on any of their prior sessions.
 func (c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, deviceName, city, country, ip string, when time.Time) error {
 	subject := "Novo login detectado — ctech"
-	body := newDeviceLoginEmailHTML(deviceName, city, country, ip, when)
+	body := newDeviceLoginEmailHTML(deviceName, city, country, ip, when, c.baseURL+"/account/sessions")
 	return c.send(ctx, to, subject, newDeviceLoginEmailLayout(firstName, body))
 }
 
@@ -119,7 +119,19 @@ func passwordResetEmailHTML(firstName, link string) string {
 		"Se você não solicitou isso, ignore este e-mail — sua senha não será alterada.")
 }
 
-func newDeviceLoginEmailHTML(deviceName, city, country, ip string, when time.Time) string {
+// detailRow renders one label/value line of the device-details card. label is
+// omitted from the top border so the first row sits flush with the card edge.
+func detailRow(label, value string, first bool) string {
+	border := "border-top:1px solid #e5e7eb;"
+	if first {
+		border = ""
+	}
+	return fmt.Sprintf(
+		`<tr><td style="padding:12px 16px;color:#666;font-size:13px;width:120px;%s">%s</td><td style="padding:12px 16px;font-weight:600;%s">%s</td></tr>`,
+		border, label, border, value)
+}
+
+func newDeviceLoginEmailHTML(deviceName, city, country, ip string, when time.Time, sessionsLink string) string {
 	location := city
 	if country != "" {
 		if location != "" {
@@ -130,15 +142,18 @@ func newDeviceLoginEmailHTML(deviceName, city, country, ip string, when time.Tim
 	if location == "" {
 		location = "localização desconhecida"
 	}
+	details := `<table role="presentation" style="width:100%;border-collapse:collapse;margin:20px 0;background:#f8fafc;border-radius:8px;overflow:hidden">` +
+		detailRow("Dispositivo", deviceName, true) +
+		detailRow("Local", location, false) +
+		detailRow("IP", ip, false) +
+		detailRow("Quando", when.UTC().Format("02/01/2006 15:04 MST"), false) +
+		`</table>`
+
 	return fmt.Sprintf(`<p>Detectamos um login na sua conta a partir de um dispositivo ou local que não reconhecemos:</p>
-  <ul>
-    <li><strong>Dispositivo:</strong> %s</li>
-    <li><strong>Local:</strong> %s</li>
-    <li><strong>IP:</strong> %s</li>
-    <li><strong>Quando:</strong> %s</li>
-  </ul>
-  <p>Se foi você, pode ignorar este e-mail. Se não reconhece este acesso, redefina sua senha imediatamente.</p>`,
-		deviceName, location, ip, when.UTC().Format("02/01/2006 15:04 MST"))
+  %s
+  %s
+  <p>Se foi você, pode ignorar este e-mail. Se não reconhece este acesso, redefina sua senha imediatamente e revise seus dispositivos conectados.</p>`,
+		details, ctaButton("Revisar sessões", sessionsLink))
 }
 
 func newDeviceLoginEmailLayout(firstName, bodyHTML string) string {

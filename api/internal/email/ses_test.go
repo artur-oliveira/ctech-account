@@ -8,9 +8,9 @@ import (
 
 func TestNewDeviceLoginEmailHTMLIncludesAllFields(t *testing.T) {
 	when := time.Date(2026, 8, 15, 14, 30, 0, 0, time.UTC)
-	body := newDeviceLoginEmailHTML("Chrome on Mac", "São Paulo", "BR", "203.0.113.5", when)
+	body := newDeviceLoginEmailHTML("Chrome on Mac", "São Paulo", "BR", "203.0.113.5", when, "https://accounts.aoctech.app/account/sessions")
 
-	for _, want := range []string{"Chrome on Mac", "São Paulo, BR", "203.0.113.5", "15/08/2026 14:30 UTC"} {
+	for _, want := range []string{"Chrome on Mac", "São Paulo, BR", "203.0.113.5", "15/08/2026 14:30 UTC", "https://accounts.aoctech.app/account/sessions", "Revisar sessões"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q:\n%s", want, body)
 		}
@@ -18,7 +18,7 @@ func TestNewDeviceLoginEmailHTMLIncludesAllFields(t *testing.T) {
 }
 
 func TestNewDeviceLoginEmailHTMLFallsBackWhenLocationUnknown(t *testing.T) {
-	body := newDeviceLoginEmailHTML("Chrome on Mac", "", "", "203.0.113.5", time.Now())
+	body := newDeviceLoginEmailHTML("Chrome on Mac", "", "", "203.0.113.5", time.Now(), "https://accounts.aoctech.app/account/sessions")
 	if !strings.Contains(body, "localização desconhecida") {
 		t.Errorf("expected fallback location text, got:\n%s", body)
 	}
