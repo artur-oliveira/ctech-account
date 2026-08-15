@@ -33,7 +33,7 @@ type RotatorConfig struct {
 	// Reload swaps the live key set (jwtSvc.Reload).
 	Reload func(active, previous *Key)
 	// TryLock attempts the distributed rotation lock (cache.SetNX wrapper).
-	TryLock  func(ctx context.Context) (bool, error)
+	TryLock func(ctx context.Context) (bool, error)
 	// Unlock releases the rotation lock after a successful rotation; the TTL
 	// remains a crash-net if this is missed (CAC-026).
 	Unlock   func(ctx context.Context) error

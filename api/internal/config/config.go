@@ -200,9 +200,9 @@ func loadSigningKey() (crypto.Signer, string, string, error) {
 		return nil, "", "", nil
 	}
 
-	pemStr, alg := rsaPEM, keystore.AlgRS256
+	pemStr, alg, parse := rsaPEM, keystore.AlgRS256, parseRSASigner
 	if ecPEM != "" {
-		pemStr, alg = ecPEM, keystore.AlgES256
+		pemStr, alg, parse = ecPEM, keystore.AlgES256, parseECSigner
 	}
 
 	block, _ := pem.Decode([]byte(pemStr))
@@ -210,15 +210,7 @@ func loadSigningKey() (crypto.Signer, string, string, error) {
 		return nil, "", "", fmt.Errorf("failed to decode PEM block")
 	}
 
-	var signer crypto.Signer
-	var err error
-	switch alg {
-	case keystore.AlgRS256:
-		signer, err = parseRSASigner(block)
-		break
-	case keystore.AlgES256:
-		signer, err = parseECSigner(block)
-	}
+	signer, err := parse(block)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("parsing %s key: %w", alg, err)
 	}

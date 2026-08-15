@@ -91,7 +91,7 @@ func TestLoadMissingActiveIsError(t *testing.T) {
 func TestRotatePromotesActiveToPrevious(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
-	first, _ := Generate(time.Now().Add(-100 * 24 * time.Hour), AlgRS256)
+	first, _ := Generate(time.Now().Add(-100*24*time.Hour), AlgRS256)
 	_ = store.Save(context.Background(), first, nil)
 
 	newKey, err := Rotate(context.Background(), store, time.Now(), AlgRS256)
