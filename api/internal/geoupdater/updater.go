@@ -148,7 +148,12 @@ func update(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("downloading database: unexpected status %d", resp.StatusCode)
 	}
 
-	tmpPath, err := extractMMDB(resp.Body, filepath.Dir(cfg.DBPath))
+	destDir := filepath.Dir(cfg.DBPath)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("creating database directory: %w", err)
+	}
+
+	tmpPath, err := extractMMDB(resp.Body, destDir)
 	if err != nil {
 		return fmt.Errorf("extracting database: %w", err)
 	}

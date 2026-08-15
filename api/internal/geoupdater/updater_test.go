@@ -82,6 +82,33 @@ func TestUpdateDownloadsExtractsValidatesAndSwaps(t *testing.T) {
 	}
 }
 
+func TestUpdateCreatesMissingDBDir(t *testing.T) {
+	geo.SetReader(nil)
+	defer geo.SetReader(nil)
+
+	fixture := buildFixtureTarGz(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	dir := filepath.Join(t.TempDir(), "nested", "does-not-exist-yet")
+	cfg := Config{
+		DBPath:      filepath.Join(dir, "GeoLite2-City.mmdb"),
+		AccountID:   "acct123",
+		LicenseKey:  "key456",
+		downloadURL: srv.URL,
+		HTTPClient:  srv.Client(),
+	}
+
+	if err := update(context.Background(), cfg); err != nil {
+		t.Fatalf("expected update to create the missing DB directory, got: %v", err)
+	}
+	if _, err := os.Stat(cfg.DBPath); err != nil {
+		t.Errorf("expected file at %s: %v", cfg.DBPath, err)
+	}
+}
+
 func TestUpdateRejectsInvalidArchive(t *testing.T) {
 	geo.SetReader(nil)
 	defer geo.SetReader(nil)
