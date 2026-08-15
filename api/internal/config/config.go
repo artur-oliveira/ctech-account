@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -30,7 +32,8 @@ type Config struct {
 	TablePrefix    string
 	AWSRegion      string
 	ValkeyURL      string
-	RSAPrivateKey  *rsa.PrivateKey
+	SigningKey     crypto.Signer
+	SigningKeyAlg  string
 	PublicKeyKID   string
 	BaseURL        string
 	Audience       string
@@ -84,9 +87,9 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	privateKey, kid, err := loadRSAKey()
+	signingKey, signingAlg, kid, err := loadSigningKey()
 	if err != nil {
-		return nil, fmt.Errorf("loading RSA key: %w", err)
+		return nil, fmt.Errorf("loading signing key: %w", err)
 	}
 
 	var origins []string
@@ -158,7 +161,8 @@ func Load() (*Config, error) {
 		TablePrefix:   tablePrefix,
 		AWSRegion:     getEnv("AWS_REGION", "us-east-1"),
 		ValkeyURL:     os.Getenv("VALKEY_URL"),
-		RSAPrivateKey: privateKey,
+		SigningKey:    signingKey,
+		SigningKeyAlg: signingAlg,
 
 		PublicKeyKID:             kid,
 		BaseURL:                  baseURL,
@@ -182,52 +186,91 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-// loadRSAKey parses the RSA_PRIVATE_KEY env var. When the variable is absent
-// it returns nil material without error — production loads versioned keys
-// from SSM instead (see internal/keystore); the env path is dev-only.
-func loadRSAKey() (*rsa.PrivateKey, string, error) {
-	pemStr := os.Getenv("RSA_PRIVATE_KEY")
-	if pemStr == "" {
-		return nil, "", nil
+// loadSigningKey parses the dev-mode signing key from RSA_PRIVATE_KEY
+// (RS256) or EC_PRIVATE_KEY (ES256) — mutually exclusive; set at most one.
+// When neither is set, returns zero values without error — production loads
+// versioned keys from SSM instead (see internal/keystore).
+func loadSigningKey() (crypto.Signer, string, string, error) {
+	rsaPEM := os.Getenv("RSA_PRIVATE_KEY")
+	ecPEM := os.Getenv("EC_PRIVATE_KEY")
+	if rsaPEM != "" && ecPEM != "" {
+		return nil, "", "", fmt.Errorf("RSA_PRIVATE_KEY and EC_PRIVATE_KEY are mutually exclusive")
 	}
+	if rsaPEM == "" && ecPEM == "" {
+		return nil, "", "", nil
+	}
+
+	pemStr, alg := rsaPEM, keystore.AlgRS256
+	if ecPEM != "" {
+		pemStr, alg = ecPEM, keystore.AlgES256
+	}
+
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
-		return nil, "", fmt.Errorf("failed to decode PEM block")
+		return nil, "", "", fmt.Errorf("failed to decode PEM block")
 	}
+
+	var signer crypto.Signer
 	var err error
-	var privateKey *rsa.PrivateKey
-
-	switch block.Type {
-	case "RSA PRIVATE KEY":
-		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	case "PRIVATE KEY":
-		key, parseErr := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if parseErr != nil {
-			return nil, "", fmt.Errorf("parsing PKCS8 key: %w", parseErr)
-		}
-		var ok bool
-		privateKey, ok = key.(*rsa.PrivateKey)
-		if !ok {
-			return nil, "", fmt.Errorf("key is not RSA")
-		}
-	default:
-		return nil, "", fmt.Errorf("unsupported PEM block type: %s", block.Type)
+	switch alg {
+	case keystore.AlgRS256:
+		signer, err = parseRSASigner(block)
+		break
+	case keystore.AlgES256:
+		signer, err = parseECSigner(block)
 	}
-
 	if err != nil {
-		return nil, "", fmt.Errorf("parsing RSA key: %w", err)
+		return nil, "", "", fmt.Errorf("parsing %s key: %w", alg, err)
 	}
 
 	kid := os.Getenv("PUBLIC_KEY_KID")
 	if kid == "" {
-		derived, derErr := keystore.DeriveKID(&privateKey.PublicKey)
+		derived, derErr := keystore.DeriveKID(signer.Public())
 		if derErr != nil {
-			return nil, "", derErr
+			return nil, "", "", derErr
 		}
 		kid = derived
 	}
 
-	return privateKey, kid, nil
+	return signer, alg, kid, nil
+}
+
+func parseRSASigner(block *pem.Block) (crypto.Signer, error) {
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		return x509.ParsePKCS1PrivateKey(block.Bytes)
+	case "PRIVATE KEY":
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not RSA")
+		}
+		return rsaKey, nil
+	default:
+		return nil, fmt.Errorf("unsupported PEM block type: %s", block.Type)
+	}
+}
+
+func parseECSigner(block *pem.Block) (crypto.Signer, error) {
+	switch block.Type {
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(block.Bytes)
+	case "PRIVATE KEY":
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		ecKey, ok := key.(*ecdsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not EC")
+		}
+		return ecKey, nil
+	default:
+		return nil, fmt.Errorf("unsupported PEM block type: %s", block.Type)
+	}
 }
 
 func getEnv(key, fallback string) string {

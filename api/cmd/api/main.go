@@ -78,7 +78,7 @@ func main() {
 	// otherwise versioned keys come from SSM and rotate automatically.
 	var jwtSvc *crypto.JWTService
 	var keyStore *keystore.Store
-	if cfg.RSAPrivateKey != nil {
+	if cfg.SigningKey != nil {
 		jwtSvc, err = crypto.NewJWTService(cfg)
 	} else {
 		awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)

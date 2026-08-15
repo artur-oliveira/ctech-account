@@ -23,7 +23,8 @@ func newTestJWTService(t *testing.T) *JWTService {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
-		RSAPrivateKey: key,
+		SigningKey:    key,
+		SigningKeyAlg: keystore.AlgRS256,
 		PublicKeyKID:  "test-kid",
 		Audience:      testIssuer,
 		BaseURL:       testIssuer,
@@ -96,8 +97,8 @@ func parseHeader(t *testing.T, token string) map[string]any {
 }
 
 func TestVerifyAcceptsPreviousKeyAfterReload(t *testing.T) {
-	oldKey, _ := keystore.Generate(time.Now().Add(-91 * 24 * time.Hour))
-	newKey, _ := keystore.Generate(time.Now())
+	oldKey, _ := keystore.Generate(time.Now().Add(-91*24*time.Hour), keystore.AlgRS256)
+	newKey, _ := keystore.Generate(time.Now(), keystore.AlgRS256)
 
 	svc := newJWTServiceWithKeys(t, oldKey, nil)
 	tok, err := svc.SignAccessToken("u1", "s1", "web", nil, testIssuer, []string{testIssuer}, 0, 0, nil, "")
@@ -117,8 +118,8 @@ func TestVerifyAcceptsPreviousKeyAfterReload(t *testing.T) {
 }
 
 func TestVerifyRejectsUnknownKID(t *testing.T) {
-	a, _ := keystore.Generate(time.Now())
-	b, _ := keystore.Generate(time.Now())
+	a, _ := keystore.Generate(time.Now(), keystore.AlgRS256)
+	b, _ := keystore.Generate(time.Now(), keystore.AlgRS256)
 	svcA := newJWTServiceWithKeys(t, a, nil)
 	svcB := newJWTServiceWithKeys(t, b, nil)
 	tok, _ := svcA.SignAccessToken("u1", "s1", "web", nil, testIssuer, []string{testIssuer}, 0, 0, nil, "")
@@ -128,8 +129,8 @@ func TestVerifyRejectsUnknownKID(t *testing.T) {
 }
 
 func TestJWKSListsActiveThenPrevious(t *testing.T) {
-	a, _ := keystore.Generate(time.Now())
-	p, _ := keystore.Generate(time.Now().Add(-time.Hour))
+	a, _ := keystore.Generate(time.Now(), keystore.AlgRS256)
+	p, _ := keystore.Generate(time.Now().Add(-time.Hour), keystore.AlgRS256)
 	svc := newJWTServiceWithKeys(t, a, p)
 	jwks := svc.PublicKeyJWKs()
 	if len(jwks) != 2 || jwks[0]["kid"] != a.KID || jwks[1]["kid"] != p.KID {
@@ -203,11 +204,11 @@ func TestVerifyRejectsIDTokenShapedToken(t *testing.T) {
 
 	// And a token with no token_use claim at all must also be rejected.
 	noUse, err := svc.sign(jwt.MapClaims{
-		"sub":  "u1",
-		"iss":  testIssuer,
-		"aud":  []string{testIssuer},
-		"iat":  time.Now().UTC().Unix(),
-		"exp":  time.Now().UTC().Add(time.Hour).Unix(),
+		"sub": "u1",
+		"iss": testIssuer,
+		"aud": []string{testIssuer},
+		"iat": time.Now().UTC().Unix(),
+		"exp": time.Now().UTC().Add(time.Hour).Unix(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -237,12 +238,13 @@ func TestSignAccessTokenVerifiesWithTokenUse(t *testing.T) {
 func TestAccessTokenTTLWiredThrough(t *testing.T) {
 	custom := 30 * time.Minute
 	base := newTestJWTService(t)
-	key := &keystore.Key{KID: "test-kid", Private: base.active.Private}
+	key := &keystore.Key{KID: "test-kid", Alg: keystore.AlgRS256, Private: base.active.Private}
 	cfg := &config.Config{
-		RSAPrivateKey: key.Private,
-		PublicKeyKID:  "test-kid",
-		Audience:      testIssuer,
-		BaseURL:       testIssuer,
+		SigningKey:     key.Private,
+		SigningKeyAlg:  keystore.AlgRS256,
+		PublicKeyKID:   "test-kid",
+		Audience:       testIssuer,
+		BaseURL:        testIssuer,
 		AccessTokenTTL: custom,
 	}
 	svc, err := NewJWTServiceWithKeys(cfg, key, nil)
@@ -276,5 +278,80 @@ func TestAccessTokenTTLDefaultsToFifteenMinutes(t *testing.T) {
 	svc := newTestJWTService(t) // cfg has no AccessTokenTTL → default
 	if got := svc.AccessTokenTTLSeconds(); got != 900 {
 		t.Errorf("default AccessTokenTTLSeconds = %d, want 900", got)
+	}
+}
+
+func TestSignAndVerifyES256(t *testing.T) {
+	key, err := keystore.Generate(time.Now(), keystore.AlgES256)
+	if err != nil {
+		t.Fatalf("keystore.Generate(ES256): %v", err)
+	}
+	svc := newJWTServiceWithKeys(t, key, nil)
+
+	tok, err := svc.SignAccessToken("u1", "s1", "web", []string{"openid"}, testIssuer, []string{testIssuer}, 0, 0, nil, "")
+	if err != nil {
+		t.Fatalf("SignAccessToken: %v", err)
+	}
+
+	claims, err := svc.Verify(tok)
+	if err != nil {
+		t.Fatalf("Verify(ES256 token): %v", err)
+	}
+	if claims["sub"] != "u1" {
+		t.Fatalf("sub = %v, want u1", claims["sub"])
+	}
+}
+
+// active is EC, previous is RSA — a token whose kid names the RSA
+// (previous) key must be rejected if it's actually signed with ES256, since
+// the algorithm is resolved per-kid, never trusted from the header alone.
+func TestVerifyRejectsAlgConfusionAcrossActiveAndPrevious(t *testing.T) {
+	ecKey, err := keystore.Generate(time.Now(), keystore.AlgES256)
+	if err != nil {
+		t.Fatalf("keystore.Generate(ES256): %v", err)
+	}
+	rsaKey, err := keystore.Generate(time.Now(), keystore.AlgRS256)
+	if err != nil {
+		t.Fatalf("keystore.Generate(RS256): %v", err)
+	}
+	svc := newJWTServiceWithKeys(t, ecKey, rsaKey)
+
+	now := time.Now().UTC()
+	claims := jwt.MapClaims{
+		"sub": "attacker", "iss": testIssuer, "aud": []string{testIssuer},
+		"token_use": "access", "iat": now.Unix(), "exp": now.Add(time.Hour).Unix(),
+	}
+	forged := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	forged.Header["kid"] = rsaKey.KID
+	tokenStr, err := forged.SignedString(ecKey.Private)
+	if err != nil {
+		t.Fatalf("signing forged token: %v", err)
+	}
+
+	if _, err := svc.Verify(tokenStr); err == nil {
+		t.Fatal("Verify accepted a token signed with the wrong algorithm for its kid")
+	}
+}
+
+func TestJWKSRendersBothKeyTypesDuringCutover(t *testing.T) {
+	ecKey, err := keystore.Generate(time.Now(), keystore.AlgES256)
+	if err != nil {
+		t.Fatalf("keystore.Generate(ES256): %v", err)
+	}
+	rsaKey, err := keystore.Generate(time.Now(), keystore.AlgRS256)
+	if err != nil {
+		t.Fatalf("keystore.Generate(RS256): %v", err)
+	}
+	svc := newJWTServiceWithKeys(t, ecKey, rsaKey)
+
+	jwks := svc.PublicKeyJWKs()
+	if len(jwks) != 2 {
+		t.Fatalf("len(jwks) = %d, want 2", len(jwks))
+	}
+	if jwks[0]["kty"] != "EC" || jwks[0]["crv"] != "P-256" || jwks[0]["kid"] != ecKey.KID {
+		t.Fatalf("active JWK = %+v, want EC/P-256 kid=%s", jwks[0], ecKey.KID)
+	}
+	if jwks[1]["kty"] != "RSA" || jwks[1]["kid"] != rsaKey.KID {
+		t.Fatalf("previous JWK = %+v, want RSA kid=%s", jwks[1], rsaKey.KID)
 	}
 }

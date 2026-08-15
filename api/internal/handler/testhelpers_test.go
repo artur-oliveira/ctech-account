@@ -35,6 +35,7 @@ import (
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/handler"
+	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
@@ -154,7 +155,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		Audience:      "http://localhost",
 		TOTPIssuer:    "http://localhost",
 		Port:          "8000",
-		RSAPrivateKey: privateKey,
+		SigningKey:    privateKey,
+		SigningKeyAlg: keystore.AlgRS256,
 		PublicKeyKID:  "test-kid",
 		RPID:          "localhost",
 		RPOrigins:     []string{"http://localhost"},

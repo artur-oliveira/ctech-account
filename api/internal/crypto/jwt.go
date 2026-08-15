@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
@@ -17,7 +19,9 @@ import (
 
 // JWTService signs with the active key and verifies against active+previous,
 // resolved by the token's kid header. Keys are hot-reloadable (Reload) so the
-// rotation loop can swap them without a restart.
+// rotation loop can swap them without a restart. Signs RS256 or ES256
+// depending on the active key's Alg; verification accepts either, resolved
+// per-kid.
 type JWTService struct {
 	mu             sync.RWMutex
 	active         *keystore.Key
@@ -28,13 +32,13 @@ type JWTService struct {
 	idTokenTTL     time.Duration
 }
 
-// NewJWTService wraps the single key loaded by config (RSA_PRIVATE_KEY env —
-// dev mode, no rotation) as the active key.
+// NewJWTService wraps the single key loaded by config (RSA_PRIVATE_KEY or
+// EC_PRIVATE_KEY env — dev mode, no rotation) as the active key.
 func NewJWTService(cfg *config.Config) (*JWTService, error) {
-	if cfg.RSAPrivateKey == nil {
-		return nil, fmt.Errorf("RSA private key is nil")
+	if cfg.SigningKey == nil {
+		return nil, fmt.Errorf("signing key is nil")
 	}
-	active := &keystore.Key{KID: cfg.PublicKeyKID, Private: cfg.RSAPrivateKey, CreatedAt: time.Now().UTC()}
+	active := &keystore.Key{KID: cfg.PublicKeyKID, Alg: cfg.SigningKeyAlg, Private: cfg.SigningKey, CreatedAt: time.Now().UTC()}
 	return NewJWTServiceWithKeys(cfg, active, nil)
 }
 
@@ -65,7 +69,8 @@ func (j *JWTService) Reload(active, previous *keystore.Key) {
 	j.active, j.previous = active, previous
 }
 
-// SignAccessToken creates a 15-minute RS256 JWT access token.
+// SignAccessToken creates a 15-minute JWT access token, signed with the
+// active key's algorithm (RS256 or ES256).
 // audience identifies the resource server(s) (backend API URLs).
 // clientID is the OAuth client_id; set as azp (authorized party) claim.
 // authTime/lastMFAAt/amr mirror the session's step-up state (RFC 8176/OIDC);
@@ -101,7 +106,8 @@ func (j *JWTService) SignAccessToken(userID, sessionID, clientID string, scopes 
 	return j.sign(claims)
 }
 
-// SignIDToken creates a 1-hour RS256 JWT id_token per OIDC spec.
+// SignIDToken creates a 1-hour JWT id_token per OIDC spec, signed with the
+// active key's algorithm (RS256 or ES256).
 // kycLevel is included as the kyc_level claim when non-empty.
 func (j *JWTService) SignIDToken(userID, email, name, preferredUsername, givenName, familyName string, emailVerified bool, clientID, nonce, issuer, kycLevel string) (string, error) {
 	now := time.Now().UTC()
@@ -133,44 +139,52 @@ func (j *JWTService) sign(claims jwt.MapClaims) (string, error) {
 	key := j.active
 	j.mu.RUnlock()
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	method := jwt.GetSigningMethod(key.Alg)
+	if method == nil {
+		return "", fmt.Errorf("unsupported signing algorithm %q for kid %s", key.Alg, key.KID)
+	}
+	token := jwt.NewWithClaims(method, claims)
 	token.Header["kid"] = key.KID
 	return token.SignedString(key.Private)
 }
 
-// keyForKID returns the public key matching kid, or nil when unknown.
-func (j *JWTService) keyForKID(kid string) *rsa.PublicKey {
+// keyForKID returns the public key and its algorithm matching kid, or
+// (nil, "") when unknown.
+func (j *JWTService) keyForKID(kid string) (crypto.PublicKey, string) {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.active != nil && j.active.KID == kid {
-		return &j.active.Private.PublicKey
+		return j.active.Private.Public(), j.active.Alg
 	}
 	if j.previous != nil && j.previous.KID == kid {
-		return &j.previous.Private.PublicKey
+		return j.previous.Private.Public(), j.previous.Alg
 	}
-	return nil
+	return nil, ""
 }
 
-// Verify validates an RS256 JWT and returns its claims. The verification key
-// is resolved by the token's kid header; tokens signed with an unknown kid are
-// rejected. It also rejects tokens whose aud claim does not contain
-// j.selfAudience, and whose iss claim does not match this service's issuer.
+// Verify validates a JWT (RS256 or ES256) and returns its claims. The
+// verification key is resolved by the token's kid header; tokens signed
+// with an unknown kid are rejected. The token's actual algorithm is
+// cross-checked against the algorithm that specific kid was issued under —
+// never trusted from the header alone (alg-confusion guard). It also
+// rejects tokens whose aud claim does not contain j.selfAudience, and whose
+// iss claim does not match this service's issuer.
 func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 	opts := []jwt.ParserOption{jwt.WithAudience(j.selfAudience)}
 	if j.issuer != "" {
 		opts = append(opts, jwt.WithIssuer(j.issuer))
 	}
 	parsed, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		if token.Method != jwt.SigningMethodRS256 {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
 		kid, _ := token.Header["kid"].(string)
-		pub := j.keyForKID(kid)
+		pub, alg := j.keyForKID(kid)
 		if pub == nil {
 			return nil, fmt.Errorf("unknown kid %q", kid)
 		}
+		if token.Method.Alg() != alg {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return pub, nil
-	}, append(opts, jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))...)
+	}, append(opts, jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg(), jwt.SigningMethodES256.Alg()}))...)
 	if err != nil {
 		return nil, fmt.Errorf("verifying token: %w", err)
 	}
@@ -188,17 +202,40 @@ func (j *JWTService) Verify(tokenStr string) (jwt.MapClaims, error) {
 	return claims, nil
 }
 
-// jwkFor renders one public key as a JWK map.
-func jwkFor(pub *rsa.PublicKey, kid string) map[string]any {
-	n := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
-	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())
-	return map[string]any{
-		"kty": "RSA",
-		"use": "sig",
-		"alg": "RS256",
-		"kid": kid,
-		"n":   n,
-		"e":   e,
+// jwkFor renders one public key as a JWK map. Supports RSA and EC (P-256)
+// public keys — the only two types keystore.Key.Private can ever hold
+// (enforced by keystore.Generate/ParseKey), so an unreachable third type here
+// indicates a broken invariant elsewhere, not a runtime input to validate.
+func jwkFor(pub crypto.PublicKey, alg, kid string) map[string]any {
+	switch key := pub.(type) {
+	case *rsa.PublicKey:
+		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())
+		return map[string]any{
+			"kty": "RSA",
+			"use": "sig",
+			"alg": alg,
+			"kid": kid,
+			"n":   n,
+			"e":   e,
+		}
+	case *ecdsa.PublicKey:
+		size := (key.Curve.Params().BitSize + 7) / 8
+		x := make([]byte, size)
+		y := make([]byte, size)
+		key.X.FillBytes(x)
+		key.Y.FillBytes(y)
+		return map[string]any{
+			"kty": "EC",
+			"use": "sig",
+			"alg": alg,
+			"kid": kid,
+			"crv": "P-256",
+			"x":   base64.RawURLEncoding.EncodeToString(x),
+			"y":   base64.RawURLEncoding.EncodeToString(y),
+		}
+	default:
+		panic(fmt.Sprintf("jwkFor: unsupported public key type %T for kid %s", pub, kid))
 	}
 }
 
@@ -208,9 +245,9 @@ func jwkFor(pub *rsa.PublicKey, kid string) map[string]any {
 func (j *JWTService) PublicKeyJWKs() []map[string]any {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	keys := []map[string]any{jwkFor(&j.active.Private.PublicKey, j.active.KID)}
+	keys := []map[string]any{jwkFor(j.active.Private.Public(), j.active.Alg, j.active.KID)}
 	if j.previous != nil {
-		keys = append(keys, jwkFor(&j.previous.Private.PublicKey, j.previous.KID))
+		keys = append(keys, jwkFor(j.previous.Private.Public(), j.previous.Alg, j.previous.KID))
 	}
 	return keys
 }

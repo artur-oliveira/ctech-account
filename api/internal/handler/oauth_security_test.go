@@ -27,6 +27,7 @@ import (
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/handler"
+	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
@@ -154,7 +155,7 @@ func newOAuthTestApp(t *testing.T) *oauthTestApp {
 	}
 	cfg := &config.Config{
 		Environment: "test", BaseURL: "http://localhost", Audience: "http://localhost",
-		RSAPrivateKey: privateKey, PublicKeyKID: "test-kid",
+		SigningKey: privateKey, SigningKeyAlg: keystore.AlgRS256, PublicKeyKID: "test-kid",
 	}
 	jwtSvc, err := crypto.NewJWTService(cfg)
 	if err != nil {
@@ -655,7 +656,7 @@ func TestRefresh_SessionExpiredRace_DoesNotBurnRateLimit(t *testing.T) {
 	}
 	cfg := &config.Config{
 		Environment: "test", BaseURL: "http://localhost", Audience: "http://localhost",
-		RSAPrivateKey: privateKey, PublicKeyKID: "test-kid",
+		SigningKey: privateKey, SigningKeyAlg: keystore.AlgRS256, PublicKeyKID: "test-kid",
 	}
 	jwtSvc, err := crypto.NewJWTService(cfg)
 	if err != nil {
@@ -751,7 +752,7 @@ func TestRefresh_MissingToken_DoesNotBurnRateLimit(t *testing.T) {
 	}
 	cfg := &config.Config{
 		Environment: "test", BaseURL: "http://localhost", Audience: "http://localhost",
-		RSAPrivateKey: privateKey, PublicKeyKID: "test-kid",
+		SigningKey: privateKey, SigningKeyAlg: keystore.AlgRS256, PublicKeyKID: "test-kid",
 	}
 	jwtSvc, err := crypto.NewJWTService(cfg)
 	if err != nil {

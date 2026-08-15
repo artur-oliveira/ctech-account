@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/keystore"
 )
 
 const stepUpTestIssuer = "http://localhost"
@@ -23,7 +24,8 @@ func newTestJWT(t *testing.T) *crypto.JWTService {
 		t.Fatal(err)
 	}
 	svc, err := crypto.NewJWTService(&config.Config{
-		RSAPrivateKey: key,
+		SigningKey:    key,
+		SigningKeyAlg: keystore.AlgRS256,
 		PublicKeyKID:  "test-kid",
 		Audience:      stepUpTestIssuer,
 		BaseURL:       stepUpTestIssuer,
