@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
-	"gopkg.aoctech.app/account/api/internal/geo"
+	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/account/api/internal/validate"
 )
@@ -61,18 +62,17 @@ func emailDomain(email string) string {
 	return ""
 }
 
-// enrichSessionAsync fires a goroutine that looks up geo data for ip and
-// writes it back onto the session. Failures are silently ignored so they
-// never block a login.
-func enrichSessionAsync(svc *session.Service, userID, sessionID, ip string) {
+// sendNewDeviceEmailAsync fires a goroutine sending the new-device login
+// notification. Failures are logged, never surfaced — email is best-effort
+// and must never block or fail a login.
+func sendNewDeviceEmailAsync(emailCli *email.Client, to, firstName, deviceName, city, country, ip string) {
+	if emailCli == nil {
+		return
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		loc, err := geo.Lookup(ip)
-		if err != nil {
-			return
+		if err := emailCli.SendNewDeviceLoginEmail(context.Background(), to, firstName, deviceName, city, country, ip, time.Now()); err != nil {
+			log.Printf("new-device login email failed for %s: %v", to, err)
 		}
-		_ = svc.UpdateGeoData(ctx, userID, sessionID, loc.City, loc.Region, loc.Latitude, loc.Longitude)
 	}()
 }
 

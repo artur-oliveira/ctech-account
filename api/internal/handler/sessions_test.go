@@ -12,7 +12,7 @@ import (
 func TestListSessions_ReturnsCurrentSession(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess@example.com", "pass1234", "S")
-	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), "test-client", []string{"openid", scopes.AccountSessionsRead}, "http://localhost", []string{"http://localhost"}, 0, 0, nil, "")
 
 	resp := app.doWithToken(http.MethodGet, "/v1.0/account/sessions", nil, token)
@@ -31,8 +31,8 @@ func TestListSessions_ReturnsCurrentSession(t *testing.T) {
 func TestRevokeSession_OtherSession(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess2@example.com", "pass1234", "T")
-	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA1", []string{sessionDomain.AMRPassword})
-	sess2, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.4", "UA2", []string{sessionDomain.AMRPassword})
+	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA1", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
+	sess2, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.4", "UA2", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), "test-client", []string{"openid", scopes.AccountSessionsRevoke}, "http://localhost", []string{"http://localhost"}, 0, 0, nil, "")
 
 	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions/"+sess2.ID(), nil, token)
@@ -44,7 +44,7 @@ func TestRevokeSession_OtherSession(t *testing.T) {
 func TestRevokeSession_CurrentSession_400(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess3@example.com", "pass1234", "U")
-	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess.ID(), "test-client", []string{"openid", scopes.AccountSessionsRevoke}, "http://localhost", []string{"http://localhost"}, 0, 0, nil, "")
 
 	// Revoking the current session via DELETE /sessions/:id should be rejected.
@@ -58,8 +58,8 @@ func TestRevokeSession_CurrentSession_400(t *testing.T) {
 func TestRevokeAllSessions(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "sess4@example.com", "pass1234", "V")
-	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
-	_, _, _ = app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.5", "UA2", []string{sessionDomain.AMRPassword})
+	sess1, _, _ := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
+	_, _, _ = app.sessionSvc.Create(context.Background(), u.ID(), "Firefox", "1.2.3.5", "UA2", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), sess1.ID(), "test-client", []string{"openid", scopes.AccountSessionsRevoke}, "http://localhost", []string{"http://localhost"}, 0, 0, nil, "")
 
 	resp := app.doWithToken(http.MethodDelete, "/v1.0/account/sessions", nil, token)

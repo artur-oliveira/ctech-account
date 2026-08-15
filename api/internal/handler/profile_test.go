@@ -17,8 +17,8 @@ func TestChangePassword_RevokesOtherSessions(t *testing.T) {
 	ctx := context.Background()
 	u := app.registerUser(t, "chpw-revoke@example.com", "pass1234", "Rev")
 
-	current, _, _ := app.sessionSvc.Create(ctx, u.ID(), "Chrome", "1.2.3.4", "UA-current", []string{sessionDomain.AMRPassword})
-	_, _, _ = app.sessionSvc.Create(ctx, u.ID(), "Firefox", "5.6.7.8", "UA-other", []string{sessionDomain.AMRPassword})
+	current, _, _ := app.sessionSvc.Create(ctx, u.ID(), "Chrome", "1.2.3.4", "UA-current", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
+	_, _, _ = app.sessionSvc.Create(ctx, u.ID(), "Firefox", "5.6.7.8", "UA-other", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), current.ID(), "test-client",
 		[]string{"openid", scopes.AccountSecurityWrite}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")

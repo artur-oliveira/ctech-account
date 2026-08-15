@@ -42,7 +42,7 @@ func (s *stubTOTPService) RegenerateBackupCodes(_ context.Context, _ string) ([]
 // stepUpToken mints a token bound to a real session so RecordMFA can find it.
 func stepUpToken(t *testing.T, ta *testApp, userID string, lastMFAAt int64) (sessionID, token string) {
 	t.Helper()
-	sess, _, err := ta.sessionSvc.Create(context.Background(), userID, "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := ta.sessionSvc.Create(context.Background(), userID, "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatal(err)
 	}

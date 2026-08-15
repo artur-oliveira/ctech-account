@@ -18,6 +18,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
 )
 
@@ -204,12 +205,22 @@ func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, i
 func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
 	ip := clientIP(c)
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRPassword})
+	loc := geo.Lookup(ip)
+	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), deviceName, loc.Country)
+	newDevice := seenErr == nil && !seen
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRPassword},
+		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
-	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, map[string]string{"session_id": sess.ID()})
+
+	meta := map[string]string{"session_id": sess.ID()}
+	if newDevice {
+		meta["new_device"] = "true"
+		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
+	}
+	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
 	setSessionCookies(c, h.cfg, rawToken)
 
@@ -255,12 +266,22 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
 
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, mfaSessionAMR(payload))
+	loc := geo.Lookup(payload.IP)
+	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), payload.DeviceName, loc.Country)
+	newDevice := seenErr == nil && !seen
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, mfaSessionAMR(payload),
+		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), payload.IP)
-	recordAudit(c, h.audit, u.ID(), audit.EventMFAChallengeSuccess, map[string]string{"method": "totp", "session_id": sess.ID()})
+
+	meta := map[string]string{"method": "totp", "session_id": sess.ID()}
+	if newDevice {
+		meta["new_device"] = "true"
+		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
+	}
+	recordAudit(c, h.audit, u.ID(), audit.EventMFAChallengeSuccess, meta)
 
 	setSessionCookies(c, h.cfg, rawToken)
 

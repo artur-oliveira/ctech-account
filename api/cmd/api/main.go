@@ -218,7 +218,7 @@ func main() {
 	auditRepo := auditDomain.NewRepository(db, cfg.TablePrefix)
 	auditSvc := auditDomain.NewService(auditRepo)
 	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)
-	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg, auditSvc)
+	socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg, auditSvc, emailCli)
 	authorizeH := handler.NewAuthorizeHandler(oauthClientRepo, authCodeRepo, sessionSvc, consentSvc, userSvc, valkeyClient, cfg.AppURL, cfg.BaseURL, cfg.CookieDomain, auditSvc)
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, apiKeySvc, scopesCatalogSvc, jwtSvc, cfg.AppURL, cfg, auditSvc)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
@@ -232,7 +232,7 @@ func main() {
 	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
-	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc)
+	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc, emailCli)
 	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, oauthClientOperator, auditSvc)
 
 	app := fiber.New(fiber.Config{
@@ -319,13 +319,32 @@ func main() {
 		Cache: valkeyClient, Prefix: "passkeybegin", Max: middleware.PasskeyBeginMax,
 		Window: middleware.PasskeyBeginWindow, KeyFunc: ipKey, CountOnlyFailures: false, FailClosed: true,
 	})
+	// Same tier as passkeyBeginLimiter, own key prefix so completing a
+	// challenge doesn't share budget with starting one.
+	passkeyCompleteLimiter := middleware.RateLimit(middleware.RateLimitConfig{
+		Cache: valkeyClient, Prefix: "passkeycomplete", Max: middleware.PasskeyBeginMax,
+		Window: middleware.PasskeyBeginWindow, KeyFunc: ipKey, CountOnlyFailures: false, FailClosed: true,
+	})
+	// Same tier as authLimiter, own key prefix — social login abuse
+	// shouldn't burn (or be burned by) the password-login budget.
+	googleLimiter := middleware.RateLimit(middleware.RateLimitConfig{
+		Cache: valkeyClient, Prefix: "google", Max: middleware.FailedLoginMax,
+		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
+	})
 	v1.Use("/auth/login", authLimiter)
 	v1.Use("/auth/mfa/challenge", authLimiter)
+	v1.Use("/authorize", authLimiter)
+	v1.Use("/authorize/consent", authLimiter)
 	v1.Use("/auth/forgot-password", pwResetLimiter)
 	v1.Use("/auth/reset-password", pwResetLimiter)
 	v1.Use("/auth/resend-verification", pwResetLimiter)
+	v1.Use("/auth/register", pwResetLimiter)
 	v1.Use("/auth/passkeys/authenticate/begin", passkeyBeginLimiter)
+	v1.Use("/auth/passkeys/authenticate/complete", passkeyCompleteLimiter)
+	v1.Use("/auth/google", googleLimiter)
+	v1.Use("/auth/google/callback", googleLimiter)
 	v1.Use("/token", tokenLimiter)
+	v1.Use("/revoke", tokenLimiter)
 
 	handler.NewScopesHandler(scopesCatalogSvc).Register(v1)
 	authH.Register(v1)

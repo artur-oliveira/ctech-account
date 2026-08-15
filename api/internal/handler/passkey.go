@@ -11,6 +11,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
@@ -23,10 +25,11 @@ type PasskeyHandler struct {
 	cache      *cache.Client
 	cfg        *config.Config
 	audit      *audit.Service
+	emailCli   *email.Client // nil when FROM_EMAIL is not set
 }
 
-func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config, auditSvc *audit.Service) *PasskeyHandler {
-	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg, audit: auditSvc}
+func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config, auditSvc *audit.Service, emailCli *email.Client) *PasskeyHandler {
+	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg, audit: auditSvc, emailCli: emailCli}
 }
 
 // RegisterManagement registers the authenticated passkey management routes under /account/mfa.
@@ -237,12 +240,22 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 	}
 
 	ip := clientIP(c)
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", ip, c.Get("User-Agent"), []string{session.AMRWebAuthn})
+	loc := geo.Lookup(ip)
+	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), "Passkey", loc.Country)
+	newDevice := seenErr == nil && !seen
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", ip, c.Get("User-Agent"), []string{session.AMRWebAuthn},
+		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
-	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, map[string]string{"method": session.AMRWebAuthn, "session_id": sess.ID()})
+
+	meta := map[string]string{"method": session.AMRWebAuthn, "session_id": sess.ID()}
+	if newDevice {
+		meta["new_device"] = "true"
+		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, "Passkey", loc.City, loc.Country, ip)
+	}
+	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
 	setSessionCookies(c, h.cfg, rawToken)
 

@@ -18,6 +18,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
 )
 
@@ -29,10 +31,11 @@ type SocialHandler struct {
 	cache      *cache.Client
 	cfg        *config.Config
 	audit      *audit.Service
+	emailCli   *email.Client // nil when FROM_EMAIL is not set
 }
 
-func NewSocialHandler(userSvc *user.Service, sessionSvc *session.Service, c *cache.Client, cfg *config.Config, auditSvc *audit.Service) *SocialHandler {
-	return &SocialHandler{userSvc: userSvc, sessionSvc: sessionSvc, cache: c, cfg: cfg, audit: auditSvc}
+func NewSocialHandler(userSvc *user.Service, sessionSvc *session.Service, c *cache.Client, cfg *config.Config, auditSvc *audit.Service, emailCli *email.Client) *SocialHandler {
+	return &SocialHandler{userSvc: userSvc, sessionSvc: sessionSvc, cache: c, cfg: cfg, audit: auditSvc, emailCli: emailCli}
 }
 
 func (h *SocialHandler) Register(v1 fiber.Router) {
@@ -228,12 +231,22 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 	// A re-acceptance already has a session — issuing another one here would
 	// duplicate it for the same device. Only the suspended sign-up needs one.
 	if !payload.Reaccept {
-		sess, rawToken, sErr := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRGoogle})
+		loc := geo.Lookup(payload.IP)
+		seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), payload.DeviceName, loc.Country)
+		newDevice := seenErr == nil && !seen
+
+		sess, rawToken, sErr := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRGoogle},
+			session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 		if sErr != nil {
 			return apierror.ServerError(c.Path()).Send(c)
 		}
-		enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), payload.IP)
-		recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, map[string]string{"method": acceptMethodGoogle, "session_id": sess.ID()})
+
+		meta := map[string]string{"method": acceptMethodGoogle, "session_id": sess.ID()}
+		if newDevice {
+			meta["new_device"] = "true"
+			sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
+		}
+		recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
 		setSessionCookies(c, h.cfg, rawToken)
 	}
@@ -332,12 +345,22 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error {
 	deviceName := parseDeviceName(c.Get("User-Agent"))
 	ip := clientIP(c)
-	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRGoogle})
+	loc := geo.Lookup(ip)
+	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), deviceName, loc.Country)
+	newDevice := seenErr == nil && !seen
+
+	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRGoogle},
+		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
 		return apierror.ServerError(c.Path()).Send(c)
 	}
-	enrichSessionAsync(h.sessionSvc, u.ID(), sess.ID(), ip)
-	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, map[string]string{"method": "google", "session_id": sess.ID()})
+
+	meta := map[string]string{"method": "google", "session_id": sess.ID()}
+	if newDevice {
+		meta["new_device"] = "true"
+		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
+	}
+	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
 	// ctech_rt is set alongside ctech_session so the /token refresh_token grant can
 	// rotate the session without JS access to the HttpOnly ctech_session cookie.

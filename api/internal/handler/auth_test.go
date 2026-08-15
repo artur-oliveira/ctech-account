@@ -237,7 +237,7 @@ func TestLogout_NoAuth_NoContent(t *testing.T) {
 func TestLogout_RevokesServerSideSession(t *testing.T) {
 	app := newTestApp(t)
 	u := app.registerUser(t, "logout@example.com", "securepass", "Alice")
-	_, rawToken, err := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, rawToken, err := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestEndSession_RevokesSSOSessionAndRedirects(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seeding client: %v", err)
 	}
-	_, rawToken, err := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, rawToken, err := app.sessionSvc.Create(context.Background(), u.ID(), "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

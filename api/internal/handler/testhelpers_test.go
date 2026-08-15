@@ -214,7 +214,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 
 	v1 := app.Group("/v1.0")
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc).RegisterAuth(v1.Group("/auth"))
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
 
@@ -227,7 +227,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewConsentsHandler(consentDomain.NewService(newMemConsentRepo()), sharedClientRepo, auditSvc).Register(account)
 	handler.NewMFAHandler(noop, userSvc, cfg, auditSvc).Register(account, stepUp)
 	handler.NewActivityHandler(auditSvc).Register(account)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc).RegisterManagement(account, stepUp)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
 	handler.NewTermsHandler(userSvc, auditSvc).Register(account)
 	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
 	kycH.Register(account, stepUp)
@@ -236,7 +236,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL, cfg.Audience).Register(app)
 
 	socialCache := cache.NewInMemory()
-	handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc).Register(v1)
+	handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc, nil).Register(v1)
 
 	return &testApp{
 		app:          app,
@@ -738,19 +738,6 @@ func (m *memSessionRepo) ListRefreshTokensBySession(_ context.Context, userID, s
 
 func (m *memSessionRepo) DeleteRefreshToken(_ context.Context, userID, sessionID, clientID string) error {
 	delete(m.tokens, sessionDomain.BuildPK(userID)+"|"+sessionDomain.BuildRefreshSK(sessionID, clientID))
-	return nil
-}
-
-func (m *memSessionRepo) UpdateGeoData(_ context.Context, userID, sessionID, city, region string, lat, lon float64) error {
-	k := sessionDomain.BuildPK(userID) + "|" + sessionDomain.BuildSK(sessionID)
-	s, ok := m.sessions[k]
-	if !ok {
-		return sessionDomain.ErrNotFound
-	}
-	s.GeoCity = city
-	s.GeoRegion = region
-	s.GeoLatitude = lat
-	s.GeoLongitude = lon
 	return nil
 }
 

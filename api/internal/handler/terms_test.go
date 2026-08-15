@@ -42,7 +42,7 @@ func seedAuthorizeClient(t *testing.T, ta *oauthTestApp) {
 
 func authorizeAsUser(t *testing.T, ta *oauthTestApp, userID string) *http.Response {
 	t.Helper()
-	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), userID, "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), userID, "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

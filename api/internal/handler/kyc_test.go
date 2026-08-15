@@ -13,6 +13,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
+	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
@@ -581,7 +582,7 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 		PK: "USER_user-kyc", Email: "kyc@example.com", EmailVerified: true,
 		CPF: validCPF, KYCLevel: kycDomain.LevelEnhanced, KYCStatus: kycDomain.StatusVerified,
 	})
-	_, _, err := ta.sessionSvc.Create(context.Background(), "user-kyc", "Chrome", "1.2.3.4", "UA", nil)
+	_, _, err := ta.sessionSvc.Create(context.Background(), "user-kyc", "Chrome", "1.2.3.4", "UA", nil, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

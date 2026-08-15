@@ -268,7 +268,7 @@ func TestSSO_ServerSideExchange_DoesNotInvalidateSession(t *testing.T) {
 		PK: "USER_user-sso", Email: "sso@example.com", EmailVerified: true,
 		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
 	})
-	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-sso", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-sso", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestAuthorize_MaxAgeZero_ForcesReloginOnStaleSession(t *testing.T) {
 		PK: "USER_user-stale", Email: "stale@example.com", EmailVerified: true,
 		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
 	})
-	sess, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-stale", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-stale", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestAuthorize_MaxAgeZero_DoesNotLoopAfterFreshLogin(t *testing.T) {
 		PK: "USER_user-fresh", Email: "fresh@example.com", EmailVerified: true,
 		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
 	})
-	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-fresh", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-fresh", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestUserInfo_AccessibleWithDownstreamClientToken(t *testing.T) {
 		PK: "USER_user-ui", Email: "ui@example.com", FirstName: "Ui", EmailVerified: true,
 		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
 	})
-	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-ui", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-ui", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -460,7 +460,7 @@ func TestConsent_ThirdPartyClient_FullFlow(t *testing.T) {
 		PK: "USER_user-c", Email: "c@example.com", EmailVerified: true,
 		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
 	})
-	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-c", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	_, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-c", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -610,7 +610,7 @@ func TestRefresh_ConfidentialClient_RequiresSecret(t *testing.T) {
 	})
 
 	// A valid per-client refresh token exists for a real session.
-	sess, _, err := ta.sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := ta.sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -702,7 +702,7 @@ func TestRefresh_SessionExpiredRace_DoesNotBurnRateLimit(t *testing.T) {
 	// Well beyond FailedLoginMax (5) — each attempt races a session that's
 	// already gone but presents a still-valid refresh token, so none should count.
 	for i := 0; i < 10; i++ {
-		sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+		sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
@@ -726,7 +726,7 @@ func TestRefresh_SessionExpiredRace_DoesNotBurnRateLimit(t *testing.T) {
 	}
 
 	// A legitimate refresh right after must still succeed — not 429.
-	sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -808,7 +808,7 @@ func TestRefresh_MissingToken_DoesNotBurnRateLimit(t *testing.T) {
 	}
 
 	// A legitimate refresh right after must still succeed — not 429.
-	sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := sessionSvc.Create(context.Background(), "user-1", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -842,7 +842,7 @@ func TestRefresh_DoesNotEscalateScopes(t *testing.T) {
 		t.Fatalf("seeding client: %v", err)
 	}
 
-	sess, _, err := ta.sessionSvc.Create(context.Background(), "user-esc", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := ta.sessionSvc.Create(context.Background(), "user-esc", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -893,7 +893,7 @@ func TestRefresh_SelfClientMigratesLegacyAccountPermissions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sess, _, err := ta.sessionSvc.Create(context.Background(), "legacy-user", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	sess, _, err := ta.sessionSvc.Create(context.Background(), "legacy-user", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
 	if err != nil {
 		t.Fatal(err)
 	}
