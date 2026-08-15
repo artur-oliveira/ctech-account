@@ -157,6 +157,54 @@ All errors follow [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807):
 
 Token endpoint errors additionally include `error` and `error_description` (RFC 6749).
 
+### Rate limiting (`429`)
+
+Every rate limit is a Valkey counter per client IP (or per user, for `/account/*`). A
+rejected request returns `429 too-many-requests` with a standard `Retry-After` header
+**and** a `retry_after_seconds` body field carrying the same value, both derived from the
+counter's remaining TTL:
+
+```json
+{
+  "type": "https://accounts.aoctech.app/problems/too-many-requests",
+  "title": "Too Many Requests",
+  "status": 429,
+  "detail": "Too many requests. Please slow down and try again later.",
+  "instance": "/v1.0/auth/login",
+  "retry_after_seconds": 823
+}
+```
+
+(The KYC OTP resend cooldown, `429 kyc-resend-cooldown`, uses the same header/body pair —
+see [KYC](#kyc-identity-verification).)
+
+Limited routes and their tier:
+
+| Tier                                | Routes                                                                                       | Limit                     |
+|--------------------------------------|-----------------------------------------------------------------------------------------------|---------------------------|
+| Brute-force (failures only, per IP)  | `/auth/login`, `/auth/mfa/challenge`, `/authorize`, `/authorize/consent`                       | 5 / 15 min                |
+| Brute-force (failures only, per IP)  | `/auth/forgot-password`, `/auth/reset-password`, `/auth/resend-verification`, `/auth/register` | 5 / 15 min                |
+| Brute-force (failures only, per IP)  | `/token`, `/revoke`                                                                             | 5 / 15 min                |
+| Brute-force (failures only, per IP)  | `/auth/google`, `/auth/google/callback`                                                        | 5 / 15 min                |
+| Throughput (every request, per IP)   | `/auth/passkeys/authenticate/begin`, `/auth/passkeys/authenticate/complete`                     | 20 / min                  |
+| Throughput (every request, per user) | `/account/*` (incl. `/account/kyc/*`)                                                          | 100 / min                 |
+
+`/auth/logout`, `/auth/end-session`, and `/auth/verify-email` are deliberately not
+rate-limited (low abuse risk).
+
+### GeoIP + new-device login notification
+
+Session geo-enrichment (`geo_city`/`geo_region`/`geo_country`/`geo_latitude`/`geo_longitude`)
+comes from a local MaxMind GeoLite2 City database (`internal/geo`), looked up synchronously at
+login — no third-party API call, no async enrichment race. The database auto-updates
+per-instance (`internal/geoupdater`): downloaded once at boot if missing, refreshed every 24h
+once 7+ days old, directly from MaxMind using `MAXMIND_ACCOUNT_ID`/`MAXMIND_LICENSE_KEY`. Absent
+either credential, GeoIP stays disabled and geo fields are simply empty (never fails a login).
+
+When a login's device name + country combination doesn't match any of the user's existing
+sessions, the login gets `new_device: "true"` audit metadata and an email notification
+(`email.SendNewDeviceLoginEmail`).
+
 ---
 
 ## Sessions, Cookies & Refresh Tokens
@@ -538,7 +586,8 @@ go run ./cmd/rotatekeys -env $ENV -init   # writes /ctech-account/$ENV/jwk/activ
 
 `jwk/active` is a `SecureString` JSON `{kid, pem, created_at}`. Runtime config
 (`base-url`, `allowed-origins`, `app-url`, `google-client-id`, `google-client-secret`,
-`cookie-domain`, `from-email`, `internal-token`) is also read from SSM under
+`cookie-domain`, `from-email`, `internal-token`, `maxmind-account-id`, `maxmind-license-key`)
+is also read from SSM under
 `/ctech-account/{env}/<param>` at container start. In dev only, a single key is supplied via the
 `RSA_PRIVATE_KEY` env var and never rotates.
 

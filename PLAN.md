@@ -156,6 +156,8 @@ See `PYDFE_MIGRATION.md` for the full plan.
 | `/ctech-account/{env}/webauthn-rpid`        | String       | Optional shared WebAuthn RP ID; defaults to the app-url hostname |
 | `/ctech-account/{env}/google-client-id`     | String       | Google OAuth 2.0 client ID                                |
 | `/ctech-account/{env}/google-client-secret` | SecureString | Google OAuth 2.0 client secret                            |
+| `/ctech-account/{env}/maxmind-account-id`   | SecureString | MaxMind account ID for GeoLite2 City auto-updates          |
+| `/ctech-account/{env}/maxmind-license-key`  | SecureString | MaxMind license key for GeoLite2 City auto-updates          |
 
 ---
 
@@ -167,4 +169,11 @@ See `PYDFE_MIGRATION.md` for the full plan.
 - KID rotation: automated — versioned keys in SSM (`jwk/active` + `jwk/previous`), hourly reload, 90-day rotation
   under Valkey lock, both KIDs served in JWKS (see README §Signing key rotation; manual: `cmd/rotatekeys`)
 - CORS: `accounts.aoctech.app` whitelisted + any registered OAuth client origin
-- Rate limiting: 5 failed logins / 15min per IP (Valkey counter), 100 req/min per authenticated user
+- Rate limiting: 5 failed logins / 15min per IP (Valkey counter), 100 req/min per authenticated user.
+  Now also covers `/authorize`, `/authorize/consent`, `/auth/register`, `/revoke`, `/auth/google*`,
+  `/auth/passkeys/authenticate/complete`. Every `429` carries `Retry-After` + `retry_after_seconds`
+  from the counter's TTL (see README §Rate limiting)
+- GeoIP: local MaxMind GeoLite2 City DB (`internal/geo`), per-instance auto-update every 24h once
+  7+ days stale (`internal/geoupdater`, no distributed lock — no shared store for this file across
+  the ASG). New-device login (device name + country not seen before) gets `new_device: "true"` audit
+  metadata + email notification (see README §GeoIP + new-device login notification).

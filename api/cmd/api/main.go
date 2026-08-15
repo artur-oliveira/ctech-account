@@ -36,6 +36,7 @@ import (
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/geoupdater"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
@@ -121,6 +122,24 @@ func main() {
 			Now:      time.Now,
 			Env:      cfg.Environment,
 		})
+	}
+
+	// GeoIP: per-instance auto-updating local MaxMind database. Disabled
+	// (geo.Lookup always zero-value) when credentials aren't configured —
+	// same pattern as KYCDocumentsBucket/PhoneVerificationEnabled.
+	if cfg.MaxMindAccountID != "" && cfg.MaxMindLicenseKey != "" {
+		geoCfg := geoupdater.Config{
+			DBPath:     cfg.MaxMindDBPath,
+			AccountID:  cfg.MaxMindAccountID,
+			LicenseKey: cfg.MaxMindLicenseKey,
+			Interval:   geoupdater.DefaultInterval,
+			StaleAfter: geoupdater.DefaultStaleAfter,
+			Now:        time.Now,
+		}
+		geoupdater.Startup(ctx, geoCfg)
+		go geoupdater.Run(ctx, geoCfg)
+	} else {
+		log.Println("MAXMIND_ACCOUNT_ID/MAXMIND_LICENSE_KEY not set — GeoIP lookups disabled")
 	}
 
 	// Repositories

@@ -214,6 +214,7 @@ export class ComputeStack extends cdk.Stack {
       `AWS_USE_DUALSTACK_ENDPOINT=true`,
       `PORT=8000`,
       `KYC_DOCUMENTS_BUCKET=${kycDocumentsBucketName}`,
+      `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
       `ENV`,
 
       // start.sh: fetches secrets from SSM then execs the Go binary
@@ -234,6 +235,8 @@ export class ComputeStack extends cdk.Stack {
       `GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-secret" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `COOKIE_DOMAIN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/cookie-domain" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `FROM_EMAIL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/from-email" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
+      `MAXMIND_ACCOUNT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/maxmind-account-id" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
+      `MAXMIND_LICENSE_KEY=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/maxmind-license-key" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       ...(valkeyUrlSsmPath ? [
         `VALKEY_URL=$(aws ssm get-parameter --name "${valkeyUrlSsmPath}" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
         `export VALKEY_URL`,
@@ -248,6 +251,8 @@ export class ComputeStack extends cdk.Stack {
       `export GOOGLE_CLIENT_SECRET`,
       `export COOKIE_DOMAIN`,
       `export FROM_EMAIL`,
+      `export MAXMIND_ACCOUNT_ID`,
+      `export MAXMIND_LICENSE_KEY`,
       `exec /opt/app/current/bootstrap >> /var/log/app/app.log 2>&1`,
       `START`,
       `chmod +x /opt/app/start.sh`,

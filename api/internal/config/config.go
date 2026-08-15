@@ -53,6 +53,16 @@ type Config struct {
 	FromEmail string // FROM_EMAIL env var
 	AppURL    string // APP_URL env var — public Account resource/link URL (defaults to BaseURL)
 
+	// MaxMind GeoLite2 City credentials (MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY
+	// env vars). When either is empty, GeoIP lookups stay permanently disabled
+	// (geo.Lookup always returns a zero Location) — mirrors how an absent
+	// KYCDocumentsBucket disables document verification.
+	MaxMindAccountID  string
+	MaxMindLicenseKey string
+	// MaxMindDBPath is the local path the .mmdb file is stored at and
+	// refreshed in place (MAXMIND_DB_PATH env var).
+	MaxMindDBPath string
+
 	// Google OAuth
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -177,6 +187,9 @@ func Load() (*Config, error) {
 		AppURL:                   appURL,
 		GoogleClientID:           os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:       os.Getenv("GOOGLE_CLIENT_SECRET"),
+		MaxMindAccountID:         os.Getenv("MAXMIND_ACCOUNT_ID"),
+		MaxMindLicenseKey:        os.Getenv("MAXMIND_LICENSE_KEY"),
+		MaxMindDBPath:            getEnv("MAXMIND_DB_PATH", "/var/lib/ctech-account/GeoLite2-City.mmdb"),
 		KYCDocumentsBucket:       os.Getenv("KYC_DOCUMENTS_BUCKET"),
 		PhoneVerificationEnabled: phoneVerificationEnabled,
 		TrustedProxies:           trustedProxies,
