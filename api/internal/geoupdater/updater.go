@@ -138,7 +138,12 @@ func update(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("downloading database: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloading database: unexpected status %d", resp.StatusCode)
 	}
@@ -173,7 +178,12 @@ func extractMMDB(body io.Reader, destDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("opening gzip stream: %w", err)
 	}
-	defer gz.Close()
+	defer func(gz *gzip.Reader) {
+		err := gz.Close()
+		if err != nil {
+
+		}
+	}(gz)
 
 	tr := tar.NewReader(gz)
 	for {
@@ -193,7 +203,10 @@ func extractMMDB(body io.Reader, destDir string) (string, error) {
 			return "", fmt.Errorf("creating temp file: %w", err)
 		}
 		if _, err := io.Copy(tmp, tr); err != nil {
-			tmp.Close()
+			err := tmp.Close()
+			if err != nil {
+				return "", err
+			}
 			_ = os.Remove(tmp.Name())
 			return "", fmt.Errorf("writing temp file: %w", err)
 		}

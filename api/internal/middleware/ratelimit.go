@@ -64,6 +64,18 @@ type RateLimitConfig struct {
 	FailClosed bool
 }
 
+// retryAfter reads the counter's remaining TTL and rounds it up to a whole
+// second, so a client is never told to retry before the window has actually
+// elapsed. A TTL lookup failure just omits the hint (0) rather than failing
+// the request — Retry-After is advisory, not part of the enforcement path.
+func retryAfter(c fiber.Ctx, cache *cache.Client, key string) time.Duration {
+	ttl, err := cache.TTL(c.Context(), key)
+	if err != nil || ttl <= 0 {
+		return 0
+	}
+	return ((ttl + time.Second - 1) / time.Second) * time.Second
+}
+
 // denyUnavailable rejects the request because the limiter cannot enforce.
 // It logs the underlying cause (Valkey error or disabled cache) so a cache
 // blip that degrades to 503 is diagnosable instead of silent — see the
@@ -106,7 +118,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 				return denyUnavailable(c, cfg.Prefix, "count", err)
 			}
 			if err == nil && n >= cfg.Max {
-				return apierror.TooManyRequests(rateLimitExceededMsg, c.Path()).Send(c)
+				return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
 			}
 
 			err = c.Next()
@@ -127,7 +139,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			return c.Next()
 		}
 		if n > cfg.Max {
-			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path()).Send(c)
+			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
 		}
 		return c.Next()
 	}

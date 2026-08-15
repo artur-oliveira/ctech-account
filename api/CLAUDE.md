@@ -172,6 +172,10 @@ go test ./...                  # all tests
 - `GET /v1.0/health-check` returns `application/health+json` — status is `"pass"` only when DynamoDB and Valkey respond
   to ping.
 - Rate limiting: 5 failed logins / 15 min per IP (Valkey counter), 100 req/min per authenticated user.
+  Covers `/authorize`, `/authorize/consent`, `/auth/register`, `/revoke`, `/auth/google*`, and
+  `/auth/passkeys/authenticate/complete` in addition to the routes already listed in README. A `429`
+  always carries a `Retry-After` header and `retry_after_seconds` body field derived from the
+  counter's TTL (`cache.Client.TTL`, `apierror.TooManyRequests`) — see README §Rate limiting.
 
 ---
 

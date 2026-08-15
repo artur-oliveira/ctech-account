@@ -90,6 +90,39 @@ func TestIncr_WindowExpiryResets(t *testing.T) {
 	}
 }
 
+func TestTTL_InMemory(t *testing.T) {
+	c := NewInMemory()
+	ctx := context.Background()
+
+	if ttl, err := c.TTL(ctx, "absent"); err != nil || ttl != 0 {
+		t.Fatalf("absent key: want ttl=0 err=nil, got ttl=%v err=%v", ttl, err)
+	}
+
+	if err := c.Set(ctx, "k", "v", 30*time.Second); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	ttl, err := c.TTL(ctx, "k")
+	if err != nil {
+		t.Fatalf("TTL: %v", err)
+	}
+	if ttl <= 0 || ttl > 30*time.Second {
+		t.Fatalf("want ttl in (0, 30s], got %v", ttl)
+	}
+
+	// Expired entry must report 0, same as an absent key.
+	c.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	if ttl, err := c.TTL(ctx, "k"); err != nil || ttl != 0 {
+		t.Fatalf("expired key: want ttl=0 err=nil, got ttl=%v err=%v", ttl, err)
+	}
+}
+
+func TestTTL_DisabledCacheIsNoop(t *testing.T) {
+	c, _ := New("") // disabled
+	if ttl, err := c.TTL(context.Background(), "k"); err != nil || ttl != 0 {
+		t.Fatalf("disabled cache: want ttl=0 err=nil, got ttl=%v err=%v", ttl, err)
+	}
+}
+
 func TestSetNXAcquiresOnce(t *testing.T) {
 	c := NewInMemory()
 	ctx := context.Background()

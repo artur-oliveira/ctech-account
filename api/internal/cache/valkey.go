@@ -231,6 +231,41 @@ func (c *Client) Count(ctx context.Context, key string) (int64, error) {
 	return n, nil
 }
 
+// TTL returns the remaining time-to-live for key. Following the same
+// "0 means absent" convention as Count, it returns 0 (not an error) when the
+// key doesn't exist or carries no expiry — collapsing valkey's -2/-1
+// sentinels so callers (e.g. the rate limiter computing Retry-After) don't
+// need to special-case them.
+func (c *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if !c.enabled {
+		return 0, nil
+	}
+
+	if c.inMemory {
+		c.mu.RLock()
+		entry, ok := c.mem[key]
+		c.mu.RUnlock()
+		if !ok {
+			return 0, nil
+		}
+		remaining := entry.expires.Sub(c.Now())
+		if remaining <= 0 {
+			return 0, nil
+		}
+		return remaining, nil
+	}
+
+	cmd := c.client.B().Ttl().Key(key).Build()
+	n, err := c.client.Do(ctx, cmd).AsInt64()
+	if err != nil {
+		return 0, fmt.Errorf("valkey TTL: %w", err)
+	}
+	if n < 0 {
+		return 0, nil // -2 key absent, -1 no expiry
+	}
+	return time.Duration(n) * time.Second, nil
+}
+
 // setNXErr classifies the outcome of a SET ... NX attempt. valkey-go returns
 // valkey.Nil when the key already exists — the normal "not new" case, not a
 // transport failure. Only genuine errors are wrapped so the limiter can fail

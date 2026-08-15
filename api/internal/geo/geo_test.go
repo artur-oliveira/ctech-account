@@ -24,7 +24,12 @@ func TestLookupReturnsZeroValueForUnparseableIP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func(r *geoip2.Reader) {
+		err := r.Close()
+		if err != nil {
+
+		}
+	}(r)
 	SetReader(r)
 	defer SetReader(nil)
 
@@ -39,7 +44,12 @@ func TestLookupReturnsPopulatedLocationForKnownIP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func(r *geoip2.Reader) {
+		err := r.Close()
+		if err != nil {
+
+		}
+	}(r)
 	SetReader(r)
 	defer SetReader(nil)
 
@@ -55,7 +65,12 @@ func TestLookupReturnsZeroValueForIPNotInDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func(r *geoip2.Reader) {
+		err := r.Close()
+		if err != nil {
+
+		}
+	}(r)
 	SetReader(r)
 	defer SetReader(nil)
 

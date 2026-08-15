@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -38,6 +39,9 @@ func (p *Problem) Error() string { return p.Detail }
 
 // Send writes the problem as an RFC 7807 response.
 // Uses manual JSON marshaling so fiber.JSON() cannot override the content type.
+// Any Problem with RetryAfterSeconds set (TooManyRequests, KYCResendCooldown)
+// gets the standard Retry-After header for free, so both call sites stay in
+// sync with the body field instead of duplicating header logic.
 func (p *Problem) Send(c fiber.Ctx) error {
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -45,6 +49,9 @@ func (p *Problem) Send(c fiber.Ctx) error {
 	}
 	c.Status(p.Status)
 	c.Set(fiber.HeaderContentType, ContentType)
+	if p.RetryAfterSeconds > 0 {
+		c.Set(fiber.HeaderRetryAfter, strconv.FormatInt(p.RetryAfterSeconds, 10))
+	}
 	return c.Send(b)
 }
 
@@ -171,8 +178,15 @@ func ServiceUnavailable(detail, instance string) *Problem {
 	return newProblem("service-unavailable", "Service Unavailable", http.StatusServiceUnavailable, detail, instance)
 }
 
-func TooManyRequests(detail, instance string) *Problem {
-	return newProblem("too-many-requests", "Too Many Requests", http.StatusTooManyRequests, detail, instance)
+// TooManyRequests → 429. retryAfter, if > 0, is surfaced as retry_after_seconds
+// in the body and (via Send) the Retry-After header; pass 0 when the caller
+// has no TTL to report.
+func TooManyRequests(detail, instance string, retryAfter time.Duration) *Problem {
+	p := newProblem("too-many-requests", "Too Many Requests", http.StatusTooManyRequests, detail, instance)
+	if retryAfter > 0 {
+		p.RetryAfterSeconds = int64(retryAfter.Seconds())
+	}
+	return p
 }
 
 // StepUpRequired signals the token's MFA proof is missing or older than maxAge.
