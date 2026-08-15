@@ -20,8 +20,12 @@ type OAuthClient struct {
 	// only via manual/admin seeding, otherwise any user could bypass consent.
 	FirstParty  bool   `dynamodbav:"first_party,omitempty"`
 	OwnerUserID string `dynamodbav:"owner_user_id"`
-	CreatedAt   string `dynamodbav:"created_at"`
-	UpdatedAt   string `dynamodbav:"updated_at"`
+	// ManagedResourceID binds a dedicated scope-registry publisher to exactly
+	// one Resource Server. It is operator-only and never exposed by self-service
+	// client creation/update endpoints.
+	ManagedResourceID string `dynamodbav:"managed_resource_id,omitempty"`
+	CreatedAt         string `dynamodbav:"created_at"`
+	UpdatedAt         string `dynamodbav:"updated_at"`
 }
 
 func BuildPK(clientID string) string {

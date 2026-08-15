@@ -1,0 +1,103 @@
+name: Publish OAuth resource scopes
+
+on:
+  workflow_call:
+    inputs:
+      resource_server_id:
+        description: Resource Server identifier provisioned in CTech Account
+        required: true
+        type: string
+      manifest_path:
+        description: Path to the JSON manifest in the caller repository
+        required: true
+        type: string
+      aws_role_arn:
+        description: Caller-owned OIDC role allowed to read its publisher parameters
+        required: true
+        type: string
+      environment:
+        description: dev, stage or prod; inferred from the branch when omitted
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Reconcile scope manifest
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve environment
+        id: env
+        shell: bash
+        env:
+          REQUESTED_ENV: ${{ inputs.environment }}
+        run: |
+          if [ -n "$REQUESTED_ENV" ]; then
+            ENVIRONMENT="$REQUESTED_ENV"
+          elif [ "$GITHUB_REF_NAME" = "main" ]; then
+            ENVIRONMENT=prod
+          elif [ "$GITHUB_REF_NAME" = "staging" ]; then
+            ENVIRONMENT=stage
+          else
+            ENVIRONMENT=dev
+          fi
+          case "$ENVIRONMENT" in dev|stage|prod) ;; *) echo "invalid environment: $ENVIRONMENT" >&2; exit 2;; esac
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: us-east-1
+
+      - name: Validate manifest
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest_path }}
+          RESOURCE_ID: ${{ inputs.resource_server_id }}
+        run: |
+          test "$(jq -er '.schema_version' "$MANIFEST")" = "1"
+          test "$(jq -er '.resource_server_id' "$MANIFEST")" = "$RESOURCE_ID"
+          jq -e '.scopes | type == "array" and length > 0' "$MANIFEST" >/dev/null
+
+      - name: Obtain publisher token and reconcile manifest
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          MANIFEST: ${{ inputs.manifest_path }}
+          RESOURCE_ID: ${{ inputs.resource_server_id }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          ACCOUNT_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --query Parameter.Value --output text)
+          CLIENT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/scope-publishers/$RESOURCE_ID/client-id" --query Parameter.Value --output text)
+          CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/scope-publishers/$RESOURCE_ID/client-secret" --with-decryption --query Parameter.Value --output text)
+
+          TOKEN=$(curl --fail-with-body --silent --show-error \
+            -X POST "$ACCOUNT_URL/v1.0/token" \
+            -H 'content-type: application/x-www-form-urlencoded' \
+            --data-urlencode 'grant_type=client_credentials' \
+            --data-urlencode "client_id=$CLIENT_ID" \
+            --data-urlencode "client_secret=$CLIENT_SECRET" \
+            --data-urlencode 'scope=internal:account:scope-registry:write' | jq -er '.access_token')
+
+          HEADERS=$(mktemp)
+          curl --fail-with-body --silent --show-error -D "$HEADERS" -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            "$ACCOUNT_URL/v1.0/internal/resource-servers/$RESOURCE_ID/manifest"
+          ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$HEADERS" | tr -d '\r')
+          test -n "$ETAG"
+
+          curl --fail-with-body --silent --show-error \
+            -X PUT "$ACCOUNT_URL/v1.0/internal/resource-servers/$RESOURCE_ID/manifest" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'content-type: application/json' \
+            -H "If-Match: $ETAG" \
+            -H "X-CTech-Source-Repository: $SOURCE_REPOSITORY" \
+            -H "X-CTech-Source-Revision: $SOURCE_COMMIT" \
+            --data-binary "@$MANIFEST" | jq .

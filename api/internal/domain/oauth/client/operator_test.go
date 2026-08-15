@@ -106,3 +106,19 @@ func TestOperatorCreateM2MDoesNotOverwrite(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrClientAlreadyExists)
 	}
 }
+
+func TestOperatorCreateResourcePublisherBindsNamespace(t *testing.T) {
+	repo := &operatorRepoStub{clients: make(map[string]*OAuthClient)}
+	catalog := operatorCatalogStub{services: []scopes.ServiceScopes{{
+		Service: "internal:account", Internal: true,
+		Scopes: []scopes.ScopeEntry{{Scope: scopes.InternalAccountScopeRegistryWrite}},
+	}}}
+	service := NewOperatorService(repo, catalog)
+	created, secret, err := service.CreateResourcePublisher(context.Background(), "scope-publisher-dfe", "DFe publisher", "dfe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secret == "" || created.ManagedResourceID != "dfe" || len(created.AllowedScopes) != 1 || created.AllowedScopes[0] != scopes.InternalAccountScopeRegistryWrite {
+		t.Fatalf("unexpected publisher: %+v", created)
+	}
+}

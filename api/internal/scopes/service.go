@@ -25,6 +25,10 @@ type CatalogService struct {
 	cache *cache.Client
 }
 
+type resourceLoader interface {
+	LoadResources(ctx context.Context) ([]ResourceServer, error)
+}
+
 func NewCatalogService(repo Repository, cacheClient *cache.Client) *CatalogService {
 	return &CatalogService{repo: repo, cache: cacheClient}
 }
@@ -41,6 +45,16 @@ func (s *CatalogService) Catalog(ctx context.Context) ([]ServiceScopes, error) {
 	services, err := s.repo.LoadCatalog(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// V2 resources override their legacy service/internal:<service> seed rows.
+	// Repositories used by older tests or alternate deployments need only the
+	// original Repository interface, preserving backwards compatibility.
+	if loader, ok := s.repo.(resourceLoader); ok {
+		resources, loadErr := loader.LoadResources(ctx)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		services = mergeResourceServers(services, resources)
 	}
 	if s.cache != nil && s.cache.Enabled() && len(services) > 0 {
 		_ = s.cache.Set(ctx, CatalogCacheKey, services, catalogCacheTTL)
@@ -110,20 +124,72 @@ func (s *CatalogService) AudiencesFor(ctx context.Context, ss []string) ([]strin
 	if err != nil {
 		return nil, err
 	}
-	prefixes := make(map[string]struct{}, len(ss))
+	requested := make(map[string]struct{}, len(ss))
 	for _, sc := range ss {
-		prefixes[servicePrefix(sc)] = struct{}{}
+		requested[sc] = struct{}{}
 	}
+	seen := make(map[string]struct{})
 	var auds []string
 	for _, svc := range services {
 		if svc.Audience == "" {
 			continue
 		}
-		if _, ok := prefixes[svc.Service]; ok {
-			auds = append(auds, svc.Audience)
+		matches := false
+		for _, entry := range svc.Scopes {
+			if _, ok := requested[entry.Scope]; ok {
+				matches = true
+				break
+			}
+		}
+		if matches {
+			if _, ok := seen[svc.Audience]; !ok {
+				auds = append(auds, svc.Audience)
+				seen[svc.Audience] = struct{}{}
+			}
 		}
 	}
 	return auds, nil
+}
+
+func mergeResourceServers(legacy []ServiceScopes, resources []ResourceServer) []ServiceScopes {
+	managed := make(map[string]struct{}, len(resources))
+	for _, resource := range resources {
+		managed[resource.ID()] = struct{}{}
+	}
+	out := make([]ServiceScopes, 0, len(legacy)+len(resources)*2)
+	for _, svc := range legacy {
+		id := svc.Service
+		if strings.HasPrefix(id, InternalServicePrefix+":") {
+			id = strings.TrimPrefix(id, InternalServicePrefix+":")
+		}
+		if _, replaced := managed[id]; !replaced {
+			out = append(out, svc)
+		}
+	}
+	for _, resource := range resources {
+		var public, internal []ScopeEntry
+		for _, scope := range resource.Scopes {
+			entry := ScopeEntry{Scope: scope.Scope, Description: scope.Description, DescriptionPT: scope.DescriptionPT}
+			if scope.Status == StatusDeprecated {
+				// Deprecated entries remain internal to token audience resolution;
+				// public discovery and new grants must not expose them.
+				internal = append(internal, entry)
+				continue
+			}
+			if scope.Visibility == VisibilityInternal {
+				internal = append(internal, entry)
+			} else {
+				public = append(public, entry)
+			}
+		}
+		if len(public) > 0 {
+			out = append(out, ServiceScopes{Service: resource.ID(), Name: resource.DisplayName, Audience: resource.Audience, Scopes: public})
+		}
+		if len(internal) > 0 {
+			out = append(out, ServiceScopes{Service: InternalServicePrefix + ":" + resource.ID(), Name: "Internal — " + resource.DisplayName, Audience: resource.Audience, Scopes: internal, Internal: true})
+		}
+	}
+	return out
 }
 
 // servicePrefix returns the catalog Service key a scope belongs to. Normal

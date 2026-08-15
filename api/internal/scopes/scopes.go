@@ -36,6 +36,13 @@ var servicePattern = regexp.MustCompile(
 	`^[a-z0-9][a-z0-9_-]*:(\*|[a-z0-9][a-z0-9_-]*)(:(\*|[a-z0-9][a-z0-9_-]*))?$`,
 )
 
+// internalServicePattern permits the internal:<service>:<resource>:<action>
+// form used by control-plane permissions while retaining compatibility with
+// the existing shorter internal:<service>:<action> scopes.
+var internalServicePattern = regexp.MustCompile(
+	`^internal:[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*(:[a-z0-9][a-z0-9_-]*)?$`,
+)
+
 // IsOIDC reports whether s is one of the built-in identity scopes.
 func IsOIDC(s string) bool {
 	_, ok := oidcScopes[s]
@@ -44,7 +51,7 @@ func IsOIDC(s string) bool {
 
 // IsValid reports whether s is a well-formed scope (OIDC or service grammar).
 func IsValid(s string) bool {
-	return IsOIDC(s) || servicePattern.MatchString(s)
+	return IsOIDC(s) || servicePattern.MatchString(s) || internalServicePattern.MatchString(s)
 }
 
 // Validate returns the first malformed scope in ss, or "" when all are valid.

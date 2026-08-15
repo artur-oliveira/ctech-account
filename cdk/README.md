@@ -109,14 +109,15 @@ prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}
 | `account_mfa` | `{env}_account_mfa` | `pk` / `sk` | — | — (TOTP `sk=TOTP_default`, passkey `sk=PASSKEY_{id}`) | `:125` |
 | `account_passkeys` | `{env}_account_passkeys` | `pk` / `sk` | — | — | `:140` |
 | `account_audit` | `{env}_account_audit` | `pk` / `sk` | `expires_at` (400-day) | — (append-only; `pk=USER_{id}|ANON_{ip}`, `sk=EVT_{ts}_{rand}`) | `:157` |
-| `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (single partition `pk=SERVICE`; shared platform-wide scope catalog) | `:176` |
+| `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (`SERVICE` legacy/built-ins, `RESOURCE_SERVER` current manifests, immutable `RESOURCE_SERVER_HISTORY#{id}` revisions) | `:176` |
 
 Notes:
 - `account_users` is the only table with a GSI on `email` (login lookup).
 - Refresh tokens are stored per `(session, client)` in `account_sessions`
   (`token-hash-index`).
 - `ctech_scopes` deliberately breaks the `{env}_account_*` convention because it is
-  the platform-wide scope catalog shared by every ctech service (`dynamodb-stack.ts:173`).
+  the platform-wide scope catalog shared by every ctech service. Downstream
+  manifests reuse this table; no new table or index is required.
 
 ---
 
@@ -220,9 +221,12 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
 3. Seed the `accounts` OAuth client (the SPA default — `SELF_CLIENT_ID`/`NEXT_PUBLIC_OAUTH_CLIENT_ID` both default to `accounts`) in `{env}_account_oauth_clients`
    (`CLIENT_accounts`, `first_party: true`).
 4. Seed the scope catalog in `{env}_ctech_scopes` via `api/cmd/seedscopes`.
-5. Set the remaining SSM params listed in §2 (base-url, allowed-origins, app-url,
+5. Provision each downstream Resource Server and bound publisher once with
+   `api/cmd/createresource` (DFe, Wallet and Poker); see
+   `docs/resource-server-scope-registry.md`.
+6. Set the remaining SSM params listed in §2 (base-url, allowed-origins, app-url,
    google-*, cookie-domain, from-email, internal-token) and `/ctech/{env}/valkey/url`.
-6. Enable DynamoDB PITR on the 8 tables in prod.
+7. Enable DynamoDB PITR on the 8 tables in prod.
 
 ---
 

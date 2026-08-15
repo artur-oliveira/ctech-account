@@ -54,6 +54,12 @@ const InternalServicePrefix = "internal"
 // InternalAccountKYC lets a service check the KYC of a user
 const InternalAccountKYC = "internal:account:kyc"
 
+// InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
+// publisher to reconcile the scope manifest bound to its OAuth client. It is
+// an Account-owned root permission and therefore remains in the built-in
+// catalog even after downstream service scopes move to their own repositories.
+const InternalAccountScopeRegistryWrite = "internal:account:scope-registry:write"
+
 // InternalWalletConfirmDeposit lets a service confirm a deposit (currently via Pix)
 const InternalWalletConfirmDeposit = "internal:wallet:confirm-deposit"
 
@@ -137,6 +143,7 @@ var defaultCatalog = []ServiceScopes{
 		Internal: true,
 		Scopes: []ScopeEntry{
 			{InternalAccountKYC, "Check KYC details", "Obter detalhes do KYC"},
+			{InternalAccountScopeRegistryWrite, "Publish a resource server scope manifest", "Publicar o manifesto de escopos de um servidor de recursos"},
 		},
 	},
 	{

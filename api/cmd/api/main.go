@@ -150,6 +150,7 @@ func main() {
 	userSvc := userDomain.NewService(userRepo)
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
+	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
 	oauthClientSvc := oauthclientDomain.NewService(oauthClientRepo, scopesCatalogSvc)
 	consentSvc := consentDomain.NewService(consentRepo)
 	totpSvc := totpDomain.NewService(db, cfg.TablePrefix)
@@ -213,6 +214,7 @@ func main() {
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc)
+	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, auditSvc)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "ctech-account",
@@ -328,6 +330,10 @@ func main() {
 	termsH.Register(account)
 	passkeyH.RegisterManagement(account, stepUp)
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
+	scopeRegistryH.Register(v1,
+		middleware.RequireAuth(jwtSvc),
+		middleware.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),
+	)
 
 	port := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("ctech-account starting on %s (env=%s)", port, cfg.Environment)

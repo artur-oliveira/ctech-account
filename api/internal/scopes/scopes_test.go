@@ -12,6 +12,7 @@ func TestIsValid(t *testing.T) {
 		"openid", "profile", "email",
 		"dfe:nfes:write", "dfe:nfes:read", "dfe:nfe", "dfe:*:read", "dfe:nfe:*",
 		"account:profile:read", "poker-online:table_92:join",
+		"internal:account:scope-registry:write",
 	}
 	for _, s := range valid {
 		if !IsValid(s) {

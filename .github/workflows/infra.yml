@@ -15,10 +15,6 @@ permissions:
   contents: read
   pull-requests: write
 
-env:
-  # main is the only deploy branch in this repo.
-  ENVIRONMENT: prod
-
 jobs:
   diff:
     name: CDK Diff
@@ -27,6 +23,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Resolve environment
+        run: |
+          case "${{ github.base_ref || github.ref_name }}" in
+            main) echo "ENVIRONMENT=prod" >> "$GITHUB_ENV" ;;
+            staging) echo "ENVIRONMENT=stage" >> "$GITHUB_ENV" ;;
+            *) echo "ENVIRONMENT=dev" >> "$GITHUB_ENV" ;;
+          esac
 
       - uses: actions/setup-node@v7
         with:
@@ -95,6 +99,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Resolve environment
+        run: |
+          case "${{ github.ref_name }}" in
+            main) echo "ENVIRONMENT=prod" >> "$GITHUB_ENV" ;;
+            staging) echo "ENVIRONMENT=stage" >> "$GITHUB_ENV" ;;
+            *) echo "ENVIRONMENT=dev" >> "$GITHUB_ENV" ;;
+          esac
 
       - uses: actions/setup-node@v7
         with:

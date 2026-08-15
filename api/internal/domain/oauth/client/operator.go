@@ -82,6 +82,20 @@ func ValidateM2MInput(clientID, name string, allowedScopes []string) error {
 // CreateM2M creates a named, confidential first-party client and returns its
 // raw secret exactly once. Token audiences are derived from the scope catalog.
 func (s *OperatorService) CreateM2M(ctx context.Context, clientID, name string, allowedScopes []string) (*OAuthClient, string, error) {
+	return s.createM2M(ctx, clientID, name, allowedScopes, "")
+}
+
+// CreateResourcePublisher creates a dedicated M2M client that can publish
+// only the Resource Server named by managedResourceID. The HTTP registry
+// verifies this binding in addition to the token scope.
+func (s *OperatorService) CreateResourcePublisher(ctx context.Context, clientID, name, managedResourceID string) (*OAuthClient, string, error) {
+	if strings.TrimSpace(managedResourceID) == "" {
+		return nil, "", fmt.Errorf("managed resource id is required")
+	}
+	return s.createM2M(ctx, clientID, name, []string{scopes.InternalAccountScopeRegistryWrite}, strings.TrimSpace(managedResourceID))
+}
+
+func (s *OperatorService) createM2M(ctx context.Context, clientID, name string, allowedScopes []string, managedResourceID string) (*OAuthClient, string, error) {
 	clientID = strings.TrimSpace(clientID)
 	name = strings.TrimSpace(name)
 
@@ -121,14 +135,15 @@ func (s *OperatorService) CreateM2M(ctx context.Context, clientID, name string, 
 	}
 
 	client := &OAuthClient{
-		PK:               BuildPK(clientID),
-		Name:             name,
-		ClientSecretHash: secretHash,
-		ClientType:       TypeConfidential,
-		RedirectURIs:     []string{},
-		AllowedScopes:    append([]string(nil), allowedScopes...),
-		FirstParty:       true,
-		OwnerUserID:      SystemOwnerUserID,
+		PK:                BuildPK(clientID),
+		Name:              name,
+		ClientSecretHash:  secretHash,
+		ClientType:        TypeConfidential,
+		RedirectURIs:      []string{},
+		AllowedScopes:     append([]string(nil), allowedScopes...),
+		FirstParty:        true,
+		OwnerUserID:       SystemOwnerUserID,
+		ManagedResourceID: managedResourceID,
 	}
 	if err := s.repo.Create(ctx, client); err != nil {
 		return nil, "", fmt.Errorf("persisting client: %w", err)

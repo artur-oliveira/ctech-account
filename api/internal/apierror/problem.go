@@ -106,6 +106,10 @@ func Conflict(detail, instance string) *Problem {
 	return newProblem("conflict", "Conflict", http.StatusConflict, detail, instance)
 }
 
+func PreconditionFailed(detail, instance string) *Problem {
+	return newProblem("precondition-failed", "Precondition Failed", http.StatusPreconditionFailed, detail, instance)
+}
+
 func UnsupportedGrantType(instance string) *Problem {
 	return newProblem("unsupported-grant-type", "Unsupported Grant Type", http.StatusBadRequest,
 		"The grant_type is not supported. Supported values: authorization_code, refresh_token.", instance).
