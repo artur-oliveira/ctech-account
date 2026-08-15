@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"fmt"
+	"html"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -142,10 +143,15 @@ func newDeviceLoginEmailHTML(deviceName, city, country, ip string, when time.Tim
 	if location == "" {
 		location = "localização desconhecida"
 	}
+	// deviceName is derived from the request's User-Agent header (parseDeviceName
+	// falls back to the raw, attacker-controlled value for unrecognized clients)
+	// and ip from a client-supplied header — both must be HTML-escaped before
+	// interpolation. city/country come from the GeoIP database, not the request,
+	// but are escaped too for defense in depth.
 	details := `<table role="presentation" style="width:100%;border-collapse:collapse;margin:20px 0;background:#f8fafc;border-radius:8px;overflow:hidden">` +
-		detailRow("Dispositivo", deviceName, true) +
-		detailRow("Local", location, false) +
-		detailRow("IP", ip, false) +
+		detailRow("Dispositivo", html.EscapeString(deviceName), true) +
+		detailRow("Local", html.EscapeString(location), false) +
+		detailRow("IP", html.EscapeString(ip), false) +
 		detailRow("Quando", when.UTC().Format("02/01/2006 15:04 MST"), false) +
 		`</table>`
 
