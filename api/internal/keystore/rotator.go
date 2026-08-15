@@ -57,7 +57,7 @@ func tick(ctx context.Context, cfg RotatorConfig) error {
 		if lockErr != nil {
 			slog.Warn("keystore: lock attempt failed, skipping rotation this tick", "error", lockErr)
 		} else if won {
-			newKey, rotErr := Rotate(ctx, cfg.Store, cfg.Now())
+			newKey, rotErr := Rotate(ctx, cfg.Store, cfg.Now(), active.Alg)
 			if rotErr != nil {
 				return fmt.Errorf("rotating key: %w", rotErr)
 			}

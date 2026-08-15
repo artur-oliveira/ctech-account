@@ -23,7 +23,7 @@ func rotatorFixture(t *testing.T, keyAge time.Duration, lockWon bool) (*fakeSSM,
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
 	now := time.Now()
-	active, err := Generate(now.Add(-keyAge))
+	active, err := Generate(now.Add(-keyAge), AlgRS256)
 	if err != nil {
 		t.Fatal(err)
 	}

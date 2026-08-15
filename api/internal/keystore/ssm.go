@@ -104,14 +104,14 @@ func (s *Store) Save(ctx context.Context, active, previous *Key) error {
 	return s.putKey(ctx, s.activePath(), active)
 }
 
-// Rotate generates a new active key and demotes the current active to
-// previous. Returns the new key.
-func Rotate(ctx context.Context, store *Store, now time.Time) (*Key, error) {
+// Rotate generates a new active key using alg and demotes the current active
+// to previous. Returns the new key.
+func Rotate(ctx context.Context, store *Store, now time.Time, alg string) (*Key, error) {
 	active, _, err := store.Load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	newKey, err := Generate(now)
+	newKey, err := Generate(now, alg)
 	if err != nil {
 		return nil, err
 	}

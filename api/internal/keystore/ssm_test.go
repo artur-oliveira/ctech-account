@@ -45,8 +45,8 @@ func (f *fakeSSM) PutParameter(_ context.Context, in *ssm.PutParameterInput, _ .
 func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
-	active, _ := Generate(time.Now())
-	previous, _ := Generate(time.Now().Add(-time.Hour))
+	active, _ := Generate(time.Now(), AlgRS256)
+	previous, _ := Generate(time.Now().Add(-time.Hour), AlgRS256)
 
 	if err := store.Save(context.Background(), active, previous); err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 func TestLoadMissingPreviousIsNil(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
-	active, _ := Generate(time.Now())
+	active, _ := Generate(time.Now(), AlgRS256)
 	if err := store.Save(context.Background(), active, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -91,10 +91,10 @@ func TestLoadMissingActiveIsError(t *testing.T) {
 func TestRotatePromotesActiveToPrevious(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
-	first, _ := Generate(time.Now().Add(-100 * 24 * time.Hour))
+	first, _ := Generate(time.Now().Add(-100 * 24 * time.Hour), AlgRS256)
 	_ = store.Save(context.Background(), first, nil)
 
-	newKey, err := Rotate(context.Background(), store, time.Now())
+	newKey, err := Rotate(context.Background(), store, time.Now(), AlgRS256)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,10 +104,42 @@ func TestRotatePromotesActiveToPrevious(t *testing.T) {
 	}
 }
 
+func TestRotateWithExplicitAlgSwitchesAlgorithm(t *testing.T) {
+	fake := newFakeSSM()
+	store := NewStore(fake, "test")
+
+	rsaKey, err := Generate(time.Now(), AlgRS256)
+	if err != nil {
+		t.Fatalf("Generate(RS256): %v", err)
+	}
+	if err := store.Save(context.Background(), rsaKey, nil); err != nil {
+		t.Fatalf("seeding active RSA key: %v", err)
+	}
+
+	newKey, err := Rotate(context.Background(), store, time.Now(), AlgES256)
+	if err != nil {
+		t.Fatalf("Rotate(ES256): %v", err)
+	}
+	if newKey.Alg != AlgES256 {
+		t.Fatalf("new active Alg = %q, want %q", newKey.Alg, AlgES256)
+	}
+
+	active, previous, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if active.Alg != AlgES256 {
+		t.Fatalf("active.Alg after rotation = %q, want %q", active.Alg, AlgES256)
+	}
+	if previous == nil || previous.Alg != AlgRS256 || previous.KID != rsaKey.KID {
+		t.Fatalf("previous key after cutover = %+v, want the demoted RSA key %s", previous, rsaKey.KID)
+	}
+}
+
 func TestInitFromLegacyRefusesWhenActiveExists(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
-	active, _ := Generate(time.Now())
+	active, _ := Generate(time.Now(), AlgRS256)
 	_ = store.Save(context.Background(), active, nil)
 
 	if err := InitFromLegacy(context.Background(), store, fake, time.Now()); err == nil {
@@ -119,7 +151,7 @@ func TestInitFromLegacyWrapsPEMPreservingKID(t *testing.T) {
 	fake := newFakeSSM()
 	store := NewStore(fake, "test")
 
-	legacy, _ := Generate(time.Now())
+	legacy, _ := Generate(time.Now(), AlgRS256)
 	j, _ := legacy.ToJSON()
 	fake.params["/ctech-account/test/rsa-private-key"] = j.PEM
 
@@ -133,7 +165,7 @@ func TestInitFromLegacyWrapsPEMPreservingKID(t *testing.T) {
 	if previous != nil {
 		t.Error("init must not create a previous key")
 	}
-	wantKID, _ := DeriveKID(&legacy.Private.PublicKey)
+	wantKID, _ := DeriveKID(legacy.Private.Public())
 	if active.KID != wantKID {
 		t.Errorf("KID changed on wrap: %s != %s", active.KID, wantKID)
 	}
