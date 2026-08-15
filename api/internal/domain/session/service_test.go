@@ -37,10 +37,6 @@ func (m *mockRepo) GetByID(_ context.Context, userID, sessionID string) (*sessio
 	return s, nil
 }
 
-func (m *mockRepo) UpdateGeoData(_ context.Context, _, _ string, _, _ string, _, _ float64) error {
-	return nil
-}
-
 func (m *mockRepo) UpdateMFA(_ context.Context, userID, sessionID string, amr []string, lastMFAAt int64) error {
 	k := session.BuildPK(userID) + "|" + session.BuildSK(sessionID)
 	sess, ok := m.sessions[k]
@@ -145,7 +141,7 @@ func (m *mockRepo) DeleteRefreshToken(_ context.Context, userID, sessionID, clie
 
 func TestCreate(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, raw, err := svc.Create(context.Background(), "user1", "Chrome", "1.2.3.4", "UA", nil)
+	sess, raw, err := svc.Create(context.Background(), "user1", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +155,7 @@ func TestCreate(t *testing.T) {
 
 func TestRotateClientToken_Success(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user2", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user2", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	raw, err := svc.IssueClientToken(context.Background(), "user2", sess.ID(), "test-client", nil)
 	if err != nil {
@@ -177,7 +173,7 @@ func TestRotateClientToken_Success(t *testing.T) {
 
 func TestRotateClientToken_TokenReuse(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user3", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user3", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	raw, _ := svc.IssueClientToken(context.Background(), "user3", sess.ID(), "test-client", nil)
 	// First rotate succeeds.
 	_, _, _, _ = svc.RotateClientToken(context.Background(), raw, "test-client")
@@ -194,7 +190,7 @@ func TestRotateClientToken_TokenReuse(t *testing.T) {
 // token R1 is then replayed and the grant must be revoked.
 func TestRotateClientToken_ReuseRevokesSession(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user3b", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user3b", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	raw, _ := svc.IssueClientToken(context.Background(), "user3b", sess.ID(), "test-client", nil)
 
 	// Attacker redeems the token first, obtaining a fresh chain.
@@ -214,7 +210,7 @@ func TestRotateClientToken_ReuseRevokesSession(t *testing.T) {
 // A refresh token issued to one client must not be redeemable by another.
 func TestRotateClientToken_ClientMismatch(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user9", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user9", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	raw, err := svc.IssueClientToken(context.Background(), "user9", sess.ID(), "app-a", nil)
 	if err != nil {
@@ -234,7 +230,7 @@ func TestRotateClientToken_ClientMismatch(t *testing.T) {
 // rotating one must not invalidate the other or the SSO session token.
 func TestClientTokens_AreIndependent(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, ssoRaw, _ := svc.Create(context.Background(), "user10", "Chrome", "1.2.3.4", "UA", nil)
+	sess, ssoRaw, _ := svc.Create(context.Background(), "user10", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	rawA, _ := svc.IssueClientToken(context.Background(), "user10", sess.ID(), "app-a", nil)
 	rawB, _ := svc.IssueClientToken(context.Background(), "user10", sess.ID(), "app-b", nil)
@@ -254,7 +250,7 @@ func TestClientTokens_AreIndependent(t *testing.T) {
 // Revoking the parent session must kill all per-client refresh tokens under it.
 func TestRevoke_CascadesToClientTokens(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user11", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user11", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	raw, _ := svc.IssueClientToken(context.Background(), "user11", sess.ID(), "app-a", nil)
 
 	if err := svc.Revoke(context.Background(), "user11", sess.ID()); err != nil {
@@ -267,7 +263,7 @@ func TestRevoke_CascadesToClientTokens(t *testing.T) {
 
 func TestValidateToken_Success(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, raw, _ := svc.Create(context.Background(), "user4", "Chrome", "1.2.3.4", "UA", nil)
+	sess, raw, _ := svc.Create(context.Background(), "user4", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	validated, err := svc.ValidateToken(context.Background(), raw)
 	if err != nil {
@@ -280,7 +276,7 @@ func TestValidateToken_Success(t *testing.T) {
 
 func TestValidateToken_WrongToken(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	_, _, _ = svc.Create(context.Background(), "user5", "Chrome", "1.2.3.4", "UA", nil)
+	_, _, _ = svc.Create(context.Background(), "user5", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	_, err := svc.ValidateToken(context.Background(), "wrongtoken")
 	if err == nil {
@@ -291,7 +287,7 @@ func TestValidateToken_WrongToken(t *testing.T) {
 // A per-client refresh token must never authenticate as an SSO session token.
 func TestValidateToken_RejectsClientToken(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "user12", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user12", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	raw, _ := svc.IssueClientToken(context.Background(), "user12", sess.ID(), "app-a", nil)
 
 	if _, err := svc.ValidateToken(context.Background(), raw); err == nil {
@@ -302,7 +298,7 @@ func TestValidateToken_RejectsClientToken(t *testing.T) {
 func TestRevoke(t *testing.T) {
 	repo := newMockRepo()
 	svc := session.NewService(repo)
-	sess, _, _ := svc.Create(context.Background(), "user6", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "user6", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	err := svc.Revoke(context.Background(), "user6", sess.ID())
 	if err != nil {
@@ -316,8 +312,8 @@ func TestRevoke(t *testing.T) {
 
 func TestRevokeAll_ExceptCurrent(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	s1, _, _ := svc.Create(context.Background(), "user7", "Chrome", "1.2.3.4", "UA", nil)
-	s2, _, _ := svc.Create(context.Background(), "user7", "Firefox", "1.2.3.4", "UA", nil)
+	s1, _, _ := svc.Create(context.Background(), "user7", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
+	s2, _, _ := svc.Create(context.Background(), "user7", "Firefox", "1.2.3.4", "UA", nil, session.GeoData{})
 
 	err := svc.RevokeAll(context.Background(), "user7", s1.ID())
 	if err != nil {
@@ -336,7 +332,7 @@ func TestRevokeAll_ExceptCurrent(t *testing.T) {
 
 func TestCreateSetsAuthTimeAndAMR(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, err := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword})
+	sess, _, err := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword}, session.GeoData{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +349,7 @@ func TestCreateSetsAuthTimeAndAMR(t *testing.T) {
 
 func TestCreateWithMFAMethodSetsLastMFAAt(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword, session.AMRTOTP})
+	sess, _, _ := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword, session.AMRTOTP}, session.GeoData{})
 	if sess.LastMFAAt == 0 {
 		t.Error("MFA login must set LastMFAAt")
 	}
@@ -362,7 +358,7 @@ func TestCreateWithMFAMethodSetsLastMFAAt(t *testing.T) {
 func TestRecordMFAUpdatesSessionOnce(t *testing.T) {
 	repo := newMockRepo()
 	svc := session.NewService(repo)
-	sess, _, _ := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword})
+	sess, _, _ := svc.Create(context.Background(), "u1", "dev", "1.1.1.1", "ua", []string{session.AMRPassword}, session.GeoData{})
 
 	if err := svc.RecordMFA(context.Background(), "u1", sess.ID(), session.AMRTOTP); err != nil {
 		t.Fatal(err)
@@ -390,7 +386,7 @@ func TestRecordMFAUpdatesSessionOnce(t *testing.T) {
 func TestUpdateRefreshTokenHash_RejectsStaleOldHash(t *testing.T) {
 	repo := newMockRepo()
 	svc := session.NewService(repo)
-	sess, _, _ := svc.Create(context.Background(), "uC", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "uC", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	if _, err := svc.IssueClientToken(context.Background(), "uC", sess.ID(), "c", nil); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -416,7 +412,7 @@ func TestUpdateRefreshTokenHash_RejectsStaleOldHash(t *testing.T) {
 // the one presented). Exercises the happy path end to end.
 func TestRotateClientToken_SingleUseHappyPath(t *testing.T) {
 	svc := session.NewService(newMockRepo())
-	sess, _, _ := svc.Create(context.Background(), "uH", "Chrome", "1.2.3.4", "UA", nil)
+	sess, _, _ := svc.Create(context.Background(), "uH", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
 	raw, err := svc.IssueClientToken(context.Background(), "uH", sess.ID(), "c", nil)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
@@ -431,5 +427,89 @@ func TestRotateClientToken_SingleUseHappyPath(t *testing.T) {
 	}
 	if newRaw == "" || newRaw == raw {
 		t.Errorf("rotation must yield a distinct new raw token")
+	}
+}
+
+func TestCreateSetsGeoFieldsFromGeoData(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+
+	geoData := session.GeoData{City: "São Paulo", Region: "SP", Country: "BR", Latitude: -23.55, Longitude: -46.63}
+	sess, _, err := svc.Create(context.Background(), "user1", "Chrome on Mac", "1.2.3.4", "UA", []string{session.AMRPassword}, geoData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.GeoCity != "São Paulo" || sess.GeoRegion != "SP" || sess.GeoCountry != "BR" {
+		t.Errorf("geo fields not set from GeoData: %+v", sess)
+	}
+	if sess.GeoLatitude != -23.55 || sess.GeoLongitude != -46.63 {
+		t.Errorf("lat/lon not set from GeoData: %+v", sess)
+	}
+}
+
+func TestHasSeenDeviceFalseWhenNoPriorSessions(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+
+	seen, err := svc.HasSeenDevice(context.Background(), "user1", "Chrome on Mac", "BR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen {
+		t.Error("expected false with no prior sessions")
+	}
+}
+
+func TestHasSeenDeviceTrueWhenDeviceAndCountryMatch(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	_, _, err := svc.Create(context.Background(), "user1", "Chrome on Mac", "1.2.3.4", "UA", []string{session.AMRPassword},
+		session.GeoData{Country: "BR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen, err := svc.HasSeenDevice(context.Background(), "user1", "Chrome on Mac", "BR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seen {
+		t.Error("expected true: same device name and country as an existing session")
+	}
+}
+
+func TestHasSeenDeviceFalseWhenOnlyDeviceMatches(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	_, _, err := svc.Create(context.Background(), "user1", "Chrome on Mac", "1.2.3.4", "UA", []string{session.AMRPassword},
+		session.GeoData{Country: "BR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen, err := svc.HasSeenDevice(context.Background(), "user1", "Chrome on Mac", "US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen {
+		t.Error("expected false: same device but different country never seen before")
+	}
+}
+
+func TestHasSeenDeviceFalseWhenOnlyCountryMatches(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	_, _, err := svc.Create(context.Background(), "user1", "Chrome on Mac", "1.2.3.4", "UA", []string{session.AMRPassword},
+		session.GeoData{Country: "BR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen, err := svc.HasSeenDevice(context.Background(), "user1", "Firefox on Linux", "BR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen {
+		t.Error("expected false: same country but different device never seen before")
 	}
 }

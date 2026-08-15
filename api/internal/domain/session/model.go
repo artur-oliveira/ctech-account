@@ -21,6 +21,7 @@ type Session struct {
 	ExpiresAt        int64   `dynamodbav:"expires_at"` // Unix epoch — DynamoDB TTL attribute
 	GeoCity          string  `dynamodbav:"geo_city,omitempty"`
 	GeoRegion        string  `dynamodbav:"geo_region,omitempty"`
+	GeoCountry       string  `dynamodbav:"geo_country,omitempty"`
 	GeoLatitude      float64 `dynamodbav:"geo_latitude,omitempty"`
 	GeoLongitude     float64 `dynamodbav:"geo_longitude,omitempty"`
 
@@ -43,6 +44,17 @@ const (
 
 // IsMFAMethod reports whether m counts as a multi-factor proof.
 func IsMFAMethod(m string) bool { return m == AMRTOTP || m == AMRWebAuthn }
+
+// GeoData is the geo-enrichment computed by the handler layer (via
+// internal/geo.Lookup) and passed into Create — session never imports
+// internal/geo directly, keeping the domain layer free of that dependency.
+type GeoData struct {
+	City      string
+	Region    string
+	Country   string
+	Latitude  float64
+	Longitude float64
+}
 
 const SessionTTL = 90 * 24 * time.Hour
 

@@ -23,7 +23,6 @@ type Repository interface {
 	GetByID(ctx context.Context, userID, sessionID string) (*Session, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Session, error)
 	Create(ctx context.Context, s *Session) error
-	UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error
 	UpdateMFA(ctx context.Context, userID, sessionID string, amr []string, lastMFAAt int64) error
 	Delete(ctx context.Context, userID, sessionID string) error
 	ListByUserID(ctx context.Context, userID string) ([]*Session, error)
@@ -244,16 +243,5 @@ func (r *dynamoRepository) ListByUserID(ctx context.Context, userID string) ([]*
 
 func (r *dynamoRepository) Delete(ctx context.Context, userID, sessionID string) error {
 	_, err := r.table.DeleteItem(ctx, BuildPK(userID), BuildSK(sessionID))
-	return err
-}
-
-func (r *dynamoRepository) UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error {
-	sk := BuildSK(sessionID)
-	_, err := r.table.UpdateItem(ctx, BuildPK(userID), &sk, map[string]any{
-		"geo_city":      city,
-		"geo_region":    region,
-		"geo_latitude":  lat,
-		"geo_longitude": lon,
-	})
 	return err
 }

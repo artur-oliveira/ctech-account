@@ -28,7 +28,7 @@ func NewService(repo Repository) *Service {
 // Create creates a new session and returns it along with the raw refresh token.
 // amr lists the authentication methods used at login (AMRPassword, AMRTOTP, ...);
 // when it contains an MFA method the session starts with a fresh MFA proof.
-func (s *Service) Create(ctx context.Context, userID, deviceName, ip, userAgent string, amr []string) (*Session, string, error) {
+func (s *Service) Create(ctx context.Context, userID, deviceName, ip, userAgent string, amr []string, geoData GeoData) (*Session, string, error) {
 	rawToken, tokenHash, err := crypto.GenerateRefreshToken()
 	if err != nil {
 		return nil, "", fmt.Errorf("generating refresh token: %w", err)
@@ -58,6 +58,11 @@ func (s *Service) Create(ctx context.Context, userID, deviceName, ip, userAgent 
 		AuthTime:         now.Unix(),
 		AMR:              amr,
 		LastMFAAt:        lastMFA,
+		GeoCity:          geoData.City,
+		GeoRegion:        geoData.Region,
+		GeoCountry:       geoData.Country,
+		GeoLatitude:      geoData.Latitude,
+		GeoLongitude:     geoData.Longitude,
 	}
 
 	if err := s.repo.Create(ctx, sess); err != nil {
@@ -220,13 +225,26 @@ func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*Session,
 	return sess, nil
 }
 
-// UpdateGeoData writes geo-location fields onto an existing session.
-func (s *Service) UpdateGeoData(ctx context.Context, userID, sessionID, city, region string, lat, lon float64) error {
-	return s.repo.UpdateGeoData(ctx, userID, sessionID, city, region, lat, lon)
-}
-
 func (s *Service) List(ctx context.Context, userID string) ([]*Session, error) {
 	return s.repo.ListByUserID(ctx, userID)
+}
+
+// HasSeenDevice reports whether userID has a prior (non-expired) session from
+// the same deviceName and country. Called before Create, so the session being
+// created is never in the comparison set. Errors are the caller's to decide
+// how to treat — the login-notification call sites fail toward "not new"
+// (better a missed email than a false alarm).
+func (s *Service) HasSeenDevice(ctx context.Context, userID, deviceName, country string) (bool, error) {
+	sessions, err := s.repo.ListByUserID(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("listing sessions: %w", err)
+	}
+	for _, sess := range sessions {
+		if sess.DeviceName == deviceName && sess.GeoCountry == country {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Revoke deletes a session and every per-client refresh token issued under it.
