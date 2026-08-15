@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { toast } from 'sonner'
 import MFAPage from './page'
 import { mfaChallengeAPI } from '@/lib/mutations'
 import { startOAuthFlow } from '@/lib/auth-flow'
+import { isAxiosError } from '@/lib/axios'
 import { MFA_METHODS_KEY, MFA_TOKEN_KEY } from '@/lib/constants'
 
 vi.mock('@/lib/mutations', () => ({
@@ -15,11 +17,17 @@ vi.mock('@/lib/auth-flow', () => ({
 }))
 
 vi.mock('@/lib/axios', () => ({
-  isAxiosError: () => false,
+  isAxiosError: vi.fn(() => false),
 }))
 
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+const routerReplace = vi.fn()
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: routerReplace }),
 }))
 
 function seedSession(methods: string[]) {
@@ -30,6 +38,7 @@ function seedSession(methods: string[]) {
 beforeEach(() => {
   sessionStorage.clear()
   vi.clearAllMocks()
+  vi.mocked(isAxiosError).mockReturnValue(false)
 })
 
 describe('MFAPage — TOTP-only', () => {
@@ -84,5 +93,31 @@ describe('MFAPage — TOTP-only', () => {
     expect(startOAuthFlow).toHaveBeenCalled()
     expect(sessionStorage.getItem(MFA_TOKEN_KEY)).toBeNull()
     expect(sessionStorage.getItem(MFA_METHODS_KEY)).toBeNull()
+  })
+
+  it('clears the dead mfa_token and returns to /login on an invalid-token response, instead of leaving the user stuck', async () => {
+    seedSession(['totp'])
+    vi.mocked(isAxiosError).mockReturnValue(true)
+    vi.mocked(mfaChallengeAPI).mockRejectedValue({
+      response: {
+        data: {
+          type: 'https://accounts.aoctech.app/problems/invalid-token',
+          detail: 'MFA token is invalid or has expired.',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    render(<MFAPage />)
+
+    const firstDigit = await screen.findByLabelText('Digit 1')
+    await user.click(firstDigit)
+    await user.paste('123456')
+    await user.click(screen.getByRole('button', { name: 'Verify' }))
+
+    await vi.waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/login'))
+    expect(toast.error).toHaveBeenCalled()
+    expect(sessionStorage.getItem(MFA_TOKEN_KEY)).toBeNull()
+    expect(sessionStorage.getItem(MFA_METHODS_KEY)).toBeNull()
+    expect(startOAuthFlow).not.toHaveBeenCalled()
   })
 })

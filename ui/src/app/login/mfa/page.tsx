@@ -1,9 +1,10 @@
 'use client'
 
 import {Suspense, useMemo, useState, SyntheticEvent} from 'react'
-import {useSearchParams} from 'next/navigation'
+import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
+import {toast} from 'sonner'
 import {Button} from '@/components/ui/button'
 import {Label} from '@/components/ui/label'
 import {OTPInput} from '@/components/ui/otp-input'
@@ -13,7 +14,7 @@ import {isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
 import {mfaChallengeAPI} from '@/lib/mutations'
 import {sanitizeContinue} from '@/lib/safe-redirect'
-import {isTOTPMFAMethod, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
+import {isTOTPMFAMethod, MFA_INVALID_TOKEN_PROBLEM, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useSessionItem} from '@/hooks/use-session-item'
 
 const MFA_CODE_LENGTH = 6
@@ -35,6 +36,7 @@ function parseMethods(raw: string | null): string[] | null {
 
 function MFAForm() {
   const {t} = useTranslation()
+  const router = useRouter()
   const params = useSearchParams()
   const continueURL = sanitizeContinue(params.get('continue'))
   const [loading, setLoading] = useState(false)
@@ -64,6 +66,17 @@ function MFAForm() {
       await startOAuthFlow(continueURL)
     } catch (err) {
       if (isAxiosError(err)) {
+        const problemType = err.response?.data?.type
+        // mfa_token is dead (expired, or invalidated after too many wrong
+        // attempts) — retrying can never succeed, so restart the login flow
+        // instead of leaving the user stuck resubmitting a dead token.
+        if (typeof problemType === 'string' && problemType.endsWith(MFA_INVALID_TOKEN_PROBLEM)) {
+          sessionStorage.removeItem(MFA_TOKEN_KEY)
+          sessionStorage.removeItem(MFA_METHODS_KEY)
+          toast.error(t('errors.sessionExpired'))
+          router.replace('/login')
+          return
+        }
         setError(err.response?.data?.detail ?? t('errors.mfaFailed'))
       } else {
         setError(t('errors.network'))

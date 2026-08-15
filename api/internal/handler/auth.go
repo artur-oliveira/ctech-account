@@ -23,6 +23,12 @@ import (
 )
 
 const mfaTokenTTL = 5 * time.Minute
+
+// mfaMaxAttempts caps wrong-code guesses against one mfa_token; exceeding it
+// invalidates the token so the client must restart the login flow, rather
+// than silently consuming the token on the first wrong guess (which made a
+// correct code on the very next attempt fail with "invalid-token").
+const mfaMaxAttempts = 5
 const emailVerifyTTL = 24 * time.Hour
 const passwordResetTTL = 15 * time.Minute
 
@@ -249,9 +255,25 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	}
 
 	hashHex := crypto.HashToken(req.MFAToken)
+	tokenKey := "mfa_token:" + hashHex
+	attemptsKey := "mfa_attempts:" + hashHex
+
 	var payload mfaTokenPayload
-	// GetDel consumes the MFA token atomically (single use, replay-safe).
-	if err := h.cache.GetDel(c.Context(), "mfa_token:"+hashHex, &payload); err != nil {
+	// Peek, don't consume: a wrong code must not burn the token (that made a
+	// correct code on the very next attempt fail with "invalid-token"). The
+	// token is only actually consumed via GetDel once the code is confirmed
+	// valid, below.
+	if err := h.cache.Get(c.Context(), tokenKey, &payload); err != nil {
+		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+	}
+
+	// Since the token now survives a wrong guess, cap retries so it can't be
+	// brute-forced for its remaining TTL.
+	attempts, _ := h.cache.Incr(c.Context(), attemptsKey, mfaTokenTTL)
+	if attempts > mfaMaxAttempts {
+		_ = h.cache.Delete(c.Context(), tokenKey)
+		_ = h.cache.Delete(c.Context(), attemptsKey)
+		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "totp", "reason": "max_attempts"})
 		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
 
@@ -260,6 +282,15 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "totp"})
 		return apierror.Unauthorized("Invalid MFA code.", c.Path()).Send(c)
 	}
+
+	// Code confirmed valid — atomically claim the token (single use, replay-safe)
+	// so a concurrent request racing on the same correct code can't also pass
+	// and create a second session; the loser sees "invalid-token".
+	var claimed mfaTokenPayload
+	if err := h.cache.GetDel(c.Context(), tokenKey, &claimed); err != nil {
+		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+	}
+	_ = h.cache.Delete(c.Context(), attemptsKey)
 
 	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
 	if err != nil {

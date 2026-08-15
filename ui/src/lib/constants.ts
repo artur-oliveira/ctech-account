@@ -5,6 +5,11 @@ export const MFA_TOKEN_KEY = 'mfa_token'
 export const MFA_METHODS_KEY = 'mfa_methods'
 export const CONTINUE_URL_KEY = 'continue_url'
 
+// RFC 7807 `type` suffix the API answers when mfa_token is dead (expired,
+// already consumed, or invalidated after too many wrong TOTP attempts) —
+// distinct from a merely wrong code, which answers "unauthorized" instead.
+export const MFA_INVALID_TOKEN_PROBLEM = 'invalid-token'
+
 export const MFA_METHOD_TOTP = 'totp'
 
 // Passkey login currently returns the RFC 8176 AMR value (`otp`) while
