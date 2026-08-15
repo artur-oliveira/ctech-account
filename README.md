@@ -423,11 +423,17 @@ Valkey absent → auto-rotation off; manual rotation always available:
 
 ```bash
 cd api
-go run ./cmd/rotatekeys -env prod -init   # one-time migration: wraps the legacy rsa-private-key (KID preserved)
-go run ./cmd/rotatekeys -env prod         # forced manual rotation
+go run ./cmd/rotatekeys -env prod -init         # one-time migration: wraps the legacy rsa-private-key (KID preserved)
+go run ./cmd/rotatekeys -env prod               # forced manual rotation, same algorithm as the current active key
+go run ./cmd/rotatekeys -env prod -alg ES256    # algorithm cutover: new active key on the given algorithm
 ```
 
-Dev mode (`RSA_PRIVATE_KEY` env set) uses that single key and never rotates.
+Signing supports RS256 and ES256 (ECDSA P-256); `-alg` on `rotatekeys` switches which one new
+tokens are signed with — the demoted key stays in JWKS until the next rotation, so tokens signed
+under the old algorithm keep verifying through the cutover.
+
+Dev mode (`RSA_PRIVATE_KEY` or `EC_PRIVATE_KEY` env set — mutually exclusive) uses that single key
+and never rotates.
 
 ---
 
@@ -444,7 +450,8 @@ All configuration is read from environment variables at startup.
 | `WEBAUTHN_RPID`              | No       | WebAuthn Relying Party ID (registrable domain, e.g. `aoctech.app`). Defaults to `APP_URL`'s hostname. Set explicitly if multiple SPA subdomains must share credentials; the EC2 bootstrap reads the optional `/ctech-account/{env}/webauthn-rpid` SSM parameter                                                               |
 | `PORT`                       | No       | HTTP port (default `8001`)                                                                                                                                                                                                                                                                                                    |
 | `DYNAMO_TABLE`               | Yes      | DynamoDB table name                                                                                                                                                                                                                                                                                                           |
-| `RSA_PRIVATE_KEY`            | Dev only | PEM-encoded RSA private key (RS256). When set, single-key dev mode — no rotation. When absent, keys load from SSM `/ctech-account/{env}/jwk/*`                                                                                                                                                                                |
+| `RSA_PRIVATE_KEY`            | Dev only | PEM-encoded RSA private key (RS256). When set, single-key dev mode — no rotation. Mutually exclusive with `EC_PRIVATE_KEY`. When neither is set, keys load from SSM `/ctech-account/{env}/jwk/*`                                                                                                                              |
+| `EC_PRIVATE_KEY`             | Dev only | PEM-encoded EC (P-256) private key (ES256). Same single-key dev mode as `RSA_PRIVATE_KEY`, mutually exclusive with it                                                                                                                                                                                                          |
 | `PUBLIC_KEY_KID`             | No       | Key ID for the env-provided key (derived from the public key when unset). Ignored in SSM mode                                                                                                                                                                                                                                 |
 | `VALKEY_URL`                 | Non-dev  | Redis-compatible URL; **required outside dev** — the API refuses to boot without it (OAuth codes, MFA tokens and rate limiting have no DynamoDB fallback)                                                                                                                                                                     |
 | `FROM_EMAIL`                 | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled                                                                                                                                                                                                                     |
