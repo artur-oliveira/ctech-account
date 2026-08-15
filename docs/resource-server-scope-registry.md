@@ -19,8 +19,11 @@ registry during their deploy.
   `internal:resource:*`; identity and wildcard scopes are rejected. `account`
   is reserved from operator provisioning and may be reconciled only by the
   Account process itself.
-- Publishing changes the catalog only. It never grants the new scope to an
-  existing OAuth client or API key.
+- Publishing updates the catalog and appends active public scopes to an
+  existing first-party public OAuth client whose `client_id` equals the
+  Resource Server ID (`wallet` → `wallet`). This convention lets the owning UI
+  request its full manifest without Account knowing service-specific scope
+  names. Other OAuth clients and API keys are never granted automatically.
 
 ## Reconciliation semantics
 
@@ -34,6 +37,12 @@ idempotent and do not advance the revision. A stale revision returns 412.
 An active scope cannot disappear in one release: publish it as `deprecated`
 first, then remove it in a later release. Deprecated scopes remain resolvable
 for existing tokens but are excluded from discovery and new grants.
+
+The same publish is also idempotent for the first-party UI grant: it preserves
+redirect URIs, audience, identity scopes and all existing grants, appending only
+missing active public scopes. API-only resources may omit the same-ID client.
+If that ID exists but is not a first-party public client, reconciliation fails
+closed so a publisher cannot promote or rewrite an unrelated client.
 
 V2 rows override legacy `pk=SERVICE` rows at read time. This makes migration
 non-disruptive. `cmd/seedscopes` remains only for built-in OIDC identity scopes,

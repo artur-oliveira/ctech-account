@@ -168,3 +168,43 @@ func TestEnsureFirstPartyPublicClientCreatesAndReconciles(t *testing.T) {
 		t.Fatal("reconciled client was not persisted")
 	}
 }
+
+func TestEnsureFirstPartyPublicClientScopesAppendsPublishedScopes(t *testing.T) {
+	service, repo := newOperatorService()
+	repo.clients["wallet"] = &OAuthClient{
+		PK: BuildPK("wallet"), ClientType: TypePublic, FirstParty: true,
+		RedirectURIs:  []string{"https://wallet.example.test/callback"},
+		AllowedScopes: []string{scopes.OpenID, scopes.Profile, scopes.KYC},
+		Audience:      []string{"https://wallet.example.test"},
+	}
+
+	client, changed, err := service.EnsureFirstPartyPublicClientScopes(
+		context.Background(), "wallet", []string{"wallet:balances:read", "wallet:ledger:read"},
+	)
+	if err != nil || !changed {
+		t.Fatalf("append scopes: client=%+v changed=%v err=%v", client, changed, err)
+	}
+	for _, scope := range []string{scopes.OpenID, scopes.Profile, scopes.KYC, "wallet:balances:read", "wallet:ledger:read"} {
+		if !client.HasScope(scope) {
+			t.Errorf("missing scope %q", scope)
+		}
+	}
+	if !client.IsRedirectURIAllowed("https://wallet.example.test/callback") || len(client.Audience) != 1 {
+		t.Fatalf("unrelated client configuration changed: %+v", client)
+	}
+
+	_, changed, err = service.EnsureFirstPartyPublicClientScopes(
+		context.Background(), "wallet", []string{"wallet:balances:read", "wallet:ledger:read"},
+	)
+	if err != nil || changed {
+		t.Fatalf("idempotent append: changed=%v err=%v", changed, err)
+	}
+}
+
+func TestEnsureFirstPartyPublicClientScopesAllowsAPIOnlyResource(t *testing.T) {
+	service, _ := newOperatorService()
+	client, changed, err := service.EnsureFirstPartyPublicClientScopes(context.Background(), "billing", []string{"billing:invoices:read"})
+	if err != nil || changed || client != nil {
+		t.Fatalf("missing UI client: client=%+v changed=%v err=%v", client, changed, err)
+	}
+}

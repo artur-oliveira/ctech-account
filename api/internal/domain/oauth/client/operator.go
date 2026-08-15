@@ -158,6 +158,48 @@ func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clie
 	return client, true, nil
 }
 
+// EnsureFirstPartyPublicClientScopes appends newly published public scopes to
+// the existing first-party UI client with the same ID as its Resource Server.
+// A missing client is valid for API-only resources. Redirect URIs, explicit
+// audiences and existing grants are never replaced or removed.
+func (s *OperatorService) EnsureFirstPartyPublicClientScopes(ctx context.Context, clientID string, requiredScopes []string) (*OAuthClient, bool, error) {
+	clientID = strings.TrimSpace(clientID)
+	if len(requiredScopes) == 0 {
+		return nil, false, nil
+	}
+	for _, scope := range requiredScopes {
+		if !scopes.IsValid(scope) || !strings.HasPrefix(scope, clientID+":") || strings.HasPrefix(scope, scopes.InternalServicePrefix+":") {
+			return nil, false, ErrInvalidScope{Scope: scope}
+		}
+	}
+
+	client, err := s.repo.GetByID(ctx, clientID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("loading first-party resource client: %w", err)
+	}
+	if !client.IsPublic() || !client.FirstParty {
+		return nil, false, fmt.Errorf("existing resource client %q is not a first-party public client", clientID)
+	}
+
+	allowed := append([]string(nil), client.AllowedScopes...)
+	for _, scope := range requiredScopes {
+		if !slices.Contains(allowed, scope) {
+			allowed = append(allowed, scope)
+		}
+	}
+	if slices.Equal(allowed, client.AllowedScopes) {
+		return client, false, nil
+	}
+	if err := s.repo.Update(ctx, clientID, map[string]any{"allowed_scopes": allowed}); err != nil {
+		return nil, false, fmt.Errorf("updating first-party resource client scopes: %w", err)
+	}
+	client.AllowedScopes = allowed
+	return client, true, nil
+}
+
 func (s *OperatorService) createM2M(ctx context.Context, clientID, name string, allowedScopes []string, managedResourceID string) (*OAuthClient, string, error) {
 	clientID = strings.TrimSpace(clientID)
 	name = strings.TrimSpace(name)

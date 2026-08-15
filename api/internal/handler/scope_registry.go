@@ -27,16 +27,21 @@ type scopeRegistryClientRepository interface {
 	GetByID(ctx context.Context, clientID string) (*oauthclient.OAuthClient, error)
 }
 
+type scopeRegistryClientReconciler interface {
+	EnsureFirstPartyPublicClientScopes(ctx context.Context, clientID string, requiredScopes []string) (*oauthclient.OAuthClient, bool, error)
+}
+
 // ScopeRegistryHandler is the OAuth-protected control plane through which a
 // trusted Resource Server reconciles its own scope manifest.
 type ScopeRegistryHandler struct {
-	registry *scopes.RegistryService
-	clients  scopeRegistryClientRepository
-	audit    *audit.Service
+	registry  *scopes.RegistryService
+	clients   scopeRegistryClientRepository
+	reconcile scopeRegistryClientReconciler
+	audit     *audit.Service
 }
 
-func NewScopeRegistryHandler(registry *scopes.RegistryService, clients scopeRegistryClientRepository, auditSvc *audit.Service) *ScopeRegistryHandler {
-	return &ScopeRegistryHandler{registry: registry, clients: clients, audit: auditSvc}
+func NewScopeRegistryHandler(registry *scopes.RegistryService, clients scopeRegistryClientRepository, reconciler scopeRegistryClientReconciler, auditSvc *audit.Service) *ScopeRegistryHandler {
+	return &ScopeRegistryHandler{registry: registry, clients: clients, reconcile: reconciler, audit: auditSvc}
 }
 
 func (h *ScopeRegistryHandler) Register(v1 fiber.Router, auth ...fiber.Handler) {
@@ -124,14 +129,32 @@ func (h *ScopeRegistryHandler) put(c fiber.Ctx) error {
 			return apierror.ServerError(c.Path()).Send(c)
 		}
 	}
+	_, clientChanged, reconcileErr := h.reconcile.EnsureFirstPartyPublicClientScopes(c.Context(), id, publicActiveScopes(manifest.Scopes))
+	if reconcileErr != nil {
+		return apierror.ServerError(c.Path()).Send(c)
+	}
 	c.Set(headerETag, resourceETag(resource))
 	h.record(c, actor, audit.EventScopeManifestPublished, id, resource.ManifestHash)
+	if clientChanged {
+		h.record(c, actor, audit.EventOAuthClientUpdated, id, "public scopes reconciled")
+	}
 	return c.JSON(fiber.Map{
 		"resource_server_id": resource.ID(), "revision": resource.Revision,
 		"manifest_hash": resource.ManifestHash, "changed": changed,
-		"active_scopes":     countScopes(resource.Scopes, scopes.StatusActive),
-		"deprecated_scopes": countScopes(resource.Scopes, scopes.StatusDeprecated),
+		"first_party_client_changed": clientChanged,
+		"active_scopes":              countScopes(resource.Scopes, scopes.StatusActive),
+		"deprecated_scopes":          countScopes(resource.Scopes, scopes.StatusDeprecated),
 	})
+}
+
+func publicActiveScopes(entries []scopes.ScopeDefinition) []string {
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Visibility == scopes.VisibilityPublic && entry.Status == scopes.StatusActive {
+			result = append(result, entry.Scope)
+		}
+	}
+	return result
 }
 
 func resourceETag(resource *scopes.ResourceServer) string {

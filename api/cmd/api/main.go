@@ -152,6 +152,7 @@ func main() {
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
 	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
 	oauthClientSvc := oauthclientDomain.NewService(oauthClientRepo, scopesCatalogSvc)
+	oauthClientOperator := oauthclientDomain.NewOperatorService(oauthClientRepo, scopesCatalogSvc)
 	accountResource, accountResourceChanged, err := scopeRegistrySvc.BootstrapAccount(ctx, cfg.Audience, cfg.AppVersion)
 	if err != nil {
 		log.Fatalf("bootstrapping Account Resource Server: %v", err)
@@ -159,7 +160,7 @@ func main() {
 	log.Printf("Account Resource Server ready (revision=%d changed=%v audience=%s)", accountResource.Revision, accountResourceChanged, accountResource.Audience)
 
 	selfScopes := append([]string{scopesPkg.OpenID, scopesPkg.Profile, scopesPkg.Email}, scopesPkg.AccountUserScopes()...)
-	selfClient, selfClientChanged, err := oauthclientDomain.NewOperatorService(oauthClientRepo, scopesCatalogSvc).EnsureFirstPartyPublicClient(
+	selfClient, selfClientChanged, err := oauthClientOperator.EnsureFirstPartyPublicClient(
 		ctx,
 		cfg.SelfClientID,
 		"CTech Account",
@@ -232,7 +233,7 @@ func main() {
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc)
-	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, auditSvc)
+	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, oauthClientOperator, auditSvc)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "ctech-account",
