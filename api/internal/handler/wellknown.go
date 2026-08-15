@@ -52,7 +52,7 @@ func (h *WellKnownHandler) Configuration(c fiber.Ctx) error {
 		"jwks_uri":                              issuer + "/.well-known/jwks.json",
 		"response_types_supported":              []string{"code"},
 		"subject_types_supported":               []string{"public"},
-		"id_token_signing_alg_values_supported": []string{"RS256"},
+		"id_token_signing_alg_values_supported": []string{"RS256", "ES256"},
 		// scopes_supported lists only the OIDC identity scopes. Service and
 		// internal M2M scopes are deliberately absent: the public catalog lives
 		// at GET /v1.0/scopes and internal scopes are hidden by design

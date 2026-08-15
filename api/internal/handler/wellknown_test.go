@@ -40,6 +40,35 @@ func TestOIDCConfiguration(t *testing.T) {
 	}
 }
 
+func TestOpenIDConfigurationAdvertisesBothSigningAlgs(t *testing.T) {
+	app := newTestApp(t)
+	resp := app.do(http.MethodGet, "/.well-known/openid-configuration", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+
+	var body map[string]any
+	readJSON(t, resp, &body)
+
+	algs, ok := body["id_token_signing_alg_values_supported"].([]any)
+	if !ok {
+		t.Fatalf("id_token_signing_alg_values_supported missing or wrong type: %v", body["id_token_signing_alg_values_supported"])
+	}
+	want := map[string]bool{"RS256": false, "ES256": false}
+	for _, a := range algs {
+		if s, ok := a.(string); ok {
+			if _, tracked := want[s]; tracked {
+				want[s] = true
+			}
+		}
+	}
+	for alg, seen := range want {
+		if !seen {
+			t.Fatalf("id_token_signing_alg_values_supported missing %s: got %v", alg, algs)
+		}
+	}
+}
+
 func TestJWKS(t *testing.T) {
 	app := newTestApp(t)
 	resp := app.do(http.MethodGet, "/.well-known/jwks.json", nil)
