@@ -74,7 +74,7 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
-          ACCOUNT_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --query Parameter.Value --output text)
+          ACCOUNT_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/base-url" --query Parameter.Value --output text)
           CLIENT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/scope-publishers/$RESOURCE_ID/client-id" --query Parameter.Value --output text)
           CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/scope-publishers/$RESOURCE_ID/client-secret" --with-decryption --query Parameter.Value --output text)
 
@@ -86,12 +86,10 @@ jobs:
             --data-urlencode "client_secret=$CLIENT_SECRET" \
             --data-urlencode 'scope=internal:account:scope-registry:write' | jq -er '.access_token')
 
-          HEADERS=$(mktemp)
-          curl --fail-with-body --silent --show-error -D "$HEADERS" -o /dev/null \
+          RESOURCE_STATE=$(curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer $TOKEN" \
-            "$ACCOUNT_URL/v1.0/internal/resource-servers/$RESOURCE_ID/manifest"
-          ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$HEADERS" | tr -d '\r')
-          test -n "$ETAG"
+            "$ACCOUNT_URL/v1.0/internal/resource-servers/$RESOURCE_ID/manifest")
+          ETAG=$(jq -er '"\"" + (.revision | tostring) + ":" + .manifest_hash + "\""' <<< "$RESOURCE_STATE")
 
           curl --fail-with-body --silent --show-error \
             -X PUT "$ACCOUNT_URL/v1.0/internal/resource-servers/$RESOURCE_ID/manifest" \

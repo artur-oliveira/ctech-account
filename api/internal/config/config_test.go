@@ -33,7 +33,7 @@ func TestLoadWebAuthnDefaultsToBrowserFacingAppURL(t *testing.T) {
 		t.Fatalf("RPOrigins = %v, want only the SPA origin", cfg.RPOrigins)
 	}
 	if cfg.Audience != "https://accounts.aoctech.app" {
-		t.Fatalf("Audience = %q, want API origin", cfg.Audience)
+		t.Fatalf("Audience = %q, want Account public resource identifier", cfg.Audience)
 	}
 }
 

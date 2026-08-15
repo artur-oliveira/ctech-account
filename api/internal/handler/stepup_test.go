@@ -10,6 +10,7 @@ import (
 
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // stubTOTPService accepts exactly one code and reports TOTP as enrolled.
@@ -45,7 +46,7 @@ func stepUpToken(t *testing.T, ta *testApp, userID string, lastMFAAt int64) (ses
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := ta.jwtSvc.SignAccessToken(userID, sess.ID(), "test-client", []string{"openid"},
+	tok, err := ta.jwtSvc.SignAccessToken(userID, sess.ID(), "test-client", []string{"openid", scopes.AccountMFAWrite},
 		"http://localhost", []string{"http://localhost"}, sess.AuthTime, lastMFAAt, sess.AMR, "")
 	if err != nil {
 		t.Fatal(err)

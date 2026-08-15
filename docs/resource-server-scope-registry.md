@@ -1,9 +1,10 @@
 # Resource Server Scope Registry
 
-CTech Account is the Authorization Server and central policy point, but it no
-longer needs a code change for every downstream permission. DF-e, Wallet,
-Poker, and future APIs own a versioned `scope-manifest.json` and reconcile it
-through the internal registry during their deploy.
+CTech Account is both the Authorization Server and a Resource Server, while
+remaining the central policy point. Its own API permissions live in
+`api/internal/scopes/account-scope-manifest.json`; DF-e, Wallet, Poker, and
+future APIs own equivalent manifests and reconcile them through the internal
+registry during their deploy.
 
 ## Trust and ownership
 
@@ -15,7 +16,9 @@ through the internal registry during their deploy.
   /v1.0/internal/resource-servers/{id}/manifest`. A DFe publisher cannot modify
   Wallet or Poker.
 - Manifests may declare only concrete scopes in `resource:*` or
-  `internal:resource:*`; Account/identity namespaces and wildcards are rejected.
+  `internal:resource:*`; identity and wildcard scopes are rejected. `account`
+  is reserved from operator provisioning and may be reconciled only by the
+  Account process itself.
 - Publishing changes the catalog only. It never grants the new scope to an
   existing OAuth client or API key.
 
@@ -33,8 +36,28 @@ first, then remove it in a later release. Deprecated scopes remain resolvable
 for existing tokens but are excluded from discovery and new grants.
 
 V2 rows override legacy `pk=SERVICE` rows at read time. This makes migration
-non-disruptive and leaves `cmd/seedscopes` available for Account's built-in
-identity/account scopes.
+non-disruptive. `cmd/seedscopes` remains only for built-in OIDC identity scopes,
+the registry root permission, and legacy compatibility data.
+
+## Account's system-owned resource
+
+At API startup, `RegistryService.BootstrapAccount` creates or reconciles
+`RESOURCE_SERVER/account` with the runtime `AUDIENCE`, the embedded manifest,
+and reserved publisher `system://ctech-account`. This publisher is not an OAuth
+client and cannot be created through `cmd/createresource`, avoiding a circular
+dependency where Account would need a token from itself before it could boot.
+`AUDIENCE` defaults to the stable public `APP_URL` resource identifier
+(`https://accounts.aoctech.app` in production), independently of the API's
+transport origin.
+
+Startup also creates or reconciles the system-owned public `SELF_CLIENT_ID`
+client, `${APP_URL}/login/callback`, and all Account SPA scopes. Every
+`/v1.0/account/*` operation requires its exact `account:*` permission; a
+delegated client or API key with the correct audience and grant can therefore
+use the Resource Server normally. Only the SPA-specific step-up protocol keeps
+the `SELF_CLIENT_ID` binding. The registry root scope is duplicated in the small
+bootstrap seed so downstream publishers can be provisioned before the Account
+v2 row exists; after startup the v2 manifest is authoritative.
 
 ## Bootstrap a service
 
@@ -56,7 +79,10 @@ Repeat for `wallet` and `poker` with their audiences. The service CDK creates a
 dedicated GitHub OIDC role that can read only Account's URL and that service's
 two publisher parameters. Its deploy calls
 `.github/workflows/publish-resource-scopes.yml` after infrastructure and before
-the API.
+the API. The workflow calls the direct API `base-url`, but this does not alter
+the Account audience. It derives `If-Match` from the authoritative `revision`
+and `manifest_hash` fields in the `GET` body, avoiding ETag rewriting by
+CloudFront or another intermediary.
 
 For legacy data, run `go run ./cmd/migratescopes` first as a dry run, then with
 `-apply`. To recover a bad publish, use `go run ./cmd/restoreresource -id dfe

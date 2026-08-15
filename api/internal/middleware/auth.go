@@ -125,17 +125,27 @@ func GetClientID(c fiber.Ctx) string {
 	return v
 }
 
-// RequireClientID guards self-service account-management routes
-// (/v1.0/account/*, /v1.0/step-up/*) that have no scope of their own. Unlike a
-// resource server's API, these are never meant to be reachable by any OAuth
-// client other than this service's own first-party frontend — accepting any
-// audience-matching token here would let a downstream client (dfe) or a
-// consented third party fully manage another app's account (API keys, OAuth
-// clients, sessions, passkeys, audit log). Must run after RequireAuth.
+// RequireClientID guards client-specific protocol helpers such as
+// /v1.0/auth/step-up/*. Resource Server routes use RequireScope instead so
+// delegated OAuth clients and API keys can exercise only their explicit grant.
+// Must run after RequireAuth.
 func RequireClientID(clientID string) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if GetClientID(c) != clientID {
 			return apierror.Forbidden("This endpoint is only accessible to this service's own frontend.", c.Path()).Send(c)
+		}
+		return c.Next()
+	}
+}
+
+// RequireScope guards an individual Resource Server operation. It must run
+// after RequireAuth and emits the OAuth bearer insufficient_scope challenge so
+// clients can distinguish missing authorization from a generic policy denial.
+func RequireScope(scope string) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if !HasScope(c, scope) {
+			c.Set(fiber.HeaderWWWAuthenticate, `Bearer error="insufficient_scope", scope="`+scope+`"`)
+			return apierror.InsufficientScope(scope, c.Path()).Send(c)
 		}
 		return c.Next()
 	}

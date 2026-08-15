@@ -1,7 +1,7 @@
-// Command seedscopes writes the in-repo scope catalog seed
-// (internal/scopes/catalog.go) to the {env}_ctech_scopes DynamoDB table and
-// invalidates the Valkey catalog cache, making new scopes grantable
-// immediately.
+// Command seedscopes writes the in-repo OIDC/bootstrap and legacy compatibility
+// catalog seed (internal/scopes/catalog.go) to the {env}_ctech_scopes DynamoDB
+// table. The Account Resource Server itself is reconciled from its embedded v2
+// manifest by cmd/api at startup.
 //
 //	AWS_REGION=... TABLE_PREFIX=production VALKEY_URL=... go run ./cmd/seedscopes
 //

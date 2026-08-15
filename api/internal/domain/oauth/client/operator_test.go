@@ -27,8 +27,23 @@ func (r *operatorRepoStub) Create(_ context.Context, client *OAuthClient) error 
 func (*operatorRepoStub) ListByOwner(context.Context, string) ([]*OAuthClient, error) {
 	return nil, nil
 }
-func (*operatorRepoStub) Update(context.Context, string, map[string]any) error { return nil }
-func (*operatorRepoStub) Delete(context.Context, string) error                 { return nil }
+func (r *operatorRepoStub) Update(_ context.Context, id string, updates map[string]any) error {
+	client, ok := r.clients[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if value, ok := updates["name"].(string); ok {
+		client.Name = value
+	}
+	if value, ok := updates["redirect_uris"].([]string); ok {
+		client.RedirectURIs = value
+	}
+	if value, ok := updates["allowed_scopes"].([]string); ok {
+		client.AllowedScopes = value
+	}
+	return nil
+}
+func (*operatorRepoStub) Delete(context.Context, string) error { return nil }
 
 type operatorCatalogStub struct {
 	services []scopes.ServiceScopes
@@ -120,5 +135,36 @@ func TestOperatorCreateResourcePublisherBindsNamespace(t *testing.T) {
 	}
 	if secret == "" || created.ManagedResourceID != "dfe" || len(created.AllowedScopes) != 1 || created.AllowedScopes[0] != scopes.InternalAccountScopeRegistryWrite {
 		t.Fatalf("unexpected publisher: %+v", created)
+	}
+}
+
+func TestEnsureFirstPartyPublicClientCreatesAndReconciles(t *testing.T) {
+	service, repo := newOperatorService()
+	required := append([]string{scopes.OpenID, scopes.Profile, scopes.Email}, scopes.AccountUserScopes()...)
+	created, changed, err := service.EnsureFirstPartyPublicClient(
+		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required,
+	)
+	if err != nil || !changed || !created.FirstParty || !created.IsPublic() {
+		t.Fatalf("create: client=%+v changed=%v err=%v", created, changed, err)
+	}
+
+	created.AllowedScopes = []string{scopes.OpenID}
+	created.RedirectURIs = []string{"https://legacy.example.test/callback"}
+	updated, changed, err := service.EnsureFirstPartyPublicClient(
+		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required,
+	)
+	if err != nil || !changed {
+		t.Fatalf("reconcile: changed=%v err=%v", changed, err)
+	}
+	for _, scope := range required {
+		if !updated.HasScope(scope) {
+			t.Errorf("missing reconciled scope %q", scope)
+		}
+	}
+	if !updated.IsRedirectURIAllowed("https://legacy.example.test/callback") || !updated.IsRedirectURIAllowed("https://accounts.example.test/login/callback") {
+		t.Fatalf("redirect URIs were not merged: %v", updated.RedirectURIs)
+	}
+	if repo.clients["accounts"] != updated {
+		t.Fatal("reconciled client was not persisted")
 	}
 }

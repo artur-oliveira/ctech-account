@@ -95,16 +95,8 @@ var defaultCatalog = []ServiceScopes{
 			{KYC, "See the identity verification level", "Ver o nível de verificação de identidade"},
 		},
 	},
-	{
-		Service: "account",
-		Name:    "CTech Account",
-		Scopes: []ScopeEntry{
-			{"account:profile:read", "Read profile data", "Ler dados do perfil"},
-			{"account:profile:write", "Update profile data", "Atualizar dados do perfil"},
-			{"account:sessions:read", "List active sessions", "Listar sessões ativas"},
-			{"account:sessions:revoke", "Revoke sessions", "Revogar sessões"},
-		},
-	},
+	// Account's API permissions are bootstrapped from the embedded v2 Resource
+	// Server manifest. They intentionally do not remain duplicated here.
 	// dfe resources mirror ctech-dfe's RBAC permission names (verb.resource with
 	// verbs get/list/create/update/delete). A scope's action maps mechanically:
 	// read → get.* + list.*, write → create.* + update.* + delete.* — so dfe can
@@ -138,11 +130,12 @@ var defaultCatalog = []ServiceScopes{
 	// couldn't tell ctech-wallet's audience apart from another service's.
 	{
 		Service:  "internal:account",
-		Name:     "Internal — CTech Account",
+		Name:     "Internal — CTech Account bootstrap",
 		Audience: "https://accounts.aoctech.app",
 		Internal: true,
 		Scopes: []ScopeEntry{
-			{InternalAccountKYC, "Check KYC details", "Obter detalhes do KYC"},
+			// This root permission must exist before the Account Resource Server
+			// can bootstrap. Once v2 is present, its manifest overrides this row.
 			{InternalAccountScopeRegistryWrite, "Publish a resource server scope manifest", "Publicar o manifesto de escopos de um servidor de recursos"},
 		},
 	},

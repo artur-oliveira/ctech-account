@@ -29,6 +29,9 @@ type Problem struct {
 	// RetryAfterSeconds tells the client how long to wait before retrying a
 	// rate-limited request (see KYCResendCooldown).
 	RetryAfterSeconds int64 `json:"retry_after_seconds,omitempty"`
+	// RequiredScope identifies the exact permission needed by a protected
+	// resource endpoint (see InsufficientScope).
+	RequiredScope string `json:"required_scope,omitempty"`
 }
 
 func (p *Problem) Error() string { return p.Detail }
@@ -95,6 +98,13 @@ func TokenReuse(instance string) *Problem {
 
 func Forbidden(detail, instance string) *Problem {
 	return newProblem("forbidden", "Forbidden", http.StatusForbidden, detail, instance)
+}
+
+func InsufficientScope(scope, instance string) *Problem {
+	p := newProblem("insufficient-scope", "Insufficient Scope", http.StatusForbidden,
+		"The access token does not include the required permission.", instance)
+	p.RequiredScope = scope
+	return p
 }
 
 func NotFound(resource, instance string) *Problem {

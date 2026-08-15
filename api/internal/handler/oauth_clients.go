@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // OAuthClientsHandler exposes self-service OAuth application management.
@@ -21,11 +22,11 @@ func NewOAuthClientsHandler(clientSvc *oauthclient.Service, auditSvc *audit.Serv
 }
 
 func (h *OAuthClientsHandler) Register(account fiber.Router, stepUp fiber.Handler) {
-	account.Get("/oauth-clients", h.list)
-	account.Post("/oauth-clients", stepUp, h.create)
-	account.Put("/oauth-clients/:id", stepUp, h.update)
-	account.Delete("/oauth-clients/:id", stepUp, h.remove)
-	account.Post("/oauth-clients/:id/regenerate-secret", stepUp, h.regenerateSecret)
+	account.Get("/oauth-clients", middleware.RequireScope(scopes.AccountOAuthClientsRead), h.list)
+	account.Post("/oauth-clients", middleware.RequireScope(scopes.AccountOAuthClientsWrite), stepUp, h.create)
+	account.Put("/oauth-clients/:id", middleware.RequireScope(scopes.AccountOAuthClientsWrite), stepUp, h.update)
+	account.Delete("/oauth-clients/:id", middleware.RequireScope(scopes.AccountOAuthClientsWrite), stepUp, h.remove)
+	account.Post("/oauth-clients/:id/regenerate-secret", middleware.RequireScope(scopes.AccountOAuthClientsWrite), stepUp, h.regenerateSecret)
 }
 
 // clientResponse renders a client without ever exposing the secret hash.

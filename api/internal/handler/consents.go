@@ -7,6 +7,7 @@ import (
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // ConsentsHandler exposes the user's "connected applications" — OAuth clients
@@ -22,8 +23,8 @@ func NewConsentsHandler(consentSvc *consent.Service, clientRepo oauthclient.Repo
 }
 
 func (h *ConsentsHandler) Register(account fiber.Router) {
-	account.Get("/consents", h.list)
-	account.Delete("/consents/:clientID", h.revoke)
+	account.Get("/consents", middleware.RequireScope(scopes.AccountConsentsRead), h.list)
+	account.Delete("/consents/:clientID", middleware.RequireScope(scopes.AccountConsentsRevoke), h.revoke)
 }
 
 func (h *ConsentsHandler) list(c fiber.Ctx) error {

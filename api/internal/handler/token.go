@@ -373,6 +373,19 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		// back to the OIDC-grantable set so in-flight sessions keep working.
 		granted = []string{scopes.OpenID, scopes.Profile, scopes.Email, scopes.KYC}
 	}
+	// Before Account became a first-class Resource Server, the trusted SPA's
+	// refresh grants persisted only OIDC scopes even though azp alone unlocked
+	// every self-service route. Reconcile those already-authorized first-party
+	// grants with the now-explicit account:* permissions. This narrow migration
+	// does not apply to any third-party/downstream client and therefore does not
+	// weaken the general no-scope-widening invariant below.
+	if clientID == h.cfg.SelfClientID && oauthClient.FirstParty {
+		for _, required := range scopes.AccountUserScopes() {
+			if !slices.Contains(granted, required) {
+				granted = append(granted, required)
+			}
+		}
+	}
 	scp := oauthClient.FilterScopes(granted)
 
 	// The kyc_level claim reflects the level at refresh time, so a Confirm

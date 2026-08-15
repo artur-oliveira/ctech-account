@@ -152,6 +152,24 @@ func main() {
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
 	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
 	oauthClientSvc := oauthclientDomain.NewService(oauthClientRepo, scopesCatalogSvc)
+	accountResource, accountResourceChanged, err := scopeRegistrySvc.BootstrapAccount(ctx, cfg.Audience, cfg.AppVersion)
+	if err != nil {
+		log.Fatalf("bootstrapping Account Resource Server: %v", err)
+	}
+	log.Printf("Account Resource Server ready (revision=%d changed=%v audience=%s)", accountResource.Revision, accountResourceChanged, accountResource.Audience)
+
+	selfScopes := append([]string{scopesPkg.OpenID, scopesPkg.Profile, scopesPkg.Email}, scopesPkg.AccountUserScopes()...)
+	selfClient, selfClientChanged, err := oauthclientDomain.NewOperatorService(oauthClientRepo, scopesCatalogSvc).EnsureFirstPartyPublicClient(
+		ctx,
+		cfg.SelfClientID,
+		"CTech Account",
+		strings.TrimRight(cfg.AppURL, "/")+"/login/callback",
+		selfScopes,
+	)
+	if err != nil {
+		log.Fatalf("bootstrapping Account frontend OAuth client: %v", err)
+	}
+	log.Printf("Account frontend OAuth client ready (client_id=%s changed=%v scopes=%d)", selfClient.ID(), selfClientChanged, len(selfClient.AllowedScopes))
 	consentSvc := consentDomain.NewService(consentRepo)
 	totpSvc := totpDomain.NewService(db, cfg.TablePrefix)
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
@@ -195,7 +213,7 @@ func main() {
 	}
 
 	// Handlers
-	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL)
+	wellknownH := handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL, cfg.Audience)
 	auditRepo := auditDomain.NewRepository(db, cfg.TablePrefix)
 	auditSvc := auditDomain.NewService(auditRepo)
 	authH := handler.NewAuthHandler(userSvc, sessionSvc, totpSvc, oauthClientRepo, valkeyClient, cfg, emailCli, auditSvc)
@@ -317,7 +335,7 @@ func main() {
 	passkeyH.RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), userinfoH.UserInfo)
 
-	account := v1.Group("/account", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), perUserLimiter)
+	account := v1.Group("/account", middleware.RequireAuth(jwtSvc), perUserLimiter)
 	stepUp := middleware.RequireRecentMFA(middleware.StepUpMaxAge)
 	profileH.Register(account, stepUp)
 	sessionsH.Register(account)

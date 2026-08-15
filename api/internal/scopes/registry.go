@@ -26,12 +26,70 @@ func NewRegistryService(repo ResourceRepository, cacheClient *cache.Client) *Reg
 	return &RegistryService{repo: repo, cache: cacheClient}
 }
 
+// BootstrapAccount installs the Account API's embedded manifest without an
+// OAuth round trip. Account is both Authorization Server and Resource Server,
+// so using a confidential publisher client here would create a circular first
+// boot dependency. The reserved system publisher cannot be provisioned through
+// the public/operator client commands.
+func (s *RegistryService) BootstrapAccount(ctx context.Context, audience, sourceRevision string) (*ResourceServer, bool, error) {
+	manifest, err := AccountManifest()
+	if err != nil {
+		return nil, false, err
+	}
+	if err := ValidateAudience(audience); err != nil {
+		return nil, false, err
+	}
+
+	current, err := s.repo.GetResource(ctx, AccountResourceID)
+	if errors.Is(err, ErrResourceNotFound) {
+		now := time.Now().UTC().Format(time.RFC3339)
+		initial := &ResourceServer{
+			PK: ResourceCatalogPK, SK: AccountResourceID,
+			DisplayName: manifest.DisplayName, Audience: audience,
+			PublisherClientID: SystemAccountPublisher, Scopes: []ScopeDefinition{},
+			Revision: 0, UpdatedAt: now, UpdatedBy: SystemAccountPublisher,
+		}
+		if createErr := s.repo.CreateResource(ctx, initial); createErr != nil && !errors.Is(createErr, ErrResourceAlreadyExists) {
+			return nil, false, createErr
+		}
+		current, err = s.repo.GetResource(ctx, AccountResourceID)
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if current.Audience != audience || current.PublisherClientID != SystemAccountPublisher {
+		return nil, false, fmt.Errorf("%w: Account resource audience or system ownership does not match runtime configuration", ErrInvalidResource)
+	}
+
+	resource, changed, err := s.Publish(
+		ctx,
+		SystemAccountPublisher,
+		manifest,
+		current.Revision,
+		"ctech-account",
+		sourceRevision,
+	)
+	if errors.Is(err, ErrRevisionConflict) {
+		// Concurrent ASG starts may race on the first reconciliation. Treat the
+		// winner's identical manifest as success, but never hide a real conflict.
+		latest, getErr := s.repo.GetResource(ctx, AccountResourceID)
+		if getErr != nil {
+			return nil, false, getErr
+		}
+		hash, hashErr := ManifestHash(manifest)
+		if hashErr == nil && latest.ManifestHash == hash {
+			return latest, false, nil
+		}
+	}
+	return resource, changed, err
+}
+
 func (s *RegistryService) Get(ctx context.Context, id string) (*ResourceServer, error) {
 	return s.repo.GetResource(ctx, id)
 }
 
 func (s *RegistryService) Provision(ctx context.Context, id, displayName, audience, publisherClientID string) (*ResourceServer, error) {
-	if !validResourceID(id) || id == IdentityService || id == "account" || id == InternalServicePrefix {
+	if !validResourceID(id) || id == IdentityService || id == AccountResourceID || id == InternalServicePrefix {
 		return nil, fmt.Errorf("%w: invalid or reserved resource_server_id", ErrInvalidResource)
 	}
 	if displayName == "" || publisherClientID == "" {

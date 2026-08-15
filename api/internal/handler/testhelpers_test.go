@@ -216,7 +216,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
 
-	account := v1.Group("/account", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
+	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
 	stepUp := middleware.RequireRecentMFA(middleware.StepUpMaxAge)
 	handler.NewProfileHandler(userSvc, sessionSvc, auditSvc).Register(account, stepUp)
 	handler.NewSessionsHandler(sessionSvc, auditSvc).Register(account)
@@ -231,7 +231,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	kycH.Register(account, stepUp)
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))
 
-	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL).Register(app)
+	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL, cfg.Audience).Register(app)
 
 	socialCache := cache.NewInMemory()
 	handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc).Register(v1)
@@ -433,7 +433,7 @@ func (ta *testApp) issueMachineToken(t *testing.T, clientID string, scopes []str
 // issueStaleToken mints a user token without fresh MFA proof (fails step-up).
 func (ta *testApp) issueStaleToken(t *testing.T, userID string) string {
 	t.Helper()
-	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", []string{"openid", "profile"}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), 0, nil, "")
+	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", testAccountScopes(), "http://localhost", []string{"http://localhost"}, time.Now().Unix(), 0, nil, "")
 	if err != nil {
 		t.Fatalf("issuing stale token: %v", err)
 	}
@@ -463,11 +463,15 @@ func (ta *testApp) doWithToken(method, path string, body any, token string) *htt
 
 func (ta *testApp) issueToken(t *testing.T, userID string) string {
 	t.Helper()
-	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", []string{"openid", "profile"}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
+	token, err := ta.jwtSvc.SignAccessToken(userID, "sess-test", "test-client", testAccountScopes(), "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
 	return token
+}
+
+func testAccountScopes() []string {
+	return append([]string{scopesPkg.OpenID, scopesPkg.Profile, scopesPkg.Email}, scopesPkg.AccountUserScopes()...)
 }
 
 // issueTokenWithScopes mirrors issueToken but accepts an explicit scope
@@ -545,6 +549,21 @@ func (memScopesRepo) LoadCatalog(_ context.Context) ([]scopesPkg.ServiceScopes, 
 }
 
 func (memScopesRepo) PutService(_ context.Context, _ scopesPkg.ServiceScopes) error { return nil }
+
+func (memScopesRepo) LoadResources(_ context.Context) ([]scopesPkg.ResourceServer, error) {
+	manifest, err := scopesPkg.AccountManifest()
+	if err != nil {
+		return nil, err
+	}
+	for i := range manifest.Scopes {
+		manifest.Scopes[i].Description = manifest.Scopes[i].Descriptions["en"]
+		manifest.Scopes[i].DescriptionPT = manifest.Scopes[i].Descriptions["pt-BR"]
+	}
+	return []scopesPkg.ResourceServer{{
+		SK: scopesPkg.AccountResourceID, DisplayName: manifest.DisplayName,
+		Audience: "http://localhost", Scopes: manifest.Scopes,
+	}}, nil
+}
 
 // newTestCatalogService builds a CatalogService over the seed with cache disabled.
 func newTestCatalogService() *scopesPkg.CatalogService {

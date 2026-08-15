@@ -9,6 +9,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	scopeCatalog "gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // KYCHandler serves the user-facing identity verification routes and the
@@ -26,13 +27,13 @@ func NewKYCHandler(kycSvc *kyc.Service, auditSvc *audit.Service) *KYCHandler {
 // Register mounts the user-facing routes on the account group. Everything
 // that writes identity data sits behind step-up.
 func (h *KYCHandler) Register(account fiber.Router, stepUp fiber.Handler) {
-	account.Get("/kyc", h.get)
-	account.Post("/kyc/basic", stepUp, h.submitBasic)
-	account.Post("/kyc/basic/verify-phone", stepUp, h.verifyPhone)
-	account.Post("/kyc/basic/resend-code", stepUp, h.resendCode)
-	account.Post("/kyc/documents", stepUp, h.presignDocument)
-	account.Post("/kyc/documents/confirm", stepUp, h.confirmDocument)
-	account.Post("/kyc/enhanced", stepUp, h.submitEnhanced)
+	account.Get("/kyc", middleware.RequireScope(scopeCatalog.AccountKYCRead), h.get)
+	account.Post("/kyc/basic", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.submitBasic)
+	account.Post("/kyc/basic/verify-phone", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.verifyPhone)
+	account.Post("/kyc/basic/resend-code", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.resendCode)
+	account.Post("/kyc/documents", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.presignDocument)
+	account.Post("/kyc/documents/confirm", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.confirmDocument)
+	account.Post("/kyc/enhanced", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.submitEnhanced)
 }
 
 // RegisterInternalGet mounts the one service-to-service route ctech-wallet

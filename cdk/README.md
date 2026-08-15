@@ -218,9 +218,12 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
    issuer/browser parameters remain public by design.
 2. Seed signing keys in SSM `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`) via
    `api/cmd/rotatekeys` (see root `README.md` §First Deploy).
-3. Seed the `accounts` OAuth client (the SPA default — `SELF_CLIENT_ID`/`NEXT_PUBLIC_OAUTH_CLIENT_ID` both default to `accounts`) in `{env}_account_oauth_clients`
-   (`CLIENT_accounts`, `first_party: true`).
-4. Seed the scope catalog in `{env}_ctech_scopes` via `api/cmd/seedscopes`.
+3. Seed the OIDC/bootstrap scope catalog in `{env}_ctech_scopes` via
+   `api/cmd/seedscopes`.
+4. Start/deploy the API. Startup reconciles `RESOURCE_SERVER/account` from its
+   embedded manifest and creates/updates the system-owned `accounts` OAuth
+   client (`SELF_CLIENT_ID`; callback `${APP_URL}/login/callback`) with every
+   required `account:*` scope. No direct OAuth-client DynamoDB seed is needed.
 5. Provision each downstream Resource Server and bound publisher once with
    `api/cmd/createresource` (DFe, Wallet and Poker); see
    `docs/resource-server-scope-registry.md`.

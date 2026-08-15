@@ -13,6 +13,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 const (
@@ -112,7 +113,7 @@ func NewTermsHandler(userSvc *user.Service, auditSvc *audit.Service) *TermsHandl
 }
 
 func (h *TermsHandler) Register(account fiber.Router) {
-	account.Post("/terms/accept", h.accept)
+	account.Post("/terms/accept", middleware.RequireScope(scopes.AccountTermsWrite), h.accept)
 }
 
 type acceptTermsRequest struct {

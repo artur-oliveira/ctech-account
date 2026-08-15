@@ -7,6 +7,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 const (
@@ -30,7 +31,7 @@ func NewActivityHandler(auditSvc *audit.Service) *ActivityHandler {
 }
 
 func (h *ActivityHandler) Register(account fiber.Router) {
-	account.Get("/activity", h.list)
+	account.Get("/activity", middleware.RequireScope(scopes.AccountActivityRead), h.list)
 }
 
 func (h *ActivityHandler) list(c fiber.Ctx) error {

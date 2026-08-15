@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // memClientRepo is an in-memory oauthclient.Repository for tests.
@@ -876,6 +878,41 @@ func TestRefresh_DoesNotEscalateScopes(t *testing.T) {
 			if strings.Contains(string(payload), "kyc_level") {
 				t.Fatalf("refreshed access token leaked kyc_level claim: %s", payload)
 			}
+		}
+	}
+}
+
+func TestRefresh_SelfClientMigratesLegacyAccountPermissions(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	ta.cfg.SelfClientID = "accounts"
+	allowed := append([]string{"openid", "profile", "email"}, scopes.AccountUserScopes()...)
+	if err := ta.clientRepo.Create(context.Background(), &oauthclient.OAuthClient{
+		PK: oauthclient.BuildPK("accounts"), ClientType: "public", FirstParty: true,
+		OwnerUserID: oauthclient.SystemOwnerUserID, AllowedScopes: allowed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess, _, err := ta.sessionSvc.Create(context.Background(), "legacy-user", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := ta.sessionSvc.IssueClientToken(context.Background(), "legacy-user", sess.ID(), "accounts", []string{"openid", "profile", "email"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := ta.postForm("/v1.0/token", url.Values{
+		"grant_type": {"refresh_token"}, "client_id": {"accounts"}, "refresh_token": {raw},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("refresh: status=%d body=%s", resp.StatusCode, bodyString(resp))
+	}
+	var body struct {
+		Scope string `json:"scope"`
+	}
+	readJSON(t, resp, &body)
+	for _, required := range scopes.AccountUserScopes() {
+		if !slices.Contains(strings.Fields(body.Scope), required) {
+			t.Errorf("refreshed self-client grant missing %q: %s", required, body.Scope)
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 type PasskeyHandler struct {
@@ -33,11 +34,11 @@ func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessi
 // open (it is the enrollment path); deletion requires a recent MFA proof.
 func (h *PasskeyHandler) RegisterManagement(account fiber.Router, stepUp fiber.Handler) {
 	pk := account.Group("/mfa/passkeys")
-	pk.Get("/", h.list)
-	pk.Post("/register/begin", h.registerBegin)
+	pk.Get("/", middleware.RequireScope(scopes.AccountMFARead), h.list)
+	pk.Post("/register/begin", middleware.RequireScope(scopes.AccountMFAWrite), h.registerBegin)
 	// Complete: session_token + name as query params; raw WebAuthn credential JSON as body.
-	pk.Post("/register/complete", h.registerComplete)
-	pk.Delete("/:id", stepUp, h.delete)
+	pk.Post("/register/complete", middleware.RequireScope(scopes.AccountMFAWrite), h.registerComplete)
+	pk.Delete("/:id", middleware.RequireScope(scopes.AccountMFAWrite), stepUp, h.delete)
 }
 
 // RegisterAuth registers the unauthenticated passkey authentication routes under /auth.

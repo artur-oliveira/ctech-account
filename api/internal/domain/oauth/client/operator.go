@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -93,6 +94,68 @@ func (s *OperatorService) CreateResourcePublisher(ctx context.Context, clientID,
 		return nil, "", fmt.Errorf("managed resource id is required")
 	}
 	return s.createM2M(ctx, clientID, name, []string{scopes.InternalAccountScopeRegistryWrite}, strings.TrimSpace(managedResourceID))
+}
+
+// EnsureFirstPartyPublicClient creates or reconciles the Authorization
+// Server's own SPA client. It is intentionally operator-only: promoting an
+// arbitrary self-service client to FirstParty would bypass consent.
+func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clientID, name, redirectURI string, requiredScopes []string) (*OAuthClient, bool, error) {
+	clientID = strings.TrimSpace(clientID)
+	name = strings.TrimSpace(name)
+	if len(clientID) < minOperatorClientIDLength || len(clientID) > maxOperatorClientIDLength || !operatorClientIDPattern.MatchString(clientID) {
+		return nil, false, ErrInvalidClientID
+	}
+	if name == "" || len(name) > maxOperatorClientNameLen {
+		return nil, false, ErrInvalidClientName
+	}
+	if err := validateRedirectURIs([]string{redirectURI}); err != nil {
+		return nil, false, err
+	}
+	if len(requiredScopes) == 0 || scopes.Validate(requiredScopes) != "" {
+		return nil, false, ErrScopesRequired
+	}
+
+	client, err := s.repo.GetByID(ctx, clientID)
+	if errors.Is(err, ErrNotFound) {
+		client = &OAuthClient{
+			PK: BuildPK(clientID), Name: name, ClientType: TypePublic,
+			RedirectURIs: []string{redirectURI}, AllowedScopes: append([]string(nil), requiredScopes...),
+			FirstParty: true, OwnerUserID: SystemOwnerUserID,
+		}
+		if err := s.repo.Create(ctx, client); err != nil {
+			return nil, false, fmt.Errorf("creating first-party public client: %w", err)
+		}
+		return client, true, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("loading first-party public client: %w", err)
+	}
+	if !client.IsPublic() || !client.FirstParty || client.OwnerUserID != SystemOwnerUserID {
+		return nil, false, fmt.Errorf("existing self client %q is not a system-owned first-party public client", clientID)
+	}
+
+	redirects := append([]string(nil), client.RedirectURIs...)
+	if !slices.Contains(redirects, redirectURI) {
+		redirects = append(redirects, redirectURI)
+	}
+	allowed := append([]string(nil), client.AllowedScopes...)
+	for _, scope := range requiredScopes {
+		if !slices.Contains(allowed, scope) {
+			allowed = append(allowed, scope)
+		}
+	}
+	if client.Name == name && slices.Equal(redirects, client.RedirectURIs) && slices.Equal(allowed, client.AllowedScopes) {
+		return client, false, nil
+	}
+	if err := s.repo.Update(ctx, clientID, map[string]any{
+		"name": name, "redirect_uris": redirects, "allowed_scopes": allowed,
+	}); err != nil {
+		return nil, false, fmt.Errorf("updating first-party public client: %w", err)
+	}
+	client.Name = name
+	client.RedirectURIs = redirects
+	client.AllowedScopes = allowed
+	return client, true, nil
 }
 
 func (s *OperatorService) createM2M(ctx context.Context, clientID, name string, allowedScopes []string, managedResourceID string) (*OAuthClient, string, error) {

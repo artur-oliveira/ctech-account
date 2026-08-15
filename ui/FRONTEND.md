@@ -95,12 +95,14 @@ Top-level:
 - The `OAuthClient` is configured once (`lib/oauth-client.ts:5`) with
   `baseUrl: API_URL`, **`clientId: CLIENT_ID`** (`ui/src/lib/env.ts:6` =
   `NEXT_PUBLIC_OAUTH_CLIENT_ID ?? 'accounts'`),
-  `redirectUri: <origin>/login/callback`, `scope: 'openid profile email'`.
+  `redirectUri: <origin>/login/callback`, and `ACCOUNT_OAUTH_SCOPE`: the three
+  OIDC scopes plus the explicit `account:*` permissions used by every Account
+  management screen.
 - `startOAuthFlow` (`lib/auth-flow.ts`) calls `oauthClient.startOAuthFlow(continue)`.
   The package generates the **PKCE verifier/challenge + `state`** in
   `sessionStorage`, then redirects the browser to
   `/v1.0/authorize?client_id=<CLIENT_ID>&redirect_uri=<origin>/login/callback
-  &response_type=code&scope=openid+profile+email&state=...&code_challenge=...
+  &response_type=code&scope=openid+profile+email+account%3A...&state=...&code_challenge=...
   &code_challenge_method=S256`.
 - **`max_age=0` step-up from a sibling app**: if `continueURL` already starts
   with `/v1.0/` (e.g. a wallet `authorize?client_id=wallet&max_age=0`
@@ -137,6 +139,9 @@ Top-level:
 - **Response 403 `step-up-required`** (`type` ends with `step-up-required`):
   open `StepUpDialog` via `useStepUpStore.request()`; after the user proves MFA
   (dialog already refreshed the token) retry the original request once.
+- **Response 403 `insufficient-scope`**: refresh and retry once. This migrates
+  pre-Resource-Server refresh grants of the trusted Account client; the API
+  widens only that system-owned `SELF_CLIENT_ID`, never third-party grants.
 
 ### 7. Step-up — `components/step-up-dialog.tsx`
 - Opened by the interceptor. Offers TOTP (`stepUpTOTPAPI` →
@@ -165,13 +170,18 @@ Top-level:
 > authorize→callback→refresh choreography above. It is shared by ctech-dfe and
 > ctech-wallet too, so a change here ships to all three SPAs.
 
-## `accounts-ui` client id
+## Account client id and Resource Server scopes
 The SPA's OAuth `client_id` is `CLIENT_ID` (`lib/env.ts:6`) = env
 `NEXT_PUBLIC_OAUTH_CLIENT_ID` **defaulting to `'accounts'`** — **not** `accounts-ui`.
-This matters for the API's `RequireClientID(SELF_CLIENT_ID)` gate on
-`/v1.0/account/*` and `/v1.0/auth/step-up/*`: the token's `azp` claim must
-equal `SELF_CLIENT_ID` (API default `"accounts"`, `api/internal/config/config.go`).
-See `api/ENDPOINTS.md` "Divergences #1" — the CDK seeds an `accounts-ui` client
-while both code defaults are `accounts`; if a deploy points the SPA at
-`accounts-ui` it must also set the API's `SELF_CLIENT_ID=accounts-ui` or every
-account endpoint returns `403`.
+This matters for the API's `RequireClientID(SELF_CLIENT_ID)` gate on the
+SPA-specific `/v1.0/auth/step-up/*` protocol: the token's `azp` claim must equal
+`SELF_CLIENT_ID` (API default `"accounts"`, `api/internal/config/config.go`).
+Account Resource Server endpoints themselves are governed by audience and the
+exact route permission from
+`ACCOUNT_USER_SCOPES`; missing permissions return RFC 7807
+`insufficient-scope` plus a Bearer `WWW-Authenticate` challenge.
+
+The API startup reconciles this system-owned public OAuth client automatically,
+including `${APP_URL}/login/callback` and the full scope set. If a deployment
+overrides `NEXT_PUBLIC_OAUTH_CLIENT_ID`, it must set the same `SELF_CLIENT_ID` in
+the API; otherwise step-up calls return `403`.

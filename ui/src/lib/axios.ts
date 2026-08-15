@@ -9,6 +9,7 @@ export {API_URL, CLIENT_ID}
 
 /** RFC 7807 problem type slug the API answers on step-up-protected routes. */
 const STEP_UP_PROBLEM = 'step-up-required'
+const INSUFFICIENT_SCOPE_PROBLEM = 'insufficient-scope'
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -27,6 +28,12 @@ function isStepUpRequired(error: unknown): boolean {
   if (!_isAxiosError(error) || error.response?.status !== 403) return false
   const problem = error.response.data as { type?: string } | undefined
   return typeof problem?.type === 'string' && problem.type.endsWith(STEP_UP_PROBLEM)
+}
+
+function isInsufficientScope(error: unknown): boolean {
+  if (!_isAxiosError(error) || error.response?.status !== 403) return false
+  const problem = error.response.data as { type?: string } | undefined
+  return typeof problem?.type === 'string' && problem.type.endsWith(INSUFFICIENT_SCOPE_PROBLEM)
 }
 
 api.interceptors.response.use(
@@ -50,9 +57,22 @@ api.interceptors.response.use(
       useAuthStore.getState().clearAuth()
       clearAuthHint()
       // A failed refresh must restart the document with all in-memory auth state cleared.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       if (typeof window !== 'undefined') window.location.href = '/login'
       return Promise.reject(error)
+    }
+
+    // Account Resource Server rollout: an old refresh grant may predate the
+    // explicit account:* permissions. The trusted self client reconciles those
+    // scopes during refresh, so refresh once and retry an insufficient_scope
+    // response. Other clients remain clamped to their original grant.
+    if (isInsufficientScope(error) && !original._scopeRetry && !isAuthEndpoint && hasAuthHint()) {
+      original._scopeRetry = true
+      const result = await oauthClient.refresh()
+      if (result) {
+        useAuthStore.getState().setAccessToken(result.accessToken)
+        original.headers.Authorization = `Bearer ${result.accessToken}`
+        return api(original)
+      }
     }
 
     // Step-up gate: open the challenge dialog, and after the user proves MFA

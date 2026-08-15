@@ -48,7 +48,7 @@ type Config struct {
 
 	// Email (SES)
 	FromEmail string // FROM_EMAIL env var
-	AppURL    string // APP_URL env var — base URL for links in emails (defaults to BaseURL)
+	AppURL    string // APP_URL env var — public Account resource/link URL (defaults to BaseURL)
 
 	// Google OAuth
 	GoogleClientID     string
@@ -71,10 +71,10 @@ type Config struct {
 	TrustedProxies []string
 
 	// SelfClientID is the OAuth client_id of this service's own first-party
-	// frontend (ui/). /v1.0/account/* and /v1.0/step-up/* are self-service
-	// account-management endpoints — never meant to be reachable by any other
-	// OAuth client (dfe included) — and are gated on the token's azp claim
-	// matching this value, since no scope currently governs them.
+	// frontend (ui/). It gates the SPA-specific /v1.0/auth/step-up/* protocol.
+	// Account Resource Server routes are instead governed by audience and exact
+	// account:* scopes, so delegated clients and API keys can receive narrow
+	// access without impersonating this client.
 	SelfClientID string
 
 	// AccessTokenTTL is the lifetime of signed access tokens. It threads into

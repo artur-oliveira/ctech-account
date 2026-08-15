@@ -1,6 +1,6 @@
 # API Endpoints — `ctech-account`
 
-Anchored to the code as of 2026-08-12. Traced from route registration
+Anchored to the code as of 2026-08-14. Traced from route registration
 (`api/cmd/api/main.go`) through each handler in `api/internal/handler` →
 service → repository. The only source of truth is the implementation; where the
 code and the prose README diverge, the code wins (see "Divergences" at the end).
@@ -14,7 +14,10 @@ code and the prose README diverge, the code wins (see "Divergences" at the end).
   - `RequireAuth(jwtSvc)` — verifies `Authorization: Bearer` JWT, populates locals
     (`middleware/auth.go:20`).
   - `RequireClientID(id)` — token `azp` claim must equal `id` (`middleware/auth.go:135`).
-    Guards self-service account endpoints (no scope governs them).
+    Guards the SPA-specific step-up protocol; Account Resource Server routes do
+    not require a particular OAuth client.
+  - `RequireScope(scope)` — token must carry the exact operation permission;
+    otherwise returns `403 insufficient-scope` and an OAuth Bearer challenge.
   - `RequireInternalScope(scope)` — bearer token with empty `sid` (machine token)
     carrying the scope (`middleware/auth.go:148`).
   - `RequireRecentMFA(maxAge)` — JWT `last_mfa_at` claim within `maxAge`
@@ -33,8 +36,9 @@ code and the prose README diverge, the code wins (see "Divergences" at the end).
   `config.AccessTokenTTL`); `ctech_rt` cookie max-age `90*24*3600` (`token.go:26`).
 - **User vs M2M**: "M2M" = `client_credentials` (service-to-service, no `sid`)
   and the internal KYC read; `api_key` grant mints a token from a user-owned key
-  consumed by resource servers. Everything under `/account/*` and `/auth/step-up/*`
-  is a **user** endpoint gated on `azp == SELF_CLIENT_ID`.
+  consumed by resource servers. `/account/*` accepts user and API-key tokens by
+  exact scope; `/auth/step-up/*` is a **user** protocol endpoint gated on
+  `azp == SELF_CLIENT_ID`.
 
 ---
 
@@ -47,12 +51,16 @@ Response: `issuer`, `authorization_endpoint`, `token_endpoint`,
 `response_types_supported`, `scopes_supported`, `id_token_signing_alg_values_supported`,
 `token_endpoint_auth_methods_supported`, `claims_supported`,
 `code_challenge_methods_supported`, `grant_types_supported`
-(`internal/handler/wellknown.go:23`).
-> Note: `grant_types_supported` lists only `authorization_code` + `refresh_token`,
-> but `api_key` and `client_credentials` are implemented (see Divergences).
+(`internal/handler/wellknown.go`). OIDC `scopes_supported` contains identity
+scopes only; Account API scopes are advertised by RFC 9728 below.
 
 ### `GET /.well-known/jwks.json`
 Returns `{ "keys": [...] }` from `jwtSvc.PublicKeyJWKs()` (`wellknown.go:44`). No auth.
+
+### `GET /.well-known/oauth-protected-resource`
+RFC 9728 metadata for `RESOURCE_SERVER/account`: `{ resource,
+authorization_servers, scopes_supported }`. `resource` is the runtime
+`AUDIENCE`; supported scopes come from the embedded Account manifest. No auth.
 
 ---
 
@@ -201,7 +209,10 @@ form field; `client_id` required (`token.go:308`). `sessionSvc.RotateClientToken
 detects reuse (`TokenReuse`) / expiry / client mismatch. Rotates the `ctech_rt`
 cookie. Scopes are clamped to the originally-granted set re-filtered by the
 client's current allowed scopes (`token.go:369-375`); `kyc_level` claim refreshed if
-`kyc` scope present. Same cookie/public-vs-confidential rule as above.
+`kyc` scope present. The one migration exception is the system-owned
+`SELF_CLIENT_ID`: legacy grants receive the explicit `account:*` permissions
+that previously existed implicitly behind its `azp` gate. No other client is
+widened. Same cookie/public-vs-confidential rule as above.
 
 **`api_key`** (user-owned key, consumed by resource servers) — `{ api_key }`
 (`token.go:110`). Authenticates the raw key, signs an access token with
@@ -246,10 +257,17 @@ Query `session_token`; body = raw WebAuthn assertion. Finishes passkey auth,
 
 ---
 
-## Account — `GET/POST/PUT/DELETE /v1.0/account/*`  *(user; `RequireAuth` + `RequireClientID(SELF_CLIENT_ID)` + 100 req/min/user)*
+## Account — `GET/POST/PUT/DELETE /v1.0/account/*`  *(`RequireAuth` + exact `account:*` scope + 100 req/min/subject)*
 
 `stepUp` in a route below means the handler is additionally wrapped in
 `RequireRecentMFA(StepUpMaxAge=5min)` (`main.go:298`).
+
+Scope mapping: profile read/write → `account:profile:read|write`; password and
+linked login methods → `account:security:write`; sessions →
+`account:sessions:read|revoke`; API keys and OAuth clients → their respective
+`read|write`; consents → `read|revoke`; activity → `account:activity:read`;
+KYC and MFA → their respective `read|write`; terms acceptance →
+`account:terms:write`.
 
 ### Profile
 - `GET /v1.0/account/profile` → `{ user_id, email, first_name, last_name,
@@ -357,34 +375,9 @@ birth_date, address }` (`kyc.go:158`). No human-facing scope governs this.
 
 ---
 
-## Divergences from the prose docs (flagged, not "fixed")
+## Known implementation note
 
-1. **`accounts` vs `accounts-ui` client-id mismatch (real).** The account-management
-   gate is `RequireClientID(cfg.SelfClientID)`, and `SELF_CLIENT_ID` defaults to
-   `"accounts"` (`internal/config/config.go:156`). The frontend's OAuth client id is
-   `CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? 'accounts'`
-   (`ui/src/lib/env.ts:6`) — also defaulting to `accounts`. But the CDK first-deploy
-   instructions tell you to **seed an `accounts-ui` OAuth client**
-   (`cdk/README.md:201`, `cdk/CLAUDE.md:184`), and the root `README.md:455`
-   *claims* the default `"accounts"` "matches the `accounts-ui` seed" — which it
-   does **not** (`accounts` ≠ `accounts-ui`). For a deploy that seeds `accounts-ui`
-   and points the SPA at it (`NEXT_PUBLIC_OAUTH_CLIENT_ID=accounts-ui`), the token's
-   `azp` becomes `accounts-ui` and **every `/v1.0/account/*` and `/v1.0/auth/step-up/*`
-   call returns `403 Forbidden`** unless `SELF_CLIENT_ID` is *also* set to
-   `accounts-ui`. The repo sets neither env var in CDK (`cdk/lib/compute-stack.ts`
-   injects no `SELF_CLIENT_ID` / `NEXT_PUBLIC_OAUTH_CLIENT_ID`). The prior agent's
-   hypothesis was mis-named (`OAUTH_CLIENT_ID=accounts-ui`) but the underlying
-   three-way divergence (seeded `accounts-ui` vs defaults `accounts`) is genuine and
-   should be reconciled in deployment (seed `accounts`, or set both env vars to
-   `accounts-ui`).
-
-2. **Discovery doc omits two grant types.** `GET /.well-known/openid-configuration`
-   advertises `grant_types_supported: [authorization_code, refresh_token]`, but
-   `POST /v1.0/token` also implements `api_key` (`token.go:99`) and
-   `client_credentials` (`token.go:101`). `scopes_supported` is likewise limited to
-   `openid/profile/email` while the catalog exposes many more (see `GET /v1.0/scopes`).
-
-3. **`authorize` issues a code with `MFAVerified:false` hardcoded**
+1. **`authorize` issues a code with `MFAVerified:false` hardcoded**
    (`authorize.go:193`) regardless of the session's actual MFA state — the field
    exists but is not propagated to the token. Hypothesized: MFA freshness is instead
    enforced downstream via `max_age`/`RequireRecentMFA`, so the field is currently

@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 type ProfileHandler struct {
@@ -24,14 +25,14 @@ func NewProfileHandler(userSvc *user.Service, sessionSvc *session.Service, audit
 }
 
 func (h *ProfileHandler) Register(account fiber.Router, stepUp fiber.Handler) {
-	account.Get("/profile", h.get)
-	account.Put("/profile", h.update)
-	account.Put("/password", stepUp, h.changePassword)
-	account.Post("/password", h.setInitialPassword)
+	account.Get("/profile", middleware.RequireScope(scopes.AccountProfileRead), h.get)
+	account.Put("/profile", middleware.RequireScope(scopes.AccountProfileWrite), h.update)
+	account.Put("/password", middleware.RequireScope(scopes.AccountSecurityWrite), stepUp, h.changePassword)
+	account.Post("/password", middleware.RequireScope(scopes.AccountSecurityWrite), h.setInitialPassword)
 	// Unlink Google: step-up gated because removing a login method is
 	// security-sensitive. Linking is driven by the authenticated Google
 	// callback (social.go) and audited there.
-	account.Delete("/link/google", stepUp, h.unlinkGoogle)
+	account.Delete("/link/google", middleware.RequireScope(scopes.AccountSecurityWrite), stepUp, h.unlinkGoogle)
 }
 
 func (h *ProfileHandler) get(c fiber.Ctx) error {

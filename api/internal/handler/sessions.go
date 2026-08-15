@@ -6,6 +6,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 type SessionsHandler struct {
@@ -18,9 +19,9 @@ func NewSessionsHandler(sessionSvc *session.Service, auditSvc *audit.Service) *S
 }
 
 func (h *SessionsHandler) Register(account fiber.Router) {
-	account.Get("/sessions", h.list)
-	account.Delete("/sessions/:id", h.revoke)
-	account.Delete("/sessions", h.revokeAll)
+	account.Get("/sessions", middleware.RequireScope(scopes.AccountSessionsRead), h.list)
+	account.Delete("/sessions/:id", middleware.RequireScope(scopes.AccountSessionsRevoke), h.revoke)
+	account.Delete("/sessions", middleware.RequireScope(scopes.AccountSessionsRevoke), h.revokeAll)
 }
 
 func (h *SessionsHandler) list(c fiber.Ctx) error {

@@ -22,9 +22,9 @@ func NewAPIKeysHandler(apiKeySvc *apikey.Service, catalogSvc *scopes.CatalogServ
 }
 
 func (h *APIKeysHandler) Register(account fiber.Router, stepUp fiber.Handler) {
-	account.Get("/api-keys", h.list)
-	account.Post("/api-keys", stepUp, h.create)
-	account.Delete("/api-keys/:id", h.revoke)
+	account.Get("/api-keys", middleware.RequireScope(scopes.AccountAPIKeysRead), h.list)
+	account.Post("/api-keys", middleware.RequireScope(scopes.AccountAPIKeysWrite), stepUp, h.create)
+	account.Delete("/api-keys/:id", middleware.RequireScope(scopes.AccountAPIKeysWrite), h.revoke)
 }
 
 func (h *APIKeysHandler) list(c fiber.Ctx) error {

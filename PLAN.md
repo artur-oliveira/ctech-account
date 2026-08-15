@@ -109,7 +109,14 @@
 - [x] `/verify-email` — reads `?token=`, calls POST /v1.0/auth/verify-email on mount, shows success/error
 - [x] `/login` — added "Forgot password?" link + Google sign-in button (redirects to /v1.0/auth/google)
 - [x] i18n strings (en + pt-BR): forgotPassword, resetPassword, verifyEmail namespaces
-- [ ] `accounts-ui` OAuth client must be registered in DynamoDB before first login
+- [x] `accounts` OAuth client is created/reconciled automatically at API startup
+
+### Resource Server scope ownership
+
+- [x] Downstream Resource Servers publish versioned manifests through bound confidential clients
+- [x] Account is registered as `RESOURCE_SERVER/account` from its embedded system-owned manifest
+- [x] Account routes enforce exact `account:*` scopes in addition to the trusted SPA `azp`
+- [x] Account exposes RFC 9728 metadata at `/.well-known/oauth-protected-resource`
 
 ---
 

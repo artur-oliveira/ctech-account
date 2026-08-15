@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // Changing the password must revoke every OTHER session (e.g. a stolen refresh
@@ -20,7 +21,7 @@ func TestChangePassword_RevokesOtherSessions(t *testing.T) {
 	_, _, _ = app.sessionSvc.Create(ctx, u.ID(), "Firefox", "5.6.7.8", "UA-other", []string{sessionDomain.AMRPassword})
 
 	token, _ := app.jwtSvc.SignAccessToken(u.ID(), current.ID(), "test-client",
-		[]string{"openid"}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
+		[]string{"openid", scopes.AccountSecurityWrite}, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
 
 	resp := app.doWithToken(http.MethodPut, "/v1.0/account/password", map[string]any{
 		"current_password": "pass1234",

@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // TOTPManagementService is the full interface the MFA management handler needs.
@@ -38,11 +39,11 @@ func NewMFAHandler(totpSvc TOTPManagementService, userSvc *user.Service, cfg *co
 // a recent MFA proof; setup/confirm stay open — they ARE the enrollment path.
 func (h *MFAHandler) Register(account fiber.Router, stepUp fiber.Handler) {
 	mfa := account.Group("/mfa")
-	mfa.Get("/totp", h.totpStatus)
-	mfa.Get("/totp/setup", h.totpSetup)
-	mfa.Post("/totp/confirm", h.totpConfirm)
-	mfa.Delete("/totp", stepUp, h.totpRemove)
-	mfa.Post("/totp/backup-codes", stepUp, h.totpRegenerateBackupCodes)
+	mfa.Get("/totp", middleware.RequireScope(scopes.AccountMFARead), h.totpStatus)
+	mfa.Get("/totp/setup", middleware.RequireScope(scopes.AccountMFAWrite), h.totpSetup)
+	mfa.Post("/totp/confirm", middleware.RequireScope(scopes.AccountMFAWrite), h.totpConfirm)
+	mfa.Delete("/totp", middleware.RequireScope(scopes.AccountMFAWrite), stepUp, h.totpRemove)
+	mfa.Post("/totp/backup-codes", middleware.RequireScope(scopes.AccountMFAWrite), stepUp, h.totpRegenerateBackupCodes)
 }
 
 func (h *MFAHandler) totpStatus(c fiber.Ctx) error {

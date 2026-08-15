@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "resource_server_id": "account",
+  "display_name": "CTech Account",
+  "scopes": [
+    {
+      "name": "account:profile:read",
+      "descriptions": {
+        "en": "Read the account profile.",
+        "pt-BR": "Consultar o perfil da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:profile:write",
+      "descriptions": {
+        "en": "Update the account profile.",
+        "pt-BR": "Atualizar o perfil da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:security:write",
+      "descriptions": {
+        "en": "Manage the account password and linked sign-in methods.",
+        "pt-BR": "Gerenciar a senha e os métodos de acesso vinculados à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:sessions:read",
+      "descriptions": {
+        "en": "List active account sessions.",
+        "pt-BR": "Listar as sessões ativas da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:sessions:revoke",
+      "descriptions": {
+        "en": "Revoke account sessions.",
+        "pt-BR": "Revogar sessões da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:activity:read",
+      "descriptions": {
+        "en": "Read the account security activity log.",
+        "pt-BR": "Consultar o histórico de atividades de segurança da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:api-keys:read",
+      "descriptions": {
+        "en": "List API keys owned by the account.",
+        "pt-BR": "Listar as chaves de API pertencentes à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:api-keys:write",
+      "descriptions": {
+        "en": "Create and revoke API keys owned by the account.",
+        "pt-BR": "Criar e revogar chaves de API pertencentes à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:oauth-clients:read",
+      "descriptions": {
+        "en": "List OAuth clients owned by the account.",
+        "pt-BR": "Listar os clientes OAuth pertencentes à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:oauth-clients:write",
+      "descriptions": {
+        "en": "Create, update and remove OAuth clients owned by the account.",
+        "pt-BR": "Criar, atualizar e remover clientes OAuth pertencentes à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:consents:read",
+      "descriptions": {
+        "en": "List applications connected to the account.",
+        "pt-BR": "Listar as aplicações conectadas à conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:consents:revoke",
+      "descriptions": {
+        "en": "Revoke application consent grants.",
+        "pt-BR": "Revogar consentimentos concedidos a aplicações."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:mfa:read",
+      "descriptions": {
+        "en": "Read enrolled multi-factor authentication methods.",
+        "pt-BR": "Consultar os métodos de autenticação multifator cadastrados."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:mfa:write",
+      "descriptions": {
+        "en": "Enroll, update and remove multi-factor authentication methods.",
+        "pt-BR": "Cadastrar, atualizar e remover métodos de autenticação multifator."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:kyc:read",
+      "descriptions": {
+        "en": "Read the account identity-verification status.",
+        "pt-BR": "Consultar o status de verificação de identidade da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:kyc:write",
+      "descriptions": {
+        "en": "Submit and update account identity-verification data.",
+        "pt-BR": "Enviar e atualizar os dados de verificação de identidade da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "account:terms:write",
+      "descriptions": {
+        "en": "Accept pending legal terms for the account.",
+        "pt-BR": "Aceitar os termos jurídicos pendentes da conta."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "internal:account:kyc",
+      "descriptions": {
+        "en": "Read complete identity-verification details for an account.",
+        "pt-BR": "Consultar os dados completos de verificação de identidade de uma conta."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
+      "name": "internal:account:scope-registry:write",
+      "descriptions": {
+        "en": "Publish a Resource Server scope manifest.",
+        "pt-BR": "Publicar o manifesto de escopos de um Servidor de Recursos."
+      },
+      "visibility": "internal",
+      "status": "active"
+    }
+  ]
+}

@@ -90,52 +90,53 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/token`                                       | —                                      | OAuth token endpoint (`authorization_code`, `refresh_token`, `api_key`, `client_credentials` grants)                                                                                                |
 | `GET`    | `/v1.0/userinfo`                                    | Bearer                                 | OIDC UserInfo                                                                                                                                                                                       |
 | `GET`    | `/v1.0/scopes`                                      | —                                      | Grantable-scope catalog (code + descriptions, grouped by service) for UI pickers                                                                                                                    |
-| `GET`    | `/v1.0/account/profile`                             | Bearer                                 | Get profile (includes `terms_pending: {tos, privacy}`, `has_password`, and `google_linked` — drive the in-app terms gate and the Link/Unlink Google UI)                                             |
-| `PATCH`  | `/v1.0/account/profile`                             | Bearer                                 | Update profile                                                                                                                                                                                      |
-| `POST`   | `/v1.0/account/terms/accept`                        | Bearer                                 | Re-accept the documents whose version moved (`accept_tos` / `accept_privacy`); returns the cleared `terms_pending`                                                                                  |
-| `PUT`    | `/v1.0/account/password`                            | Bearer                                 | Change password (revokes all other sessions)                                                                                                                                                        |
-| `POST`   | `/v1.0/account/password`                            | Bearer                                 | Set the first password on a Google-created account                                                                                                                                                  |
-| `DELETE` | `/v1.0/account/link/google`                         | Bearer + step-up                       | Unlink the bound Google identity (refused for passwordless accounts, which would lose their only login method)                                                                                      |
-| `GET`    | `/v1.0/account/sessions`                            | Bearer                                 | List active sessions                                                                                                                                                                                |
-| `DELETE` | `/v1.0/account/sessions`                            | Bearer                                 | Revoke all other sessions                                                                                                                                                                           |
-| `DELETE` | `/v1.0/account/sessions/:id`                        | Bearer                                 | Revoke a specific session                                                                                                                                                                           |
-| `GET`    | `/v1.0/account/activity`                            | Bearer                                 | Security activity log (cursor pagination: `?cursor=&limit=`, newest first, 400-day retention)                                                                                                       |
-| `GET`    | `/v1.0/account/api-keys`                            | Bearer                                 | List API keys                                                                                                                                                                                       |
-| `POST`   | `/v1.0/account/api-keys`                            | Bearer                                 | Create API key                                                                                                                                                                                      |
-| `DELETE` | `/v1.0/account/api-keys/:id`                        | Bearer                                 | Revoke API key                                                                                                                                                                                      |
-| `GET`    | `/v1.0/account/oauth-clients`                       | Bearer                                 | List OAuth applications owned by the user                                                                                                                                                           |
-| `POST`   | `/v1.0/account/oauth-clients`                       | Bearer                                 | Register an OAuth application (`client_secret` returned once for confidential clients)                                                                                                              |
-| `PUT`    | `/v1.0/account/oauth-clients/:id`                   | Bearer                                 | Update name / redirect URIs / scopes / audience                                                                                                                                                     |
-| `DELETE` | `/v1.0/account/oauth-clients/:id`                   | Bearer                                 | Delete an OAuth application                                                                                                                                                                         |
-| `POST`   | `/v1.0/account/oauth-clients/:id/regenerate-secret` | Bearer                                 | Rotate the client secret (returned once)                                                                                                                                                            |
-| `GET`    | `/v1.0/account/kyc`                                 | Bearer                                 | KYC status: `{state, level, cpf_masked, legal_name, birth_date, phone_masked, basic_verified_at, documents, rejection_reason, submitted_at, expires_at, verified_at}`                               |
-| `POST`   | `/v1.0/account/kyc/basic`                           | Bearer + step-up                       | Submit Basic identity data `{cpf, legal_name, birth_date, phone_number}` → validates CPF/age/phone, sends an SMS OTP, `basic/pending`                                                               |
-| `POST`   | `/v1.0/account/kyc/basic/verify-phone`              | Bearer + step-up                       | `{code}` → `basic/verified` on a correct 6-digit code                                                                                                                                               |
-| `POST`   | `/v1.0/account/kyc/basic/resend-code`               | Bearer + step-up                       | Resends the OTP; 60s cooldown (`429` + `Retry-After`-equivalent `retry_after_seconds`)                                                                                                              |
-| `POST`   | `/v1.0/account/kyc/documents`                       | Bearer + step-up                       | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_with_document`; requires `basic/verified` first                               |
-| `POST`   | `/v1.0/account/kyc/documents/confirm`               | Bearer + step-up                       | `{document_id, type}` → records the upload (verified via HeadObject)                                                                                                                                |
-| `POST`   | `/v1.0/account/kyc/enhanced`                        | Bearer + step-up                       | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending`                                                                                                             |
+| `GET`    | `/v1.0/account/profile`                             | `account:profile:read`                  | Get profile (includes `terms_pending: {tos, privacy}`, `has_password`, and `google_linked` — drive the in-app terms gate and the Link/Unlink Google UI)                                             |
+| `PUT`    | `/v1.0/account/profile`                             | `account:profile:write`                 | Update profile                                                                                                                                                                                      |
+| `POST`   | `/v1.0/account/terms/accept`                        | `account:terms:write`                   | Re-accept the documents whose version moved (`accept_tos` / `accept_privacy`); returns the cleared `terms_pending`                                                                                  |
+| `PUT`    | `/v1.0/account/password`                            | `account:security:write` + step-up      | Change password (revokes all other sessions)                                                                                                                                                        |
+| `POST`   | `/v1.0/account/password`                            | `account:security:write`                | Set the first password on a Google-created account                                                                                                                                                  |
+| `DELETE` | `/v1.0/account/link/google`                         | `account:security:write` + step-up      | Unlink the bound Google identity (refused for passwordless accounts, which would lose their only login method)                                                                                      |
+| `GET`    | `/v1.0/account/sessions`                            | `account:sessions:read`                 | List active sessions                                                                                                                                                                                |
+| `DELETE` | `/v1.0/account/sessions`                            | `account:sessions:revoke`               | Revoke all other sessions                                                                                                                                                                           |
+| `DELETE` | `/v1.0/account/sessions/:id`                        | `account:sessions:revoke`               | Revoke a specific session                                                                                                                                                                           |
+| `GET`    | `/v1.0/account/activity`                            | `account:activity:read`                 | Security activity log (cursor pagination: `?cursor=&limit=`, newest first, 400-day retention)                                                                                                       |
+| `GET`    | `/v1.0/account/api-keys`                            | `account:api-keys:read`                 | List API keys                                                                                                                                                                                       |
+| `POST`   | `/v1.0/account/api-keys`                            | `account:api-keys:write` + step-up      | Create API key                                                                                                                                                                                      |
+| `DELETE` | `/v1.0/account/api-keys/:id`                        | `account:api-keys:write`                | Revoke API key                                                                                                                                                                                      |
+| `GET`    | `/v1.0/account/oauth-clients`                       | `account:oauth-clients:read`            | List OAuth applications owned by the user                                                                                                                                                           |
+| `POST`   | `/v1.0/account/oauth-clients`                       | `account:oauth-clients:write` + step-up | Register an OAuth application (`client_secret` returned once for confidential clients)                                                                                                              |
+| `PUT`    | `/v1.0/account/oauth-clients/:id`                   | `account:oauth-clients:write` + step-up | Update name / redirect URIs / scopes / audience                                                                                                                                                     |
+| `DELETE` | `/v1.0/account/oauth-clients/:id`                   | `account:oauth-clients:write` + step-up | Delete an OAuth application                                                                                                                                                                         |
+| `POST`   | `/v1.0/account/oauth-clients/:id/regenerate-secret` | `account:oauth-clients:write` + step-up | Rotate the client secret (returned once)                                                                                                                                                            |
+| `GET`    | `/v1.0/account/kyc`                                 | `account:kyc:read`                      | KYC status: `{state, level, cpf_masked, legal_name, birth_date, phone_masked, basic_verified_at, documents, rejection_reason, submitted_at, expires_at, verified_at}`                               |
+| `POST`   | `/v1.0/account/kyc/basic`                           | `account:kyc:write` + step-up           | Submit Basic identity data `{cpf, legal_name, birth_date, phone_number}` → validates CPF/age/phone, sends an SMS OTP, `basic/pending`                                                               |
+| `POST`   | `/v1.0/account/kyc/basic/verify-phone`              | `account:kyc:write` + step-up           | `{code}` → `basic/verified` on a correct 6-digit code                                                                                                                                               |
+| `POST`   | `/v1.0/account/kyc/basic/resend-code`               | `account:kyc:write` + step-up           | Resends the OTP; 60s cooldown (`429` + `Retry-After`-equivalent `retry_after_seconds`)                                                                                                              |
+| `POST`   | `/v1.0/account/kyc/documents`                       | `account:kyc:write` + step-up           | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_with_document`; requires `basic/verified` first                               |
+| `POST`   | `/v1.0/account/kyc/documents/confirm`               | `account:kyc:write` + step-up           | `{document_id, type}` → records the upload (verified via HeadObject)                                                                                                                                |
+| `POST`   | `/v1.0/account/kyc/enhanced`                        | `account:kyc:write` + step-up           | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending`                                                                                                             |
 | `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation)                                                                                                         |
 | `GET`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token                  | Current manifest and revision ETag                                                                                                                                                                  |
 | `PUT`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token + `If-Match`     | Idempotently reconcile the service-owned scope manifest                                                                                                                                             |
-| `GET`    | `/v1.0/account/consents`                            | Bearer                                 | List connected apps (consent grants)                                                                                                                                                                |
-| `DELETE` | `/v1.0/account/consents/:clientID`                  | Bearer                                 | Revoke a consent grant                                                                                                                                                                              |
+| `GET`    | `/v1.0/account/consents`                            | `account:consents:read`                 | List connected apps (consent grants)                                                                                                                                                                |
+| `DELETE` | `/v1.0/account/consents/:clientID`                  | `account:consents:revoke`               | Revoke a consent grant                                                                                                                                                                              |
 | `POST`   | `/v1.0/auth/mfa/challenge`                          | —                                      | Exchange MFA token + TOTP code for session (TOTP is the only MFA method — passkey is never a second factor)                                                                                         |
 | `POST`   | `/v1.0/auth/step-up`                                | Bearer                                 | Step-up challenge: `{method:"totp",code}` → stamps fresh MFA proof on the session (rate-limited)                                                                                                    |
 | `POST`   | `/v1.0/auth/step-up/passkeys/begin`                 | Bearer                                 | Step-up WebAuthn assertion challenge for the current user                                                                                                                                           |
 | `POST`   | `/v1.0/auth/step-up/passkeys/complete`              | Bearer                                 | Validate step-up assertion → stamps fresh MFA proof                                                                                                                                                 |
 | `POST`   | `/v1.0/auth/passkeys/authenticate/begin`            | —                                      | Discoverable WebAuthn challenge used by the explicit passkey button and privacy-preserving Conditional UI — passkey is a primary, password-replacing factor                                         |
 | `POST`   | `/v1.0/auth/passkeys/authenticate/complete`         | —                                      | Validate assertion → session cookie                                                                                                                                                                 |
-| `GET`    | `/v1.0/account/mfa/totp/setup`                      | Bearer                                 | Generate TOTP provisioning URI                                                                                                                                                                      |
-| `POST`   | `/v1.0/account/mfa/totp/confirm`                    | Bearer                                 | Activate TOTP + get backup codes                                                                                                                                                                    |
-| `DELETE` | `/v1.0/account/mfa/totp`                            | Bearer                                 | Remove TOTP from account                                                                                                                                                                            |
-| `POST`   | `/v1.0/account/mfa/totp/backup-codes`               | Bearer                                 | Regenerate backup codes                                                                                                                                                                             |
-| `GET`    | `/v1.0/account/mfa/passkeys`                        | Bearer                                 | List registered passkeys                                                                                                                                                                            |
-| `POST`   | `/v1.0/account/mfa/passkeys/register/begin`         | Bearer                                 | WebAuthn registration challenge                                                                                                                                                                     |
-| `POST`   | `/v1.0/account/mfa/passkeys/register/complete`      | Bearer                                 | Validate attestation → persist credential                                                                                                                                                           |
-| `DELETE` | `/v1.0/account/mfa/passkeys/:id`                    | Bearer                                 | Remove a passkey                                                                                                                                                                                    |
+| `GET`    | `/v1.0/account/mfa/totp/setup`                      | `account:mfa:write`                     | Generate TOTP provisioning URI                                                                                                                                                                      |
+| `POST`   | `/v1.0/account/mfa/totp/confirm`                    | `account:mfa:write`                     | Activate TOTP + get backup codes                                                                                                                                                                    |
+| `DELETE` | `/v1.0/account/mfa/totp`                            | `account:mfa:write` + step-up           | Remove TOTP from account                                                                                                                                                                            |
+| `POST`   | `/v1.0/account/mfa/totp/backup-codes`               | `account:mfa:write` + step-up           | Regenerate backup codes                                                                                                                                                                             |
+| `GET`    | `/v1.0/account/mfa/passkeys`                        | `account:mfa:read`                      | List registered passkeys                                                                                                                                                                            |
+| `POST`   | `/v1.0/account/mfa/passkeys/register/begin`         | `account:mfa:write`                     | WebAuthn registration challenge                                                                                                                                                                     |
+| `POST`   | `/v1.0/account/mfa/passkeys/register/complete`      | `account:mfa:write`                     | Validate attestation → persist credential                                                                                                                                                           |
+| `DELETE` | `/v1.0/account/mfa/passkeys/:id`                    | `account:mfa:write` + step-up           | Remove a passkey                                                                                                                                                                                    |
 | `GET`    | `/.well-known/openid-configuration`                 | —                                      | OIDC Discovery document                                                                                                                                                                             |
 | `GET`    | `/.well-known/jwks.json`                            | —                                      | JSON Web Key Set                                                                                                                                                                                    |
+| `GET`    | `/.well-known/oauth-protected-resource`             | —                                      | RFC 9728 metadata for the Account Resource Server                                                                                                                                                   |
 | `GET`    | `/v1.0/health-check`                                | —                                      | Health check (`application/health+json`)                                                                                                                                                            |
 
 ---
@@ -181,7 +182,8 @@ Two scope families:
   flow. `kyc` adds the `kyc_level` claim (`""` | `"basic"` | `"verified"`) to access tokens, id_tokens
   and userinfo — CPF, birth date and legal name never enter tokens.
 - **Service scopes**: `service:resource:action` (e.g. `dfe:nfe:issue`, `account:*:read`) —
-  permissions on a downstream resource server. `*` is allowed as a full resource or action
+  permissions on a Resource Server. Account is itself a Resource Server in addition to being
+  the Authorization Server. `*` is allowed as a full resource or action
   segment; the action segment may be omitted to grant all actions on a resource.
 
 The `internal` service (e.g. `internal:account:kyc`) is machine-to-machine
@@ -207,9 +209,18 @@ removal of an active scope. See
 [`docs/resource-server-scope-registry.md`](docs/resource-server-scope-registry.md)
 for bootstrap, migration, rollback, manifest schema, and CI wiring.
 
-`cmd/seedscopes` remains the compatibility/bootstrap source for OIDC and
-Account-owned scopes. V2 `RESOURCE_SERVER` rows override legacy downstream
-`SERVICE` rows, so the migration can happen without a flag day.
+Account owns `api/internal/scopes/account-scope-manifest.json`. On every API
+startup it reconciles `RESOURCE_SERVER/account` directly as the reserved
+`system://ctech-account` publisher, using `AUDIENCE` as the immutable resource
+identifier. No OAuth client calls the service itself, so first boot has no
+circular dependency. The same bootstrap also creates or reconciles the
+system-owned public `SELF_CLIENT_ID` client with the callback URL and all
+required `account:*` permissions.
+
+`cmd/seedscopes` remains the bootstrap source only for OIDC identity scopes,
+the registry root permission needed before downstream publishers exist, and
+legacy compatibility rows. V2 `RESOURCE_SERVER` rows override matching legacy
+`SERVICE` rows, so migration does not require a flag day.
 
 Services marked `Internal: true` in the seed are hidden from `GET /v1.0/scopes` and
 rejected by self-service client/API-key creation — their scopes are assigned only via
@@ -217,9 +228,9 @@ operator seed. `internal` is a shared machine-to-machine namespace, not a single
 service: each downstream consumer gets its own catalog entry keyed
 `internal:<service>` (e.g. `internal:wallet`) with its own `Audience`, so
 `AudiencesFor` resolves the right `aud` claim per target instead of lumping every
-internal scope under one bucket. After deploying a release that adds catalog entries
-(e.g. `kyc`, `internal:account:kyc`), re-run `go run ./cmd/seedscopes` per
-environment. ctech-wallet's M2M client is seeded confidential + `first_party: true` +
+internal scope under one bucket. Re-run `go run ./cmd/seedscopes` only when a
+built-in OIDC/bootstrap entry changes; Account API permissions reconcile during
+startup. ctech-wallet's M2M client is seeded confidential + `first_party: true` +
 `allowed_scopes: ["internal:account:kyc"]` (direct DynamoDB put, same as
 `accounts-ui`).
 
@@ -428,7 +439,7 @@ All configuration is read from environment variables at startup.
 |------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ENVIRONMENT`                | Yes      | `dev`, `stage`, or `prod`                                                                                                                                                                                                                                                                                                     |
 | `APP_VERSION`                | No       | Release identifier reported as `releaseId` on the health check (default `0.0.1`). Format `YYMMDDHHMM:<7-char commit>`, written by CI into `release.env` inside the deployment artifact and sourced by `start.sh`                                                                                                              |
-| `BASE_URL`                   | Yes      | Go API's **own** public URL, e.g. `https://accountsapi.aoctech.app`. Used for the OAuth issuer/`Audience` default — never the browser-facing origin                                                                                                                                                                           |
+| `BASE_URL`                   | Yes      | Go API's **own** public URL, e.g. `https://accountsapi.aoctech.app`. Used as the OAuth issuer and direct API transport origin — never as the default Resource Server identifier                                                                                                                                                 |
 | `APP_URL`                    | No       | Frontend **SPA** URL, e.g. `https://accounts.aoctech.app` (defaults to `BASE_URL`, which is only correct when API and SPA share an origin, e.g. local dev). This is the origin WebAuthn ceremonies actually run on — `RPID`/`RPOrigins` derive from this, not from `BASE_URL`                                                 |
 | `WEBAUTHN_RPID`              | No       | WebAuthn Relying Party ID (registrable domain, e.g. `aoctech.app`). Defaults to `APP_URL`'s hostname. Set explicitly if multiple SPA subdomains must share credentials; the EC2 bootstrap reads the optional `/ctech-account/{env}/webauthn-rpid` SSM parameter                                                               |
 | `PORT`                       | No       | HTTP port (default `8001`)                                                                                                                                                                                                                                                                                                    |
@@ -439,11 +450,11 @@ All configuration is read from environment variables at startup.
 | `FROM_EMAIL`                 | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled                                                                                                                                                                                                                     |
 | `KYC_DOCUMENTS_BUCKET`       | No       | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable                                                                                                                                                                                                      |
 | `PHONE_VERIFICATION_ENABLED` | No       | `false` unless set to `true`. Gates AWS SNS phone verification — while false, every `/kyc/basic*` route returns `503`. Flip once production SNS SMS access is granted; no redeploy needed beyond the env var                                                                                                                  |
-| `AUDIENCE`                   | No       | Expected `aud` claim on access tokens verified by this service (defaults to `BASE_URL`)                                                                                                                                                                                                                                       |
+| `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
 | `REFRESH_TOKEN_TTL`          | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure                                                                                                                                                                                                                |
 | `TRUSTED_PROXIES`            | No       | Comma-separated IPs/CIDRs whose `X-Forwarded-For` is trusted (e.g. `10.0.0.0/8`)                                                                                                                                                                                                                                              |
-| `SELF_CLIENT_ID`             | No       | OAuth `client_id` of this service's own frontend (default `accounts`, matching the `accounts-ui` seed). `/v1.0/account/*` and `/v1.0/step-up/*` reject any token whose `azp` doesn't match this — they have no scope of their own, so a downstream client's token (dfe's, or any consented third party) must never reach them |
+| `SELF_CLIENT_ID`             | No       | OAuth `client_id` of this service's own frontend (default `accounts`). Startup creates/reconciles this system-owned public client and its `account:*` permissions. `/v1.0/account/*` is governed by audience + exact scope, including delegated/API-key access; the client-specific `/v1.0/auth/step-up/*` flow requires this `azp` |
 
 ---
 
@@ -537,31 +548,7 @@ This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group registered wi
 the CTech HAProxy edge load balancer, CloudFront, IAM roles, and SSM read permissions.
 There is no Lambda or API Gateway.
 
-### 4 — Seed the `accounts-ui` OAuth client in DynamoDB
-
-The frontend SPA uses its own client ID for the authorization code flow. Write this item once
-(schema: `pk = CLIENT_{client_id}` in the `{env}_account_oauth_clients` table):
-
-```bash
-TABLE=production_account_oauth_clients  # adjust to your environment prefix
-
-aws dynamodb put-item --table-name $TABLE --region $REGION --item '{
-  "pk":             {"S": "CLIENT_accounts"},
-  "name":           {"S": "CTech Account"},
-  "client_type":    {"S": "public"},
-  "redirect_uris":  {"L": [{"S": "https://accounts.aoctech.app/login/callback"}]},
-  "allowed_scopes": {"L": [{"S": "openid"}, {"S": "profile"}, {"S": "email"}]},
-  "first_party":    {"BOOL": true},
-  "owner_user_id":  {"S": "system"},
-  "created_at":     {"S": "2026-01-01T00:00:00Z"}
-}'
-```
-
-> `first_party: true` skips the consent screen — set it ONLY on platform-operated
-> clients (accounts UI, dfe). It is deliberately not settable through the
-> self-service API; user-registered applications always go through consent.
-
-### 4b — Seed the scope catalog
+### 4 — Seed the bootstrap scope catalog
 
 `GET /v1.0/scopes` and all scope validation read the `{env}_ctech_scopes` table —
 empty table means no scope can be granted. Seed it once per environment:
@@ -570,6 +557,12 @@ empty table means no scope can be granted. Seed it once per environment:
 cd api
 AWS_REGION=$REGION TABLE_PREFIX=production_ VALKEY_URL=$VALKEY_URL go run ./cmd/seedscopes
 ```
+
+When the API starts, it then creates/reconciles both `RESOURCE_SERVER/account`
+from the embedded manifest and the system-owned `SELF_CLIENT_ID` OAuth client.
+Its callback is `${APP_URL}/login/callback`; no manual DynamoDB client item or
+self-referential confidential publisher is required. Existing SPA refresh
+grants receive the new explicit `account:*` permissions on their next rotation.
 
 ### 5 — Configure the SPA environment (EC2 Auto Scaling Group / CloudFront)
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -98,7 +99,7 @@ func ValidateManifest(m Manifest) error {
 	if m.SchemaVersion != ManifestSchemaV1 {
 		return fmt.Errorf("%w: schema_version must be %d", ErrInvalidResource, ManifestSchemaV1)
 	}
-	if !validResourceID(m.ResourceServerID) || m.ResourceServerID == IdentityService || m.ResourceServerID == "account" || m.ResourceServerID == InternalServicePrefix {
+	if !validResourceID(m.ResourceServerID) || m.ResourceServerID == IdentityService || m.ResourceServerID == InternalServicePrefix {
 		return fmt.Errorf("%w: invalid or reserved resource_server_id", ErrInvalidResource)
 	}
 	if strings.TrimSpace(m.DisplayName) == "" || len(m.DisplayName) > 120 {
@@ -160,10 +161,19 @@ func validResourceID(id string) bool {
 
 func ValidateAudience(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%w: audience must be an absolute HTTPS URL without query or fragment", ErrInvalidResource)
+	}
+	loopbackHTTP := u.Scheme == "http" && (u.Hostname() == "localhost" || isLoopbackIP(u.Hostname()))
+	if u.Scheme != "https" && !loopbackHTTP {
 		return fmt.Errorf("%w: audience must be an absolute HTTPS URL without query or fragment", ErrInvalidResource)
 	}
 	return nil
+}
+
+func isLoopbackIP(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func canonicalManifest(m Manifest) Manifest {

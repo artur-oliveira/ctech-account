@@ -3,6 +3,7 @@ package scopes
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -86,6 +87,52 @@ func TestRegistryPublishIsBoundIdempotentAndRevisioned(t *testing.T) {
 	}
 	if _, _, err := service.Publish(ctx, "scope-publisher-dfe", manifest, 0, "", ""); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale revision error = %v", err)
+	}
+}
+
+func TestBootstrapAccountCreatesSystemOwnedResourceIdempotently(t *testing.T) {
+	repo := &registryRepoStub{}
+	service := NewRegistryService(repo, nil)
+	created, changed, err := service.BootstrapAccount(context.Background(), "https://accounts-api.example.test", "abc123")
+	if err != nil || !changed {
+		t.Fatalf("first bootstrap: resource=%+v changed=%v err=%v", created, changed, err)
+	}
+	if created.ID() != AccountResourceID || created.PublisherClientID != SystemAccountPublisher || created.Revision != 1 {
+		t.Fatalf("unexpected Account resource: %+v", created)
+	}
+	same, changed, err := service.BootstrapAccount(context.Background(), "https://accounts-api.example.test", "def456")
+	if err != nil || changed || same.Revision != 1 {
+		t.Fatalf("idempotent bootstrap: resource=%+v changed=%v err=%v", same, changed, err)
+	}
+	if _, err := service.Provision(context.Background(), AccountResourceID, "Other", "https://other.example.test", "publisher"); !errors.Is(err, ErrInvalidResource) {
+		t.Fatalf("external Account provision error = %v", err)
+	}
+}
+
+func TestAccountManifestMatchesEnforcedUserScopeConstants(t *testing.T) {
+	manifest, err := AccountManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var public []string
+	var hasKYC, hasRegistryRoot bool
+	for _, entry := range manifest.Scopes {
+		if entry.Visibility == VisibilityPublic && entry.Status == StatusActive {
+			public = append(public, entry.Scope)
+		}
+		if entry.Scope == InternalAccountKYC && entry.Visibility == VisibilityInternal {
+			hasKYC = true
+		}
+		if entry.Scope == InternalAccountScopeRegistryWrite && entry.Visibility == VisibilityInternal {
+			hasRegistryRoot = true
+		}
+	}
+	slices.Sort(public)
+	if !slices.Equal(public, AccountUserScopes()) {
+		t.Fatalf("manifest public scopes=%v, enforced scopes=%v", public, AccountUserScopes())
+	}
+	if !hasKYC || !hasRegistryRoot {
+		t.Fatalf("manifest internal scopes: kyc=%v registry-root=%v", hasKYC, hasRegistryRoot)
 	}
 }
 

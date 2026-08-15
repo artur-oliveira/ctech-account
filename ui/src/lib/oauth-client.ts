@@ -2,11 +2,34 @@ import { OAuthClient } from '@aoctech/auth-client'
 import { USE_MOCK } from './mock'
 import { API_URL, CLIENT_ID } from './env'
 
+/** Explicit Resource Server permissions used by the trusted Account SPA. */
+export const ACCOUNT_USER_SCOPES = [
+  'account:profile:read',
+  'account:profile:write',
+  'account:security:write',
+  'account:sessions:read',
+  'account:sessions:revoke',
+  'account:activity:read',
+  'account:api-keys:read',
+  'account:api-keys:write',
+  'account:oauth-clients:read',
+  'account:oauth-clients:write',
+  'account:consents:read',
+  'account:consents:revoke',
+  'account:mfa:read',
+  'account:mfa:write',
+  'account:kyc:read',
+  'account:kyc:write',
+  'account:terms:write',
+] as const
+
+export const ACCOUNT_OAUTH_SCOPE = ['openid', 'profile', 'email', ...ACCOUNT_USER_SCOPES].join(' ')
+
 export const oauthClient = new OAuthClient({
   baseUrl: API_URL,
   clientId: CLIENT_ID,
   redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/login/callback` : '',
-  scope: 'openid profile email',
+  scope: ACCOUNT_OAUTH_SCOPE,
 })
 
 /**

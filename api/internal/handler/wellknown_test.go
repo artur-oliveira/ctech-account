@@ -3,6 +3,8 @@ package handler_test
 import (
 	"net/http"
 	"testing"
+
+	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 func TestOIDCConfiguration(t *testing.T) {
@@ -62,6 +64,26 @@ func TestJWKS(t *testing.T) {
 	}
 	if jwk["alg"] != "RS256" {
 		t.Errorf("expected alg=RS256, got %v", jwk["alg"])
+	}
+}
+
+func TestOAuthProtectedResourceMetadata(t *testing.T) {
+	app := newTestApp(t)
+	resp := app.do(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var body struct {
+		Resource             string   `json:"resource"`
+		AuthorizationServers []string `json:"authorization_servers"`
+		Scopes               []string `json:"scopes_supported"`
+	}
+	readJSON(t, resp, &body)
+	if body.Resource != app.cfg.Audience || len(body.AuthorizationServers) != 1 || body.AuthorizationServers[0] != app.cfg.AppURL {
+		t.Fatalf("unexpected metadata: %+v", body)
+	}
+	if len(body.Scopes) != len(scopesPkg.AccountUserScopes()) {
+		t.Fatalf("scopes_supported=%d, want %d", len(body.Scopes), len(scopesPkg.AccountUserScopes()))
 	}
 }
 
