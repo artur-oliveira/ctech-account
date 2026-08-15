@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
@@ -51,6 +52,14 @@ func (c *Client) SendAccountExistsEmail(ctx context.Context, to, firstName strin
 	subject := "Você já tem uma conta — ctech"
 	body := accountExistsEmailHTML(firstName, c.baseURL+"/login", c.baseURL+"/forgot-password")
 	return c.send(ctx, to, subject, body)
+}
+
+// SendNewDeviceLoginEmail notifies the user of a successful login from a
+// device/country combination not seen on any of their prior sessions.
+func (c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, deviceName, city, country, ip string, when time.Time) error {
+	subject := "Novo login detectado — ctech"
+	body := newDeviceLoginEmailHTML(deviceName, city, country, ip, when)
+	return c.send(ctx, to, subject, newDeviceLoginEmailLayout(firstName, body))
 }
 
 func (c *Client) send(ctx context.Context, to, subject, htmlBody string) error {
@@ -108,6 +117,33 @@ func passwordResetEmailHTML(firstName, link string) string {
   ` + ctaButton("Redefinir senha", link)
 	return emailLayout("Redefinir senha", firstName, body,
 		"Se você não solicitou isso, ignore este e-mail — sua senha não será alterada.")
+}
+
+func newDeviceLoginEmailHTML(deviceName, city, country, ip string, when time.Time) string {
+	location := city
+	if country != "" {
+		if location != "" {
+			location += ", "
+		}
+		location += country
+	}
+	if location == "" {
+		location = "localização desconhecida"
+	}
+	return fmt.Sprintf(`<p>Detectamos um login na sua conta a partir de um dispositivo ou local que não reconhecemos:</p>
+  <ul>
+    <li><strong>Dispositivo:</strong> %s</li>
+    <li><strong>Local:</strong> %s</li>
+    <li><strong>IP:</strong> %s</li>
+    <li><strong>Quando:</strong> %s</li>
+  </ul>
+  <p>Se foi você, pode ignorar este e-mail. Se não reconhece este acesso, redefina sua senha imediatamente.</p>`,
+		deviceName, location, ip, when.UTC().Format("02/01/2006 15:04 MST"))
+}
+
+func newDeviceLoginEmailLayout(firstName, bodyHTML string) string {
+	return emailLayout("Novo login detectado", firstName, bodyHTML,
+		"Se não foi você, redefina sua senha e revise os dispositivos conectados em sua conta.")
 }
 
 func accountExistsEmailHTML(firstName, loginLink, resetLink string) string {
