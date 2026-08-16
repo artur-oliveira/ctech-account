@@ -134,13 +134,13 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   kyc: {
     title: 'Política de Verificação de Identidade (KYC)',
     description: 'Critérios, revisão e proteção de dados da verificação de identidade.',
-    version: '1.0',
-    updatedAt,
+    version: '1.1',
+    updatedAt: '16 de agosto de 2026',
     intro: 'A verificação de identidade reduz fraude e pode ser exigida para funcionalidades de maior risco, especialmente operações da Wallet e produtos com dinheiro real.',
     sections: [
       {
         heading: '1. Informações solicitadas',
-        paragraphs: ['A CTech poderá solicitar CPF, nome civil, data de nascimento, endereço, frente e verso de documento oficial e capturas de selfie orientadas para prova de presença. Documentos devem ser legíveis, válidos e pertencer ao titular da conta.']
+        paragraphs: ['A CTech poderá solicitar CPF, nome civil, data de nascimento, telefone, endereço, frente e verso de documento oficial e uma selfie estática do titular segurando o documento. Documentos devem ser legíveis, válidos e pertencer ao titular da conta.']
       },
       {
         heading: '2. Análise humana',
@@ -152,7 +152,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: '4. Tratamento e retenção',
-        paragraphs: ['Dados são tratados para execução contratual, prevenção à fraude, exercício regular de direitos e obrigações aplicáveis, conforme a natureza do dado e da operação. Capturas biométricas são acessadas apenas por pessoal autorizado e eliminadas após a decisão quando não houver fundamento para conservação. Registros mínimos podem ser preservados para fraude, auditoria e defesa de direitos.']
+        paragraphs: ['Dados são tratados para execução contratual, prevenção à fraude, exercício regular de direitos e obrigações aplicáveis, conforme a natureza do dado e da operação. A imagem de selfie com documento é acessada apenas por pessoal autorizado e eliminada ou mantida somente quando houver fundamento para conservação, fraude, auditoria ou defesa de direitos.']
       },
       {
         heading: '5. Segurança e compartilhamento',
@@ -271,8 +271,8 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   dfe: {
     title: 'Termos Adicionais — CTech DF-e',
     description: 'Condições específicas do serviço de documentos fiscais eletrônicos.',
-    version: '2.0',
-    updatedAt,
+    version: '2.1',
+    updatedAt: '16 de agosto de 2026',
     versions: DFE_VERSION_HISTORY,
     intro: 'Estes Termos complementam os Termos de Uso, a Política de Privacidade e o DPA da CTech.',
     sections: [
@@ -294,7 +294,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: '5. Guarda e exportação',
-        paragraphs: ['XML e representações ficam disponíveis conforme o plano e a legislação. O cliente deve manter cópias e exportar dados antes do encerramento, sem prejuízo da retenção legal aplicável.']
+        paragraphs: ['Enquanto o cliente mantiver uma relação ativa com a CTech, os XMLs serão armazenados pelo prazo mínimo de 5 (cinco) anos, observadas regras fiscais mais específicas. Após exclusão completa da conta, os arquivos poderão ser excluídos em até 1 (um) mês, desde que não exista obrigação legal de conservação aplicável.', 'O cliente é responsável por manter cópias de segurança e exportar seus arquivos antes do encerramento. A CTech não garante a manutenção dos arquivos após a exclusão e o prazo informado.']
       },
     ],
   },
@@ -336,10 +336,10 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   wallet: {
     title: 'Termos Adicionais — CTech Wallet',
     description: 'Condições de saldo, Pix, saques e pagamentos internos.',
-    version: '2.1',
+    version: '2.2',
     updatedAt: '25 de julho de 2026',
     versions: WALLET_VERSION_HISTORY,
-    intro: 'A Wallet é uma carteira digital que opera por meio de parceiro de infraestrutura financeira regulado pelo Banco Central (BaaS). Cada usuário possui conta de pagamento individual e segregada. A CTech não é instituição financeira e a Wallet não constitui conta bancária.',
+    intro: 'A Wallet utiliza a infraestrutura financeira da ASAAS Gestão Financeira Instituição de Pagamento S.A. (código 461, CNPJ 19.540.550/0001-21). Cada usuário possui conta de pagamento individual e segregada junto ao parceiro. A CTech não é instituição financeira e a Wallet não constitui conta bancária.',
     sections: [
       {
         heading: '1. Contas individuais e segregação',
@@ -387,7 +387,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   'wallet-v2': {
     title: 'Termos Adicionais — CTech Wallet',
     description: 'Condições de saldo, Pix, saques e pagamentos internos.',
-    version: '2.0',
+    version: '2.1',
     versions: WALLET_VERSION_HISTORY,
     updatedAt,
     intro: 'A Wallet é uma carteira interna para pagamentos no ecossistema CTech e operações Pix realizadas por integração com instituição financeira parceira. Não é conta bancária e a CTech não é instituição financeira.',
@@ -570,8 +570,8 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   poker: {
     title: 'Termos Adicionais — CTech Poker',
     description: 'Condições específicas para mesas de poker online.',
-    version: '2.0',
-    updatedAt,
+    version: '2.1',
+    updatedAt: '16 de agosto de 2026',
     versions: POKER_VERSION_HISTORY,
     intro: 'O CTech Poker oferece mesas de jogo de habilidade, com créditos de entretenimento (sandbox) e, quando habilitado, saldo real por meio da Wallet. A plataforma cobra taxas fixas de serviço por sala ou torneio, sem rake percentual sobre potes em dinheiro real.',
     sections: [
@@ -579,6 +579,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
         heading: '1. Elegibilidade e acesso',
         paragraphs: [
           'O acesso a mesas com saldo real exige maioridade (18+), verificação de identidade (KYC) e localização em jurisdição permitida.',
+          'O CTech Poker é estruturado como jogo de habilidade entre participantes, no qual cada jogador toma decisões que influenciam o resultado. A CTech não oferece apostas de quota fixa nem recebe rake sobre potes ou premiações.',
           'O usuário é responsável por verificar a legalidade do jogo em sua jurisdição. É proibido o uso de VPN, proxy ou qualquer mecanismo para contornar restrições geográficas.'
         ]
       },
@@ -613,7 +614,7 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '6. Transparência e código aberto',
         paragraphs: [
-          'O algoritmo de embaralhamento é publicamente auditável. Ao final de cada partida, o usuário pode verificar a seed criptográfica utilizada.',
+          'O algoritmo de embaralhamento é publicamente auditável. Em mãos encerradas com showdown, a seed do servidor é revelada para verificação; nas demais, a plataforma disponibiliza prova criptográfica por posição sem expor cartas não reveladas.',
           'A publicação de código aumenta a transparência, mas não autoriza acesso à infraestrutura de produção, engenharia social ou manipulação de partidas.'
         ]
       },
@@ -732,29 +733,29 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
   billing: {
     title: 'Termos Adicionais — CTech Billing',
     description: 'Condições de assinaturas e cobranças dos serviços CTech.',
-    version: '1.0',
-    updatedAt,
-    intro: 'O Billing gerencia planos, recorrência e cobrança de serviços CTech utilizando saldo da Wallet. Pix Automático ou outros meios somente valerão quando expressamente habilitados.',
+    version: '1.1',
+    updatedAt: '16 de agosto de 2026',
+    intro: 'O Billing gerencia planos, recorrência, faturas e cobrança de serviços CTech. No modelo atualmente disponibilizado, cada fatura pagável gera uma cobrança Pix por meio da Wallet; Pix Automático ou outro débito recorrente só valerá se for expressamente habilitado e informado antes da contratação.',
     sections: [
       {
-        heading: '1. Planos e autorização',
-        paragraphs: ['Preço, periodicidade, recursos, impostos e data de cobrança são apresentados na contratação. Ao assinar, o usuário autoriza cobranças recorrentes na Wallet até cancelamento.']
+        heading: '1. Planos, faturas e pagamento',
+        paragraphs: ['Preço, periodicidade, recursos, impostos e data de cobrança são apresentados na contratação. A assinatura gera faturas conforme o plano contratado. Quando houver valor a pagar, o Billing poderá apresentar QR Code e código Pix para pagamento, com prazo de vencimento e expiração informados na fatura ou no checkout.', 'O pagamento só é considerado concluído após confirmação e conciliação. A CTech não realiza débito recorrente em saldo da Wallet no modelo atual. Pix Automático ou outro meio de cobrança recorrente somente será utilizado se for habilitado e apresentado ao usuário antes da respectiva contratação.']
       },
       {
-        heading: '2. Falha de cobrança',
-        paragraphs: ['Saldo insuficiente ou falha operacional pode gerar novas tentativas, aviso, período de tolerância e suspensão do serviço. O pagamento posterior pode reativar o acesso sem restaurar dados já eliminados após os prazos informados.']
+        heading: '2. Vencimento e inadimplência',
+        paragraphs: ['O Billing poderá enviar lembretes de vencimento e disponibilizar novo acesso ao checkout enquanto a fatura permanecer pagável. Como o Pix é iniciado pelo pagador, uma cobrança não paga não gera tentativa automática de débito.', 'Após o vencimento, poderão ocorrer período de tolerância, suspensão ou cancelamento do serviço, conforme informado no plano e na fatura. O pagamento posterior poderá reativar o acesso quando tecnicamente possível, sem restaurar dados já eliminados após os prazos aplicáveis.']
       },
       {
         heading: '3. Alterações e cancelamento',
-        paragraphs: ['Upgrade, downgrade e cancelamento produzem efeitos conforme indicado antes da confirmação. O cancelamento impede novas renovações, mas normalmente preserva acesso até o fim do período já pago.']
+        paragraphs: ['Upgrade, downgrade e cancelamento produzem efeitos conforme indicado antes da confirmação. O cancelamento pode ser imediato ou programado para o fim do período, conforme a opção exibida. Em regra, o cancelamento programado impede nova fatura e preserva acesso até o fim do período já pago.']
       },
       {
-        heading: '4. Reembolso',
-        paragraphs: ['Pedidos são avaliados conforme oferta, uso, falha comprovada e direitos obrigatórios do consumidor. Não são afastados o direito de arrependimento nem outras garantias indisponíveis quando aplicáveis.']
+        heading: '4. Reembolso, crédito e atendimento',
+        paragraphs: ['Pedidos de reembolso ou crédito são avaliados conforme a oferta, o uso, falha comprovada e direitos obrigatórios do consumidor. Não são afastados o direito de arrependimento nem outras garantias indisponíveis quando aplicáveis.', 'Solicitações relacionadas a cobrança, cancelamento ou arrependimento podem ser encaminhadas para billing@aoctech.app.']
       },
       {
         heading: '5. Tributos e documentos',
-        paragraphs: ['Preços incluem ou discriminam tributos conforme aplicável. A emissão de documento fiscal ocorrerá segundo a legislação e a disponibilidade do fluxo implementado.']
+        paragraphs: ['Preços incluem ou discriminam tributos conforme aplicável. A integração automática com o CTech DF-e para emissão de NFS-e ainda não está disponível; quando implementada, a emissão seguirá a legislação aplicável e os dados necessários serão tratados para essa finalidade.']
       },
     ],
   },

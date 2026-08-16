@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: 'Termos de Uso',
 }
 
-const TOS_VERSION = '3.0'
-const UPDATED_AT = '15 de julho de 2026'
+const TOS_VERSION = '3.2'
+const UPDATED_AT = '16 de agosto de 2026'
 
 export default function TermsPage() {
   return (
@@ -91,24 +91,21 @@ export default function TermsPage() {
 
       <LegalSection heading="5. Verificação de identidade (KYC)">
         <p>
-          A verificação de identidade é feita exclusivamente por análise
-          documental humana e exige o envio de: documento de identificação
-          (frente e verso), comprovante de endereço quando solicitado, e
-          <strong> quatro capturas de selfie</strong>, realizadas pela câmera
-          do dispositivo, nas quais o usuário vira o rosto para cima,
-          para baixo, para a esquerda e para a direita conforme instruído na
-          tela.
+          A verificação de identidade é feita por análise documental humana e
+          pode exigir o envio de documento de identificação (frente e verso),
+          comprovante de endereço quando solicitado e <strong>uma selfie
+          estática segurando o documento</strong>, realizada pela câmera do
+          dispositivo ou enviada como arquivo.
         </p>
 
         <p>
-          Essas capturas podem constituir <strong>dado biométrico</strong>, categoria
-          de dado pessoal sensível nos termos do artigo 5º, II, da LGPD. Eles
-          são usados unicamente para que um analista humano confirme que a
-          pessoa que envia o documento está presente e ativa no momento do
-          envio (prova de vivacidade), reduzindo o risco de fraude com foto ou
-          imagem estática isolada. Não há reconhecimento facial automatizado nem
-          decisão automatizada de aprovação ou rejeição — a decisão é sempre
-          tomada por um revisor humano.
+          A imagem pode constituir <strong>dado biométrico</strong>, categoria
+          de dado pessoal sensível nos termos do artigo 5º, II, da LGPD. Ela é
+          usada unicamente para que um analista humano avalie a coerência entre
+          titular e documento, reduzindo o risco de fraude. Não há
+          reconhecimento facial automatizado nem decisão exclusivamente
+          automatizada de aprovação ou rejeição — a decisão é tomada por um
+          revisor humano.
         </p>
 
         <p>

@@ -11,24 +11,24 @@ export type LegalDocumentVersion = {
 }
 
 export const TERMS_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '3.0', updatedAt: '15 de julho de 2026', href: '/terms'},
+  {version: '3.2', updatedAt: '16 de agosto de 2026', href: '/terms'},
   {version: '2.0', updatedAt: '12 de julho de 2026', href: '/terms/v2'},
   {version: '1.0', updatedAt: '10 de julho de 2026', href: '/terms/v1'},
 ]
 
 export const PRIVACY_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '3.0', updatedAt: '15 de julho de 2026', href: '/privacy'},
+  {version: '3.2', updatedAt: '16 de agosto de 2026', href: '/privacy'},
   {version: '2.0', updatedAt: '12 de julho de 2026', href: '/privacy/v2'},
   {version: '1.0', updatedAt: '10 de julho de 2026', href: '/privacy/v1'},
 ]
 
 export const DFE_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/dfe'},
+  {version: '2.1', updatedAt: '16 de agosto de 2026', href: '/products/dfe'},
   {version: '1.0', updatedAt: '10 de julho de 2026', href: '/products/dfe/v1'},
 ]
 
 export const WALLET_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '2.1', updatedAt: '25 de julho de 2026', href: '/products/wallet'},
+  {version: '2.2', updatedAt: '16 de agosto de 2026', href: '/products/wallet'},
   {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/wallet/v2'},
   {version: '1.0', updatedAt: '11 de julho de 2026', href: '/products/wallet/v1'},
 ]
@@ -38,7 +38,7 @@ export const WALLET_GAMING_VERSION_HISTORY: LegalDocumentVersion[] = [
 ]
 
 export const POKER_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '2.0', updatedAt: '25 de julho de 2026', href: '/products/poker'},
+  {version: '2.1', updatedAt: '16 de agosto de 2026', href: '/products/poker'},
   {version: '1.0', updatedAt: '19 de julho de 2026', href: '/products/poker/v1'},
 ]
 

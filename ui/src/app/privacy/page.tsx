@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: 'Política de Privacidade',
 }
 
-const PRIVACY_VERSION = '3.0'
-const UPDATED_AT = '15 de julho de 2026'
+const PRIVACY_VERSION = '3.2'
+const UPDATED_AT = '16 de agosto de 2026'
 
 export default function PrivacyPage() {
   return (
@@ -87,13 +87,11 @@ export default function PrivacyPage() {
           </li>
 
           <li>
-            <strong>Dados biométricos (KYC):</strong> quatro capturas de
-            selfie (rosto virado para cima, para baixo, para a esquerda e
-            para a direita), capturados pela câmera do dispositivo durante a
-            verificação de identidade. Usados exclusivamente para que um
-            analista humano confirme a presença e a vivacidade da pessoa no
-            momento do envio, sem reconhecimento facial automatizado nem
-            decisão automatizada.
+            <strong>Imagem para KYC:</strong> uma selfie estática do titular
+            segurando o documento de identificação, capturada pela câmera ou
+            enviada como arquivo. É usada exclusivamente para análise humana
+            de coerência entre titular e documento, sem reconhecimento facial
+            automatizado nem decisão exclusivamente automatizada.
           </li>
 
           <li>
@@ -107,6 +105,14 @@ export default function PrivacyPage() {
             <strong>Dados de auditoria:</strong> registros de login,
             operações realizadas, alterações de segurança, utilização de
             APIs e demais eventos relevantes para fins de rastreabilidade.
+          </li>
+
+          <li>
+            <strong>Dados de Billing:</strong> nome, e-mail, identificador da
+            conta CTech quando aplicável, CPF ou CNPJ quando necessário à
+            cobrança ou a documento fiscal, faturas, assinaturas, uso medido,
+            dados de checkout e histórico de cobrança. Não armazenamos dados
+            de cartão, chave Pix ou conta bancária no Billing.
           </li>
         </ul>
       </LegalSection>
@@ -127,6 +133,8 @@ export default function PrivacyPage() {
           <li>suporte técnico e atendimento;</li>
           <li>desenvolvimento de novas funcionalidades;</li>
           <li>integrações via OAuth 2.0 e OpenID Connect.</li>
+          <li>emissão, apresentação, conciliação e suporte de faturas e
+            cobranças dos serviços CTech;</li>
         </ul>
       </LegalSection>
 
@@ -167,6 +175,9 @@ export default function PrivacyPage() {
           <li>prestadores de serviços de infraestrutura;</li>
           <li>provedores de autenticação;</li>
           <li>instituições financeiras parceiras;</li>
+          <li>o parceiro de pagamentos e a CTech Wallet para geração e
+            confirmação de cobranças Pix;</li>
+          <li>prestadores de entrega de e-mail para comunicações de cobrança;</li>
           <li>autoridades públicas e órgãos reguladores;</li>
           <li>terceiros quando exigido por lei ou ordem judicial.</li>
         </ul>
@@ -231,8 +242,8 @@ export default function PrivacyPage() {
                 Logs e auditoria
               </td>
               <td className="border p-2">
-                Prazo indeterminado, para prevenção a fraudes,
-                investigações e auditorias.
+                Pelo prazo necessário à finalidade e à defesa de direitos;
+                registros de acesso seguem, no mínimo, o prazo legal aplicável.
               </td>
             </tr>
 
@@ -248,12 +259,12 @@ export default function PrivacyPage() {
 
             <tr>
               <td className="border p-2">
-                Dados biométricos (capturas de selfie)
+                Imagem de selfie com documento (KYC)
               </td>
               <td className="border p-2">
-                Até a decisão do analista humano sobre a verificação;
-                excluídos após a aprovação ou em caso de rejeição que exija
-                novo envio, ressalvadas obrigações legais de retenção.
+                Até a decisão humana sobre a verificação e eventual reenvio,
+                ressalvadas obrigações legais de retenção, prevenção à fraude
+                e defesa de direitos.
               </td>
             </tr>
 
@@ -263,6 +274,15 @@ export default function PrivacyPage() {
               </td>
               <td className="border p-2">
                 Pelo prazo exigido pela legislação aplicável.
+              </td>
+            </tr>
+            <tr>
+              <td className="border p-2">Dados de Billing</td>
+              <td className="border p-2">
+                Faturas e tentativas de pagamento são mantidas pelo prazo
+                necessário a obrigações fiscais, contábeis e defesa de
+                direitos; dados cadastrais podem ser anonimizados quando a
+                retenção do documento financeiro não impedir sua eliminação.
               </td>
             </tr>
             </tbody>
