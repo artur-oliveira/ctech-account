@@ -31,12 +31,11 @@ const (
 // User-facing state, derived from level+status+expiry (see Service.state) —
 // the UI branches on this single value instead of recombining level/status.
 const (
-	StateNotStarted                = "not_started"
-	StateAwaitingPhoneVerification = "awaiting_phone_verification"
-	StateBasicVerified             = "basic_verified"
-	StateUnderReview               = "under_review"
-	StateRejected                  = "rejected"
-	StateVerified                  = "verified"
+	StateNotStarted    = "not_started"
+	StateBasicVerified = "basic_verified"
+	StateUnderReview   = "under_review"
+	StateRejected      = "rejected"
+	StateVerified      = "verified"
 )
 
 // Enhanced document types. A printed photo can't hold itself next to an ID,
@@ -76,16 +75,6 @@ const (
 	// MaxDocuments caps how many files one Enhanced submission may carry: the
 	// 3 required documents plus headroom for re-taking a blurry shot.
 	MaxDocuments = 10
-
-	// OTPLength is the digit count of a phone-verification code.
-	OTPLength = 6
-	// OTPTTL bounds how long a sent code stays valid.
-	OTPTTL = 10 * time.Minute
-	// OTPResendCooldown is the minimum gap between two sent codes.
-	OTPResendCooldown = 60 * time.Second
-	// OTPMaxAttempts caps wrong-code guesses against one sent code; exceeding
-	// it requires a fresh resend rather than a permanent lockout.
-	OTPMaxAttempts = 5
 )
 
 // TimeLayout is the wire/storage format for every timestamp in this package.
@@ -129,20 +118,11 @@ var (
 	ErrAlreadyVerified  = errors.New("kyc already verified")
 	ErrNotSubmitted     = errors.New("kyc data not submitted")
 
-	// ErrBasicRequired is returned when Enhanced is submitted before Basic has
-	// been phone-verified (spec §4: Enhanced requires Basic verified first).
+	// ErrBasicRequired is returned when Enhanced is submitted before Basic is verified.
 	ErrBasicRequired = errors.New("basic verification must be completed first")
 	// ErrBasicLocked is returned when Basic identity data is resubmitted after
-	// it has already been phone-verified — Basic never regresses.
+	// it has already been verified — Basic never regresses.
 	ErrBasicLocked = errors.New("basic identity data cannot be changed once verified")
-
-	// ErrPhoneVerificationUnavailable is returned by every Basic/OTP method
-	// while PHONE_VERIFICATION_ENABLED is false (see Service.PhoneVerificationEnabled).
-	ErrPhoneVerificationUnavailable = errors.New("phone verification is not available")
-	ErrNoOTPPending                 = errors.New("no verification code is pending")
-	ErrInvalidCode                  = errors.New("invalid verification code")
-	ErrTooManyAttempts              = errors.New("too many invalid attempts, request a new code")
-	ErrResendCooldown               = errors.New("a code was already sent recently")
 
 	// ErrInvalidMethod is returned when document verification is unavailable —
 	// no bucket is configured (see Service.DocumentsEnabled).

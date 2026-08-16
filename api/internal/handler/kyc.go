@@ -29,8 +29,6 @@ func NewKYCHandler(kycSvc *kyc.Service, auditSvc *audit.Service) *KYCHandler {
 func (h *KYCHandler) Register(account fiber.Router, stepUp fiber.Handler) {
 	account.Get("/kyc", middleware.RequireScope(scopeCatalog.AccountKYCRead), h.get)
 	account.Post("/kyc/basic", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.submitBasic)
-	account.Post("/kyc/basic/verify-phone", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.verifyPhone)
-	account.Post("/kyc/basic/resend-code", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.resendCode)
 	account.Post("/kyc/documents", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.presignDocument)
 	account.Post("/kyc/documents/confirm", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.confirmDocument)
 	account.Post("/kyc/enhanced", middleware.RequireScope(scopeCatalog.AccountKYCWrite), stepUp, h.submitEnhanced)
@@ -79,7 +77,7 @@ type submitBasicRequest struct {
 }
 
 // submitBasic validates and stores CPF/name/birthdate/phone/address, then
-// sends an SMS OTP. Replaces the old single-tier POST /account/kyc.
+// grants Basic KYC without a separate phone-verification step.
 func (h *KYCHandler) submitBasic(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
@@ -97,35 +95,6 @@ func (h *KYCHandler) submitBasic(c fiber.Ctx) error {
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventKYCSubmitted, map[string]string{"level": kyc.LevelBasic})
-	return h.sendStatus(c, userID)
-}
-
-type verifyPhoneRequest struct {
-	Code string `json:"code" validate:"required,len=6,numeric"`
-}
-
-func (h *KYCHandler) verifyPhone(c fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-
-	var req verifyPhoneRequest
-	if err := parseBody(c, &req); err != nil {
-		return err
-	}
-
-	if err := h.kycSvc.VerifyPhone(c.Context(), userID, req.Code); err != nil {
-		return h.sendKYCError(c, err)
-	}
-
-	recordAudit(c, h.audit, userID, audit.EventKYCPhoneVerified, nil)
-	return h.sendStatus(c, userID)
-}
-
-func (h *KYCHandler) resendCode(c fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-
-	if err := h.kycSvc.ResendCode(c.Context(), userID); err != nil {
-		return h.sendKYCError(c, err)
-	}
 	return h.sendStatus(c, userID)
 }
 
@@ -258,14 +227,8 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 		return apierror.CPFAlreadyRegistered(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrSubmissionLocked):
 		return apierror.KYCSubmissionLocked(c.Path()).Send(c)
-	case errors.Is(err, kyc.ErrNotSubmitted), errors.Is(err, kyc.ErrNoDocuments), errors.Is(err, kyc.ErrNoOTPPending):
+	case errors.Is(err, kyc.ErrNotSubmitted), errors.Is(err, kyc.ErrNoDocuments):
 		return apierror.KYCNotSubmitted(c.Path()).Send(c)
-	case errors.Is(err, kyc.ErrInvalidCode), errors.Is(err, kyc.ErrTooManyAttempts):
-		return apierror.KYCInvalidCode(c.Path()).Send(c)
-	case errors.Is(err, kyc.ErrResendCooldown):
-		return apierror.KYCResendCooldown(kyc.OTPResendCooldown, c.Path()).Send(c)
-	case errors.Is(err, kyc.ErrPhoneVerificationUnavailable):
-		return apierror.KYCPhoneVerificationUnavailable(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentNotUploaded):
 		return apierror.KYCDocumentNotUploaded(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentTooLarge):

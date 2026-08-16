@@ -10,6 +10,11 @@ import { ResponsiveDataList, type Column } from '@/components/responsive-data-li
 import type { Session } from '@/lib/types'
 import { RevokeSessionButton, RevokeAllButton } from './session-actions'
 
+function sessionLocation(session: Session, unavailable: string): string {
+  const location = [session.geo_city, session.geo_region].filter(Boolean).join(', ')
+  return location || unavailable
+}
+
 export default function SessionsPage() {
   const { t } = useTranslation()
   const { data: sessions = [], isLoading, isError, error, refetch } = useQuery({
@@ -51,6 +56,15 @@ export default function SessionsPage() {
       cell: (s) => <span className="text-sm">{s.ip_address}</span>,
     },
     {
+      key: 'location',
+      header: t('sessions.locationShort'),
+      cell: (s) => (
+        <span className="text-sm text-muted-foreground">
+          {sessionLocation(s, t('sessions.locationUnavailable'))}
+        </span>
+      ),
+    },
+    {
       key: 'lastActive',
       header: t('sessions.lastActiveShort'),
       cell: (s) => (
@@ -74,6 +88,7 @@ export default function SessionsPage() {
         <div>
           <h1 className="text-2xl font-semibold">{t('sessions.title')}</h1>
           <p className="text-muted-foreground text-sm mt-1">{t('sessions.subtitle')}</p>
+          <p className="text-muted-foreground text-xs mt-1">{t('sessions.locationNote')}</p>
         </div>
         {sessions.length > 1 && <RevokeAllButton />}
       </div>

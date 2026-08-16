@@ -24,8 +24,25 @@ export function isTOTPMFAMethod(method: string): boolean {
 // KYC — must stay in step with api/internal/domain/kyc/model.go.
 export const CPF_DIGITS = 11
 
+/** Prevents accidental oversized Basic KYC submissions; the API remains authoritative. */
+export const KYC_LEGAL_NAME_MAX_LENGTH = 255
+
 /** Mirrors kyc.MinAge — client-side pre-check only, server remains authoritative. */
 export const KYC_MIN_AGE_YEARS = 18
+
+/** Basic KYC address bounds mirror api/internal/handler/kyc.go. */
+export const KYC_ADDRESS_LIMITS = {
+  zipCode: 8,
+  street: 200,
+  number: 20,
+  complement: 100,
+  district: 100,
+  city: 100,
+  state: 2,
+} as const
+
+/** Public Brazilian postal-code service used only to assist address entry. */
+export const VIACEP_API_BASE_URL = 'https://viacep.com.br/ws'
 
 /** Mirrors kyc.MaxDocumentBytes (5 MiB) so the UI rejects oversized files early. */
 export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
@@ -38,12 +55,6 @@ export const ID_DOCUMENT_PREVIEWABLE_TYPES = ['image/jpeg', 'image/png'] as cons
 
 /** Mirrors kyc.RequiredDocTypes — SubmitEnhanced is rejected until every one is uploaded. */
 export const REQUIRED_DOC_TYPES = ['id_front', 'id_back', 'selfie_with_document'] as const
-
-/** Mirrors kyc.OTPLength. */
-export const OTP_CODE_LENGTH = 6
-
-/** Mirrors kyc.OTPResendCooldown (seconds) — drives the resend button's countdown. */
-export const OTP_RESEND_COOLDOWN_SECONDS = 60
 
 /** Same contact used on /privacy and /terms — one address for user-facing support asks. */
 export const SUPPORT_EMAIL = 'dpo@aoctech.app'

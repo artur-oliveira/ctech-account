@@ -9,7 +9,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.2
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.66.6
-	github.com/aws/aws-sdk-go-v2/service/sns v1.42.6
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.73.6
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/go-webauthn/webauthn v0.17.4

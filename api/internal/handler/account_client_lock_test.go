@@ -126,8 +126,6 @@ func TestEveryAccountOperationIsScopeProtected(t *testing.T) {
 		{http.MethodDelete, "/v1.0/account/mfa/passkeys/example"},
 		{http.MethodGet, "/v1.0/account/kyc"},
 		{http.MethodPost, "/v1.0/account/kyc/basic"},
-		{http.MethodPost, "/v1.0/account/kyc/basic/verify-phone"},
-		{http.MethodPost, "/v1.0/account/kyc/basic/resend-code"},
 		{http.MethodPost, "/v1.0/account/kyc/documents"},
 		{http.MethodPost, "/v1.0/account/kyc/documents/confirm"},
 		{http.MethodPost, "/v1.0/account/kyc/enhanced"},

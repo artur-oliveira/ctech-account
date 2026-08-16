@@ -21,7 +21,6 @@ import (
 	"os"
 	"strings"
 
-	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/database"
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
@@ -63,7 +62,7 @@ func main() {
 		}
 		presigner = s3Cli
 	}
-	kycSvc := kycDomain.NewService(kycRepo, presigner, cache.NewInMemory(), nil, riskDomain.NoopEvaluator{})
+	kycSvc := kycDomain.NewService(kycRepo, presigner, riskDomain.NoopEvaluator{})
 	auditSvc := auditDomain.NewService(auditDomain.NewRepository(db, tablePrefix))
 
 	switch os.Args[1] {

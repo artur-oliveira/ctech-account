@@ -238,6 +238,14 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 ### Navigation (signature)
 - **Style:** sticky top bar (h-14) + left sidebar (w-52, hidden on mobile). The canonical `public/app.svg` double-C mark identifies the product beside “CTech Account” in the desktop sidebar and mobile top bar; landing-page identity must use the same asset, never a generic security icon. Active item = cobalt text + cobalt-tinted well; current section underlined in cobalt. Mobile collapses sidebar to a menu. The same vocabulary as tabs/buttons.
 
+### Trust-critical flows
+
+- Basic KYC collects the address required for downstream onboarding, keeps the platform-native date control, and uses a searchable, country-aware phone input: local flag assets, dial-code metadata, and national formatting make the submitted number explicit while the API still receives E.164. An eight-digit Brazilian CEP consults ViaCEP to prefill editable address fields; lookup failure never blocks manual entry or KYC submission.
+- Basic KYC fields apply intentional bounds: legal names stop at 255 characters, phone entry stops at the selected country's valid maximum national length, and each address field mirrors the API's validation limit.
+- Consent groups scopes into identity information and account access, makes revocation discoverable, and must not claim client/publisher verification unless the API provides authoritative metadata.
+- OAuth/API-key setup teaches least privilege, validates callback URLs as an early aid (the API remains authoritative), and keeps optional audiences progressively disclosed.
+- Sessions show API-provided city/region as an approximate IP-based signal, never proof of physical location.
+
 ## 6. Do's and Don'ts
 
 ### Do:

@@ -224,16 +224,6 @@ export async function submitBasicKYCAPI(payload: KYCBasicSubmission): Promise<KY
   return data
 }
 
-export async function verifyPhoneKYCAPI(code: string): Promise<KYCStatus> {
-  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/basic/verify-phone', { code })
-  return data
-}
-
-export async function resendKYCCodeAPI(): Promise<KYCStatus> {
-  const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/basic/resend-code')
-  return data
-}
-
 export async function submitEnhancedKYCAPI(): Promise<KYCStatus> {
   const { data } = await api.post<KYCStatus>('/v1.0/account/kyc/enhanced')
   return data

@@ -41,7 +41,6 @@ import (
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
-	"gopkg.aoctech.app/account/api/internal/sms"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
@@ -206,20 +205,7 @@ func main() {
 		log.Println("KYC_DOCUMENTS_BUCKET not set — Enhanced document verification disabled")
 	}
 
-	// SMS OTP delivery needs PHONE_VERIFICATION_ENABLED=true; without it, every
-	// Basic/OTP route hard-blocks with 503 (see kyc.Service.PhoneVerificationEnabled).
-	var smsClient kycDomain.OTPSender
-	if cfg.PhoneVerificationEnabled {
-		cli, err := sms.New(context.Background(), cfg.AWSRegion)
-		if err != nil {
-			log.Fatalf("initializing SMS client: %v", err)
-		}
-		smsClient = cli
-	} else {
-		log.Println("PHONE_VERIFICATION_ENABLED=false — phone verification disabled")
-	}
-
-	kycSvc := kycDomain.NewService(kycRepo, kycPresigner, valkeyClient, smsClient, risk.NoopEvaluator{})
+	kycSvc := kycDomain.NewService(kycRepo, kycPresigner, risk.NoopEvaluator{})
 	passkeySvc := passKeyDomain.NewService(wa, passkeyRepo, valkeyClient)
 
 	// Email client (optional — only active when FROM_EMAIL is set)

@@ -110,7 +110,6 @@ export type KYCLevel = '' | 'basic' | 'enhanced'
 /** Derived by the API from level+status+expiry — branch on this. */
 export type KYCState =
   | 'not_started'
-  | 'awaiting_phone_verification'
   | 'basic_verified'
   | 'under_review'
   | 'rejected'
@@ -145,6 +144,26 @@ export interface KYCBasicSubmission {
   legal_name: string
   birth_date: string
   phone_number: string
+  address: KYCAddress
+}
+
+export interface KYCAddress {
+  zip_code: string
+  street: string
+  number: string
+  complement?: string
+  district: string
+  city: string
+  state: string
+}
+
+/** Response fields consumed from the public ViaCEP address-assistance service. */
+export interface ViaCEPResponse {
+  erro?: boolean
+  logradouro?: string
+  bairro?: string
+  localidade?: string
+  uf?: string
 }
 
 export interface PresignedUpload {

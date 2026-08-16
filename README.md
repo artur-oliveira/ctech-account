@@ -109,9 +109,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `DELETE` | `/v1.0/account/oauth-clients/:id`                   | `account:oauth-clients:write` + step-up | Delete an OAuth application                                                                                                                                                                         |
 | `POST`   | `/v1.0/account/oauth-clients/:id/regenerate-secret` | `account:oauth-clients:write` + step-up | Rotate the client secret (returned once)                                                                                                                                                            |
 | `GET`    | `/v1.0/account/kyc`                                 | `account:kyc:read`                      | KYC status: `{state, level, cpf_masked, legal_name, birth_date, phone_masked, basic_verified_at, documents, rejection_reason, submitted_at, expires_at, verified_at}`                               |
-| `POST`   | `/v1.0/account/kyc/basic`                           | `account:kyc:write` + step-up           | Submit Basic identity data `{cpf, legal_name, birth_date, phone_number}` → validates CPF/age/phone, sends an SMS OTP, `basic/pending`                                                               |
-| `POST`   | `/v1.0/account/kyc/basic/verify-phone`              | `account:kyc:write` + step-up           | `{code}` → `basic/verified` on a correct 6-digit code                                                                                                                                               |
-| `POST`   | `/v1.0/account/kyc/basic/resend-code`               | `account:kyc:write` + step-up           | Resends the OTP; 60s cooldown (`429` + `Retry-After`-equivalent `retry_after_seconds`)                                                                                                              |
+| `POST`   | `/v1.0/account/kyc/basic`                           | `account:kyc:write` + step-up           | Submit Basic identity data `{cpf, legal_name, birth_date, phone_number, address}` → validates CPF, age, phone, and address, then grants `basic/verified` without SMS verification                         |
 | `POST`   | `/v1.0/account/kyc/documents`                       | `account:kyc:write` + step-up           | `{type, content_type}` → `{document_id, upload_url}` — presigned S3 PUT; `type` one of `id_front`, `id_back`, `selfie_with_document`; requires `basic/verified` first                               |
 | `POST`   | `/v1.0/account/kyc/documents/confirm`               | `account:kyc:write` + step-up           | `{document_id, type}` → records the upload (verified via HeadObject)                                                                                                                                |
 | `POST`   | `/v1.0/account/kyc/enhanced`                        | `account:kyc:write` + step-up           | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending`                                                                                                             |
@@ -174,9 +172,6 @@ counter's remaining TTL:
   "retry_after_seconds": 823
 }
 ```
-
-(The KYC OTP resend cooldown, `429 kyc-resend-cooldown`, uses the same header/body pair —
-see [KYC](#kyc-identity-verification).)
 
 Limited routes and their tier:
 
@@ -392,12 +387,10 @@ data-processing terms for ctech-dfe) live in each product's own repo/frontend.
 
 **Two-level Basic/Enhanced verification.** Splits KYC into two distinct levels to simplify user onboarding:
 
-- **Basic KYC**: Users submit their CPF, full legal name, date of birth, and phone number (
-  `POST /v1.0/account/kyc/basic`). The system validates the input, claims the CPF transactionally, and dispatches a
-  6-digit verification code via AWS SNS SMS. Entering this code (`POST /v1.0/account/kyc/basic/verify-phone`) verifies
-  the phone and grants Basic access (`kyc_level = "basic"`). Valkey cache stores the OTP hashed with a 10-minute TTL, a
-  60-second resend cooldown (`429 kyc-resend-cooldown` with `retry_after_seconds`), and enforces a 5-attempt guess
-  limit.
+- **Basic KYC**: Users submit their CPF, full legal name, date of birth, phone number, and residential address
+  (`POST /v1.0/account/kyc/basic`). The system validates the input, claims the CPF transactionally, and grants Basic
+  access (`kyc_level = "basic"`) immediately. The phone number is retained as contact data for downstream onboarding;
+  Basic KYC does not verify phone ownership or send SMS.
 - **Enhanced KYC**: Requires Basic verification to be completed first. Users upload three required documents: ID front,
   ID back, and a selfie holding the document (`POST /v1.0/account/kyc/documents` and `confirm`). A static photo of the
   selfie holding the document replaces the legacy four-clip video flow. Once all documents are uploaded, submitting the
@@ -405,7 +398,7 @@ data-processing terms for ctech-dfe) live in each product's own repo/frontend.
   `under_review`).
 
 `GET /v1.0/account/kyc` returns the user-facing status details with masked CPF and phone, and a derived `state`
-representing the lifecycle: `not_started`, `awaiting_phone_verification`, `basic_verified`, `under_review`, `rejected`,
+representing the lifecycle: `not_started`, `basic_verified`, `under_review`, `rejected`,
 and `verified`. If a pending Enhanced submission is not reviewed within 30 days (`SubmissionTTL`), it expires and
 reverts to `basic_verified` access. While a submission is under review, documents and resubmissions are locked (
 `409 kyc-submission-locked`). Rejection clears the uploaded documents and requires a fresh upload cycle.
@@ -504,7 +497,6 @@ All configuration is read from environment variables at startup.
 | `VALKEY_URL`                 | Non-dev  | Redis-compatible URL; **required outside dev** — the API refuses to boot without it (OAuth codes, MFA tokens and rate limiting have no DynamoDB fallback)                                                                                                                                                                     |
 | `FROM_EMAIL`                 | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled                                                                                                                                                                                                                     |
 | `KYC_DOCUMENTS_BUCKET`       | No       | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable                                                                                                                                                                                                      |
-| `PHONE_VERIFICATION_ENABLED` | No       | `false` unless set to `true`. Gates AWS SNS phone verification — while false, every `/kyc/basic*` route returns `503`. Flip once production SNS SMS access is granted; no redeploy needed beyond the env var                                                                                                                  |
 | `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
 | `REFRESH_TOKEN_TTL`          | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure                                                                                                                                                                                                                |
@@ -666,9 +658,6 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 
 - Rotate the signing key annually: `go run ./cmd/rotatekeys -env <env>` writes a new `jwk/active` and demotes the old to
   `jwk/previous` — no redeploy needed.
-- Once AWS grants production SNS SMS access, run `aws sns set-sms-attributes` once per account/region to set the monthly
-  spend limit, then set `PHONE_VERIFICATION_ENABLED=true` in SSM — this is outside CDK's scope (no such resource exists
-  to provision).
 - Enable DynamoDB Point-in-Time Recovery on all eight tables.
 - Set a CloudWatch alarm on the EC2 and HAProxy error rate > 1%.
 

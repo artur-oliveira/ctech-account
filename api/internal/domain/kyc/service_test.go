@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
@@ -42,15 +41,9 @@ func (m *memRepo) SaveBasicSubmission(_ context.Context, userID string, rec Basi
 	u := m.users[userID]
 	u.CPF, u.LegalName, u.BirthDate, u.PhoneNumber = rec.CPF, rec.LegalName, rec.BirthDate, rec.PhoneNumber
 	u.Address = rec.Address
-	u.KYCLevel, u.KYCStatus = LevelBasic, StatusPending
+	u.KYCLevel, u.KYCStatus = LevelBasic, StatusVerified
 	u.KYCSubmittedAt = rec.SubmittedAt
-	u.KYCRejectionReason, u.PhoneVerifiedAt = "", ""
-	return nil
-}
-
-func (m *memRepo) MarkPhoneVerified(_ context.Context, userID, verifiedAt string) error {
-	u := m.users[userID]
-	u.KYCStatus, u.PhoneVerifiedAt, u.KYCBasicVerifiedAt = StatusVerified, verifiedAt, verifiedAt
+	u.KYCRejectionReason, u.PhoneVerifiedAt, u.KYCBasicVerifiedAt = "", "", rec.SubmittedAt
 	return nil
 }
 
@@ -195,29 +188,29 @@ func basicSub(cpf string) BasicSubmission {
 	}
 }
 
-// setup returns a Service with phone verification enabled (fakeSMS non-nil).
+// setup returns a Service with Basic KYC completing immediately.
 func setup() (*Service, *memRepo, *memPresigner, *fakeSMS) {
 	repo := newMemRepo()
 	repo.users["u1"] = &user.User{PK: user.BuildPK("u1")}
 	repo.users["u2"] = &user.User{PK: user.BuildPK("u2")}
 	presigner := newMemPresigner()
 	sms := &fakeSMS{}
-	svc := NewService(repo, presigner, cache.NewInMemory(), sms, risk.NoopEvaluator{})
+	svc := NewService(repo, presigner, risk.NoopEvaluator{})
 	return svc, repo, presigner, sms
 }
 
 func advance(svc *Service, d time.Duration) {
 	svc.now = func() time.Time { return time.Now().UTC().Add(d) }
-	svc.cache.Now = func() time.Time { return time.Now().Add(d) }
 }
 
-// verifyBasic drives SubmitBasic → VerifyPhone using the code fakeSMS captured.
+// verifyBasic drives a direct Basic submission.
 func verifyBasic(t *testing.T, svc *Service, sms *fakeSMS, userID string, sub BasicSubmission) error {
 	t.Helper()
+	_ = sms
 	if err := svc.SubmitBasic(context.Background(), userID, "203.0.113.1", sub); err != nil {
 		return err
 	}
-	return svc.VerifyPhone(context.Background(), userID, sms.lastCode())
+	return nil
 }
 
 // uploadAllRequiredDocs uploads one document per RequiredDocTypes entry.
@@ -254,17 +247,6 @@ func enhancedReviewed(t *testing.T, svc *Service, presigner testPresigner, sms *
 	}
 	if err := svc.Review(context.Background(), userID, decision, reason); err != nil {
 		t.Fatalf("Review: %v", err)
-	}
-}
-
-func TestSubmitBasicRejectsWhenPhoneVerificationDisabled(t *testing.T) {
-	repo := newMemRepo()
-	repo.users["u1"] = &user.User{PK: user.BuildPK("u1")}
-	svc := NewService(repo, newMemPresigner(), cache.NewInMemory(), nil, risk.NoopEvaluator{})
-
-	err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725"))
-	if !errors.Is(err, ErrPhoneVerificationUnavailable) {
-		t.Fatalf("err = %v, want ErrPhoneVerificationUnavailable", err)
 	}
 }
 
@@ -310,23 +292,20 @@ func TestSubmitBasicRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
-func TestSubmitBasicSendsOTPAndSetsPending(t *testing.T) {
-	svc, repo, _, sms := setup()
+func TestSubmitBasicSetsVerifiedAndPersistsAddress(t *testing.T) {
+	svc, repo, _, _ := setup()
 	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725")); err != nil {
 		t.Fatalf("SubmitBasic: %v", err)
 	}
 	u := repo.users["u1"]
-	if u.KYCLevel != LevelBasic || u.KYCStatus != StatusPending {
+	if u.KYCLevel != LevelBasic || u.KYCStatus != StatusVerified {
 		t.Fatalf("level/status = %q/%q", u.KYCLevel, u.KYCStatus)
 	}
 	if u.Address.IsZero() {
 		t.Fatal("address must be persisted on submit")
 	}
-	if len(sms.sent) != 1 || sms.sent[0].phone != "+5511987654321" {
-		t.Fatalf("sms.sent = %+v", sms.sent)
-	}
-	if len(sms.lastCode()) != OTPLength {
-		t.Fatalf("code length = %d, want %d", len(sms.lastCode()), OTPLength)
+	if u.KYCBasicVerifiedAt == "" {
+		t.Fatal("basic_verified_at must be set on submit")
 	}
 }
 
@@ -353,96 +332,14 @@ func TestSubmitBasicLockedOnceVerified(t *testing.T) {
 	}
 }
 
-func TestSubmitBasicAllowsResubmitWhilePending(t *testing.T) {
-	svc, repo, _, sms := setup()
+func TestSubmitBasicLocksAfterDirectVerification(t *testing.T) {
+	svc, _, _, _ := setup()
 	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725")); err != nil {
 		t.Fatalf("first submit: %v", err)
 	}
-	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("11144477735")); err != nil {
-		t.Fatalf("resubmit while pending: %v", err)
-	}
-	if repo.users["u1"].CPF != "11144477735" {
-		t.Fatalf("cpf = %q, want the corrected one", repo.users["u1"].CPF)
-	}
-	if len(sms.sent) != 2 {
-		t.Fatalf("expected 2 sends (one per submit), got %d", len(sms.sent))
-	}
-}
-
-func TestVerifyPhoneRejectsWrongCode(t *testing.T) {
-	svc, _, _, _ := setup()
-	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725")); err != nil {
-		t.Fatalf("SubmitBasic: %v", err)
-	}
-	err := svc.VerifyPhone(context.Background(), "u1", "000000")
-	if !errors.Is(err, ErrInvalidCode) {
-		t.Fatalf("err = %v, want ErrInvalidCode", err)
-	}
-}
-
-func TestVerifyPhoneLocksOutAfterMaxAttempts(t *testing.T) {
-	svc, _, _, _ := setup()
-	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725")); err != nil {
-		t.Fatalf("SubmitBasic: %v", err)
-	}
-	for i := 0; i < OTPMaxAttempts; i++ {
-		_ = svc.VerifyPhone(context.Background(), "u1", "000000")
-	}
-	err := svc.VerifyPhone(context.Background(), "u1", "000000")
-	if !errors.Is(err, ErrTooManyAttempts) {
-		t.Fatalf("err = %v, want ErrTooManyAttempts", err)
-	}
-}
-
-func TestVerifyPhoneSucceedsAndSetsBasicVerified(t *testing.T) {
-	svc, repo, _, sms := setup()
-	if err := verifyBasic(t, svc, sms, "u1", basicSub("52998224725")); err != nil {
-		t.Fatalf("verifyBasic: %v", err)
-	}
-	u := repo.users["u1"]
-	if u.KYCLevel != LevelBasic || u.KYCStatus != StatusVerified {
-		t.Fatalf("level/status = %q/%q", u.KYCLevel, u.KYCStatus)
-	}
-	if u.KYCBasicVerifiedAt == "" || u.PhoneVerifiedAt == "" {
-		t.Fatal("basic_verified_at and phone_verified_at must both be set")
-	}
-}
-
-func TestVerifyPhoneRejectsAfterAlreadyVerified(t *testing.T) {
-	svc, _, _, sms := setup()
-	if err := verifyBasic(t, svc, sms, "u1", basicSub("52998224725")); err != nil {
-		t.Fatalf("verifyBasic: %v", err)
-	}
-	err := svc.VerifyPhone(context.Background(), "u1", sms.lastCode())
-	if !errors.Is(err, ErrNoOTPPending) {
-		t.Fatalf("err = %v, want ErrNoOTPPending", err)
-	}
-}
-
-func TestResendCodeEnforcesCooldown(t *testing.T) {
-	svc, _, _, sms := setup()
-	if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725")); err != nil {
-		t.Fatalf("SubmitBasic: %v", err)
-	}
-	err := svc.ResendCode(context.Background(), "u1")
-	if !errors.Is(err, ErrResendCooldown) {
-		t.Fatalf("err = %v, want ErrResendCooldown", err)
-	}
-
-	advance(svc, OTPResendCooldown+time.Second)
-	if err := svc.ResendCode(context.Background(), "u1"); err != nil {
-		t.Fatalf("resend after cooldown: %v", err)
-	}
-	if len(sms.sent) != 2 {
-		t.Fatalf("sent = %d, want 2", len(sms.sent))
-	}
-}
-
-func TestResendCodeRejectsWithoutPendingBasic(t *testing.T) {
-	svc, _, _, _ := setup()
-	err := svc.ResendCode(context.Background(), "u1")
-	if !errors.Is(err, ErrNoOTPPending) {
-		t.Fatalf("err = %v, want ErrNoOTPPending", err)
+	err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("11144477735"))
+	if !errors.Is(err, ErrBasicLocked) {
+		t.Fatalf("err = %v, want ErrBasicLocked", err)
 	}
 }
 
@@ -555,7 +452,7 @@ func TestReviewRejectPurgesS3Objects(t *testing.T) {
 	repo.users["u1"] = &user.User{PK: user.BuildPK("u1")}
 	presigner := newMemDeleterPresigner()
 	sms := &fakeSMS{}
-	svc := NewService(repo, presigner, cache.NewInMemory(), sms, risk.NoopEvaluator{})
+	svc := NewService(repo, presigner, risk.NoopEvaluator{})
 
 	enhancedReviewed(t, svc, presigner, sms, "u1", "52998224725", DecisionReject, "unreadable")
 
@@ -603,11 +500,6 @@ func TestGetStates(t *testing.T) {
 	t.Run("not started", func(t *testing.T) {
 		svc, _, _, _ := setup()
 		assertState(t, svc, "u1", StateNotStarted)
-	})
-	t.Run("awaiting phone verification", func(t *testing.T) {
-		svc, _, _, _ := setup()
-		_ = svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", basicSub("52998224725"))
-		assertState(t, svc, "u1", StateAwaitingPhoneVerification)
 	})
 	t.Run("basic verified", func(t *testing.T) {
 		svc, _, _, sms := setup()

@@ -39,15 +39,11 @@ type Repository interface {
 	GetUser(ctx context.Context, userID string) (*user.User, error)
 
 	// SaveBasicSubmission writes Basic identity data, sets kyc_level=basic and
-	// kyc_status=pending, and claims CPF_{cpf} transactionally (failing with
+	// kyc_status=verified, and claims CPF_{cpf} transactionally (failing with
 	// ErrCPFConflict if another account owns it, releasing CPF_{oldCPF} when
 	// re-submitting with a different CPF). Only reachable while Basic is not
-	// yet phone-verified — see Service.SubmitBasic.
+	// yet Basic-verified — see Service.SubmitBasic.
 	SaveBasicSubmission(ctx context.Context, userID string, rec BasicRecord, oldCPF string) error
-	// MarkPhoneVerified sets kyc_status=verified, phone_verified_at, and
-	// kyc_basic_verified_at (only ever called once per Basic cycle — see
-	// Service.VerifyPhone).
-	MarkPhoneVerified(ctx context.Context, userID, verifiedAt string) error
 
 	// AddDocument appends an uploaded Enhanced document. Unlike the old
 	// single-tier scheme there is no separate "awaiting files" doc status:
@@ -139,19 +135,20 @@ func (r *dynamoRepository) SaveBasicSubmission(ctx context.Context, userID strin
 				},
 				UpdateExpression: aws.String(
 					"SET cpf = :cpf, legal_name = :ln, birth_date = :bd, phone_number = :phone, address = :addr, " +
-						"kyc_level = :lvl, kyc_status = :st, kyc_submitted_at = :sub, updated_at = :now " +
+						"kyc_level = :lvl, kyc_status = :st, kyc_submitted_at = :sub, kyc_basic_verified_at = :verified, updated_at = :now " +
 						"REMOVE kyc_rejection_reason, phone_verified_at",
 				),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":cpf":   &types.AttributeValueMemberS{Value: rec.CPF},
-					":ln":    &types.AttributeValueMemberS{Value: rec.LegalName},
-					":bd":    &types.AttributeValueMemberS{Value: rec.BirthDate},
-					":phone": &types.AttributeValueMemberS{Value: rec.PhoneNumber},
-					":addr":  address,
-					":lvl":   &types.AttributeValueMemberS{Value: LevelBasic},
-					":st":    &types.AttributeValueMemberS{Value: StatusPending},
-					":sub":   &types.AttributeValueMemberS{Value: rec.SubmittedAt},
-					":now":   &types.AttributeValueMemberS{Value: now},
+					":cpf":      &types.AttributeValueMemberS{Value: rec.CPF},
+					":ln":       &types.AttributeValueMemberS{Value: rec.LegalName},
+					":bd":       &types.AttributeValueMemberS{Value: rec.BirthDate},
+					":phone":    &types.AttributeValueMemberS{Value: rec.PhoneNumber},
+					":addr":     address,
+					":lvl":      &types.AttributeValueMemberS{Value: LevelBasic},
+					":st":       &types.AttributeValueMemberS{Value: StatusVerified},
+					":sub":      &types.AttributeValueMemberS{Value: rec.SubmittedAt},
+					":verified": &types.AttributeValueMemberS{Value: rec.SubmittedAt},
+					":now":      &types.AttributeValueMemberS{Value: now},
 				},
 			},
 		},
@@ -180,14 +177,6 @@ func (r *dynamoRepository) SaveBasicSubmission(ctx context.Context, userID strin
 		return err
 	}
 	return nil
-}
-
-func (r *dynamoRepository) MarkPhoneVerified(ctx context.Context, userID, verifiedAt string) error {
-	return r.userRepo.Update(ctx, userID, map[string]any{
-		"kyc_status":            StatusVerified,
-		"phone_verified_at":     verifiedAt,
-		"kyc_basic_verified_at": verifiedAt,
-	})
 }
 
 func (r *dynamoRepository) AddDocument(ctx context.Context, userID string, doc Document) error {

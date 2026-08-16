@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -10,7 +11,16 @@ import { consentDecisionAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
 import { describeScope } from '@/lib/scope-description'
 import { DEFAULT_REDIRECT } from '@/lib/safe-redirect'
-import { ShieldQuestion, Check } from 'lucide-react'
+import { ShieldCheck, ShieldQuestion, Check } from 'lucide-react'
+
+const IDENTITY_SCOPES = new Set(['openid', 'profile', 'email', 'kyc'])
+
+function groupScopes(scopes: string[]) {
+  return {
+    identity: scopes.filter((scope) => IDENTITY_SCOPES.has(scope)),
+    account: scopes.filter((scope) => !IDENTITY_SCOPES.has(scope)),
+  }
+}
 
 function ConsentForm() {
   const { t } = useTranslation()
@@ -18,6 +28,7 @@ function ConsentForm() {
   const req = params.get('req')
   const clientName = params.get('client_name') || t('consent.unknownApp')
   const scopes = (params.get('scope') ?? '').split(' ').filter(Boolean)
+  const groupedScopes = groupScopes(scopes)
 
   const [pending, setPending] = useState<'approve' | 'deny' | null>(null)
   const [error, setError] = useState('')
@@ -68,17 +79,17 @@ function ConsentForm() {
           </Alert>
         )}
 
-        <ul className="space-y-2">
-          {scopes.map((scope) => (
-            <li key={scope} className="flex items-start gap-2 text-sm">
-              <Check className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <div>
-                <p>{describeScope(scope, t)}</p>
-                <code className="text-xs text-muted-foreground font-mono">{scope}</code>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <Alert>
+          <ShieldCheck className="size-4" />
+          <AlertDescription>{t('consent.reviewNotice', { app: clientName })}</AlertDescription>
+        </Alert>
+
+        {groupedScopes.identity.length > 0 && (
+          <ScopeGroup title={t('consent.identityPermissions')} scopes={groupedScopes.identity} t={t} />
+        )}
+        {groupedScopes.account.length > 0 && (
+          <ScopeGroup title={t('consent.accountPermissions')} scopes={groupedScopes.account} t={t} />
+        )}
 
         <p className="text-xs text-muted-foreground">{t('consent.revocable')}</p>
 
@@ -96,6 +107,33 @@ function ConsentForm() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function ScopeGroup({
+  title,
+  scopes,
+  t,
+}: {
+  title: string
+  scopes: string[]
+  t: TFunction
+}) {
+  return (
+    <section aria-label={title} className="space-y-2">
+      <h2 className="text-sm font-medium">{title}</h2>
+      <ul className="space-y-2">
+        {scopes.map((scope) => (
+          <li key={scope} className="flex items-start gap-2 text-sm">
+            <Check className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <div>
+              <p>{describeScope(scope, t)}</p>
+              <code className="text-xs text-muted-foreground font-mono">{scope}</code>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

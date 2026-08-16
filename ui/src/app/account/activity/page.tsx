@@ -1,6 +1,7 @@
 'use client'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchActivity } from '@/lib/queries'
 import { formatDistanceToNow } from '@/lib/format'
@@ -8,9 +9,26 @@ import { Button } from '@/components/ui/button'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { ActivityEvent } from '@/lib/types'
 import { QueryError } from '@/components/query-error'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+type ActivityFilter = 'all' | 'sign-in' | 'security' | 'developer'
+
+function matchesFilter(event: ActivityEvent, filter: ActivityFilter) {
+  if (filter === 'all') return true
+  if (filter === 'sign-in') return event.event_type.startsWith('login_') || event.event_type.startsWith('mfa_')
+  if (filter === 'security') return event.event_type.startsWith('password_') || event.event_type.startsWith('passkey_') || event.event_type.startsWith('totp_') || event.event_type.startsWith('session_') || event.event_type.startsWith('stepup_')
+  return event.event_type.startsWith('apikey_') || event.event_type.startsWith('oauth_client_') || event.event_type.startsWith('consent_')
+}
 
 export default function ActivityPage() {
   const { t, i18n } = useTranslation()
+  const [filter, setFilter] = useState<ActivityFilter>('all')
   const { data, isLoading, isError, error, refetch, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
     queryKey: ['activity'],
     queryFn: ({ pageParam }) => fetchActivity(pageParam),
@@ -32,7 +50,7 @@ export default function ActivityPage() {
     return <QueryError error={error} onRetry={() => refetch()} />
   }
 
-  const events = data?.pages.flatMap((p) => p.events) ?? []
+  const events = (data?.pages.flatMap((p) => p.events) ?? []).filter((event) => matchesFilter(event, filter))
 
   const columns: Column<ActivityEvent>[] = [
     {
@@ -49,7 +67,7 @@ export default function ActivityPage() {
       key: 'detail',
       header: t('activity.detail'),
       cell: (e) => {
-        const detail = e.metadata?.client_id || e.metadata?.device_name || e.metadata?.method
+        const detail = e.metadata?.client_id || e.metadata?.device_name || e.metadata?.method || e.user_agent
         return (
           <span className="text-sm text-muted-foreground">
             {[e.ip, detail].filter(Boolean).join(' · ')}
@@ -74,10 +92,24 @@ export default function ActivityPage() {
         <p className="text-muted-foreground text-sm mt-1">{t('activity.subtitle')}</p>
       </div>
 
+      <div className="w-full sm:w-56">
+        <Select value={filter} onValueChange={(value) => setFilter((value ?? 'all') as ActivityFilter)}>
+          <SelectTrigger aria-label={t('activity.filterLabel')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('activity.filters.all')}</SelectItem>
+            <SelectItem value="sign-in">{t('activity.filters.signIn')}</SelectItem>
+            <SelectItem value="security">{t('activity.filters.security')}</SelectItem>
+            <SelectItem value="developer">{t('activity.filters.developer')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <ResponsiveDataList
         rows={events}
         columns={columns}
-        rowKey={(e) => `${e.created_at}-${e.event_type}-${e.ip}`}
+        rowKey={(e) => `${e.created_at}-${e.event_type}-${e.ip}-${e.user_agent}`}
         empty={<p className="text-muted-foreground text-sm">{t('activity.noEvents')}</p>}
       />
 

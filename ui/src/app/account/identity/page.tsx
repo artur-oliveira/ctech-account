@@ -12,10 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { KYCBasicForm } from '@/components/kyc-basic-form'
-import { KYCOtpForm } from '@/components/kyc-otp-form'
 import { KYCSelfiePhoto } from '@/components/kyc-selfie-photo'
 import { KYCDocumentUpload } from '@/components/kyc-document-upload'
-import { CheckCircle2, Clock, FileSearch, Info, XCircle } from 'lucide-react'
+import { CheckCircle2, FileSearch, Info, XCircle } from 'lucide-react'
 import { fetchKYC, fetchPasskeys, fetchTOTPStatus } from '@/lib/queries'
 import { submitEnhancedKYCAPI } from '@/lib/mutations'
 import { formatDate } from '@/lib/format'
@@ -39,8 +38,6 @@ function StateBadge({ status }: { status: KYCStatus }) {
       return <Badge variant="default"><CheckCircle2 className="size-3.5" />{t('identity.levelVerified')}</Badge>
     case 'basic_verified':
       return <Badge variant="secondary"><CheckCircle2 className="size-3.5" />{t('identity.levelBasicVerified')}</Badge>
-    case 'awaiting_phone_verification':
-      return <Badge variant="secondary"><Clock className="size-3.5" />{t('identity.levelAwaitingPhoneVerification')}</Badge>
     case 'under_review':
       return <Badge variant="secondary"><FileSearch className="size-3.5" />{t('identity.levelUnderReview')}</Badge>
     case 'rejected':
@@ -163,8 +160,6 @@ function EnhancedSection({ status }: { status: KYCStatus }) {
 
 function cardDescriptionKey(state: KYCStatus['state']): string {
   switch (state) {
-    case 'awaiting_phone_verification':
-      return 'identity.awaitingPhoneVerification'
     case 'basic_verified':
       return 'identity.basicVerifiedCta'
     case 'under_review':
@@ -234,14 +229,12 @@ export default function IdentityPage() {
             </>
           )}
 
-          {status && (status.state === 'not_started' || status.state === 'awaiting_phone_verification' || status.state === 'basic_verified' || status.state === 'rejected') && (
+          {status && (status.state === 'not_started' || status.state === 'basic_verified' || status.state === 'rejected') && (
             <>
               {mfaLoaded && !hasMFA ? (
                 <MFARequired />
               ) : status.state === 'not_started' ? (
                 <KYCBasicForm status={status} />
-              ) : status.state === 'awaiting_phone_verification' ? (
-                <KYCOtpForm status={status} />
               ) : (
                 <>
                   <SubmittedDetails status={status} />

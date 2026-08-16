@@ -180,21 +180,12 @@ func submitBasicBody(cpf string) map[string]any {
 	}
 }
 
-// verifyBasicPhone drives POST /kyc/basic → reads the OTP the fake sender
-// captured → POST /kyc/basic/verify-phone. Returns the final status body.
+// verifyBasicPhone submits Basic KYC and returns its immediate verified status.
 func verifyBasicPhone(t *testing.T, ta *testApp, token, cpf string) map[string]any {
 	t.Helper()
 	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(cpf), token)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit basic: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	code, ok := ta.otpSender.sent[validPhone]
-	if !ok {
-		t.Fatal("no OTP was sent to validPhone")
-	}
-	resp = ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/verify-phone", map[string]string{"code": code}, token)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("verify phone: expected 200, got %d: %s", resp.StatusCode, bodyString(resp))
 	}
 	var st map[string]any
 	readJSON(t, resp, &st)
@@ -259,7 +250,7 @@ func TestKYCFullFlow(t *testing.T) {
 	u := ta.registerUser(t, "kyc-flow@example.com", "Password!123", "Fulano")
 	token := ta.issueToken(t, u.ID())
 
-	// 1. Basic: submit → OTP sent → verify → basic_verified.
+	// 1. Basic: submit → basic_verified.
 	st := verifyBasicPhone(t, ta, token, validCPF)
 	if st["state"] != "basic_verified" || st["level"] != "basic" {
 		t.Fatalf("status after phone verify = %v", st)
@@ -349,43 +340,6 @@ func TestSubmitBasicDuplicateCPFConflict(t *testing.T) {
 	readJSON(t, resp, &problem)
 	if !strings.HasSuffix(problem["type"].(string), "cpf-already-registered") {
 		t.Fatalf("problem = %v", problem)
-	}
-}
-
-func TestVerifyPhoneRejectsWrongCode(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-wrongcode@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token)
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/verify-phone", map[string]string{"code": "000000"}, token)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-invalid-code") {
-		t.Fatalf("problem = %v", problem)
-	}
-}
-
-func TestResendCodeCooldown(t *testing.T) {
-	ta := newTestApp(t)
-	u := ta.registerUser(t, "kyc-resend@example.com", "Password!123", "Fulano")
-	token := ta.issueToken(t, u.ID())
-
-	ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic", submitBasicBody(validCPF), token)
-	resp := ta.doWithToken(http.MethodPost, "/v1.0/account/kyc/basic/resend-code", nil, token)
-	if resp.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("expected 429, got %d: %s", resp.StatusCode, bodyString(resp))
-	}
-	var problem map[string]any
-	readJSON(t, resp, &problem)
-	if !strings.HasSuffix(problem["type"].(string), "kyc-resend-cooldown") {
-		t.Fatalf("problem = %v", problem)
-	}
-	if problem["retry_after_seconds"] == nil {
-		t.Fatal("retry_after_seconds must be present")
 	}
 }
 

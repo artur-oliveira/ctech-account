@@ -28,7 +28,7 @@ type Problem struct {
 	// window the client must satisfy (see StepUpRequired).
 	MaxAgeSeconds int64 `json:"max_age_seconds,omitempty"`
 	// RetryAfterSeconds tells the client how long to wait before retrying a
-	// rate-limited request (see KYCResendCooldown).
+	// rate-limited request.
 	RetryAfterSeconds int64 `json:"retry_after_seconds,omitempty"`
 	// RequiredScope identifies the exact permission needed by a protected
 	// resource endpoint (see InsufficientScope).
@@ -39,9 +39,8 @@ func (p *Problem) Error() string { return p.Detail }
 
 // Send writes the problem as an RFC 7807 response.
 // Uses manual JSON marshaling so fiber.JSON() cannot override the content type.
-// Any Problem with RetryAfterSeconds set (TooManyRequests, KYCResendCooldown)
-// gets the standard Retry-After header for free, so both call sites stay in
-// sync with the body field instead of duplicating header logic.
+// Any Problem with RetryAfterSeconds set gets the standard Retry-After header
+// for free, so body and header remain in sync.
 func (p *Problem) Send(c fiber.Ctx) error {
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -268,26 +267,4 @@ func EmailNotVerified(instance string) *Problem {
 func KYCBasicRequired(instance string) *Problem {
 	return newProblem("kyc-basic-required", "Basic Verification Required", http.StatusConflict,
 		"Complete phone-verified Basic identity verification before submitting Enhanced documents.", instance)
-}
-
-// KYCInvalidCode → 422: the submitted phone verification code is wrong,
-// expired, or its attempt budget was exhausted.
-func KYCInvalidCode(instance string) *Problem {
-	return newProblem("kyc-invalid-code", "Invalid Verification Code", http.StatusUnprocessableEntity,
-		"The verification code is invalid or has expired.", instance)
-}
-
-// KYCResendCooldown → 429: a verification code was already sent recently.
-func KYCResendCooldown(retryAfter time.Duration, instance string) *Problem {
-	p := newProblem("kyc-resend-cooldown", "Resend Cooldown", http.StatusTooManyRequests,
-		"A verification code was already sent. Wait before requesting another.", instance)
-	p.RetryAfterSeconds = int64(retryAfter.Seconds())
-	return p
-}
-
-// KYCPhoneVerificationUnavailable → 503: SMS phone verification is not
-// configured (PHONE_VERIFICATION_ENABLED=false).
-func KYCPhoneVerificationUnavailable(instance string) *Problem {
-	return newProblem("kyc-phone-verification-unavailable", "Phone Verification Unavailable", http.StatusServiceUnavailable,
-		"Phone verification is not available right now. Try again later.", instance)
 }

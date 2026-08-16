@@ -124,6 +124,9 @@ export function CreateAPIKeyDialog() {
               <ScopePicker value={scopes} onChange={setScopes} />
               <p className="text-xs text-muted-foreground">{t('apiKeys.dialog.scopesHint')}</p>
             </div>
+            <Alert>
+              <AlertDescription>{t('apiKeys.dialog.securityNotice')}</AlertDescription>
+            </Alert>
             <div className="space-y-1.5">
               <Label>{t('apiKeys.dialog.expiry')}</Label>
               <Select value={expiry} onValueChange={(v) => setExpiry(v ?? '90')}>

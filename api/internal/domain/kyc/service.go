@@ -2,17 +2,12 @@ package kyc
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
 	"fmt"
 	"log"
-	"math/big"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"gopkg.aoctech.app/account/api/internal/cache"
-	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
@@ -27,48 +22,32 @@ type Presigner interface {
 	Size(ctx context.Context, key string) (int64, error)
 }
 
-// OTPSender delivers a phone-verification code. sms.Client satisfies this.
-type OTPSender interface {
-	SendOTP(ctx context.Context, phoneE164, code string) error
-}
-
 // Service implements the tiered KYC state machine:
 //
-//	none → basic/pending (SubmitBasic, sends an OTP)
-//	  → basic/verified (VerifyPhone) — Basic never regresses past here
+//	none → basic/verified (SubmitBasic)
 //	  → enhanced/pending (SubmitEnhanced, once all RequiredDocTypes uploaded)
 //	  → enhanced/verified | enhanced/rejected (Review, a human via cmd/kyc)
 //	enhanced/rejected → enhanced/pending (fresh document uploads + SubmitEnhanced)
 type Service struct {
 	repo      Repository
 	presigner Presigner
-	cache     *cache.Client
-	sms       OTPSender
 	risk      risk.Evaluator
 	now       func() time.Time
 }
 
-func NewService(repo Repository, presigner Presigner, cache *cache.Client, sms OTPSender, riskEvaluator risk.Evaluator) *Service {
+func NewService(repo Repository, presigner Presigner, riskEvaluator risk.Evaluator) *Service {
 	return &Service{
-		repo: repo, presigner: presigner, cache: cache, sms: sms, risk: riskEvaluator,
+		repo: repo, presigner: presigner, risk: riskEvaluator,
 		now: func() time.Time { return time.Now().UTC() },
 	}
 }
 
-// PhoneVerificationEnabled reports whether SMS delivery is configured
-// (PHONE_VERIFICATION_ENABLED=true — see config.Config).
-func (s *Service) PhoneVerificationEnabled() bool { return s.sms != nil }
+// ── Basic (CPF/name/birthdate/phone/address) ────────────────────────────────
 
-// ── Basic (CPF/name/birthdate/phone/address + SMS OTP) ──────────────────────
-
-// SubmitBasic validates identity data, claims the CPF, and sends a fresh OTP.
-// Reachable while Basic is unset or still pending (not yet phone-verified) —
-// see isBasicLocked. Address is collected here (not Enhanced) for the planned
-// BaaS integration.
+// SubmitBasic validates identity data, claims the CPF, and grants Basic KYC.
+// The phone is collected for downstream onboarding but is not verified by SMS.
+// Address is collected here (not Enhanced) for the planned BaaS integration.
 func (s *Service) SubmitBasic(ctx context.Context, userID, ip string, sub BasicSubmission) error {
-	if !s.PhoneVerificationEnabled() {
-		return ErrPhoneVerificationUnavailable
-	}
 	if !IsValidCPF(sub.CPF) {
 		return ErrInvalidCPF
 	}
@@ -103,124 +82,15 @@ func (s *Service) SubmitBasic(ctx context.Context, userID, ip string, sub BasicS
 		return err
 	}
 
-	// A resubmission carries corrected data (e.g. a mistyped phone number) and
-	// always needs a fresh code — bypass the resend cooldown here; ResendCode
-	// still enforces it below via sendOTP.
-	if err := s.sendFreshOTP(ctx, userID, sub.PhoneNumber); err != nil {
-		return err
-	}
-
 	s.evaluateRisk(ctx, userID, ip)
 	return nil
 }
 
 // isBasicLocked reports whether Basic identity data is immutable: once
-// phone-verified (or once Enhanced has been reached, which implies it), it
-// never regresses.
+// submitted (or once Enhanced has been reached, which implies it), it never
+// regresses.
 func isBasicLocked(u *user.User) bool {
 	return (u.KYCLevel == LevelBasic && u.KYCStatus == StatusVerified) || u.KYCLevel == LevelEnhanced
-}
-
-// ResendCode sends a fresh OTP for a Basic submission still awaiting phone
-// verification.
-func (s *Service) ResendCode(ctx context.Context, userID string) error {
-	if !s.PhoneVerificationEnabled() {
-		return ErrPhoneVerificationUnavailable
-	}
-	u, err := s.repo.GetUser(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if u.KYCLevel != LevelBasic || u.KYCStatus != StatusPending {
-		return ErrNoOTPPending
-	}
-	return s.sendOTP(ctx, userID, u.PhoneNumber)
-}
-
-// VerifyPhone checks code against the last sent OTP. On success it marks
-// Basic verified — this is the only path that ever sets kyc_basic_verified_at.
-func (s *Service) VerifyPhone(ctx context.Context, userID, code string) error {
-	if !s.PhoneVerificationEnabled() {
-		return ErrPhoneVerificationUnavailable
-	}
-	u, err := s.repo.GetUser(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if u.KYCLevel != LevelBasic || u.KYCStatus != StatusPending {
-		return ErrNoOTPPending
-	}
-
-	attemptsKey := otpAttemptsKey(userID)
-	attempts, _ := s.cache.Incr(ctx, attemptsKey, OTPTTL)
-	if attempts > OTPMaxAttempts {
-		return ErrTooManyAttempts
-	}
-
-	var storedHash string
-	if err := s.cache.Get(ctx, otpKey(userID), &storedHash); err != nil {
-		return ErrNoOTPPending
-	}
-	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(crypto.HashToken(code))) != 1 {
-		return ErrInvalidCode
-	}
-
-	_ = s.cache.Delete(ctx, otpKey(userID))
-	_ = s.cache.Delete(ctx, attemptsKey)
-	_ = s.cache.Delete(ctx, otpResendKey(userID))
-
-	return s.repo.MarkPhoneVerified(ctx, userID, s.now().Format(TimeLayout))
-}
-
-// sendOTP is ResendCode's send path: it enforces the resend cooldown before
-// dispatching a fresh code via sendFreshOTP.
-func (s *Service) sendOTP(ctx context.Context, userID, phone string) error {
-	onCooldown, err := s.cache.Exists(ctx, otpResendKey(userID))
-	if err != nil {
-		return err
-	}
-	if onCooldown {
-		return ErrResendCooldown
-	}
-	return s.sendFreshOTP(ctx, userID, phone)
-}
-
-// sendFreshOTP generates+hashes a fresh code, resets the attempt counter,
-// (re)starts the resend cooldown, and dispatches via s.sms — regardless of
-// any cooldown already in effect. SubmitBasic calls this directly (a
-// resubmission with corrected data must not be blocked by a cooldown from
-// the previous attempt); ResendCode goes through sendOTP, which checks the
-// cooldown first.
-func (s *Service) sendFreshOTP(ctx context.Context, userID, phone string) error {
-	code, err := generateOTP()
-	if err != nil {
-		return err
-	}
-	if err := s.cache.Set(ctx, otpKey(userID), crypto.HashToken(code), OTPTTL); err != nil {
-		return err
-	}
-	_ = s.cache.Delete(ctx, otpAttemptsKey(userID))
-	if err := s.cache.Set(ctx, otpResendKey(userID), "1", OTPResendCooldown); err != nil {
-		return err
-	}
-	return s.sms.SendOTP(ctx, phone, code)
-}
-
-func otpKey(userID string) string         { return "kyc_otp:" + userID }
-func otpAttemptsKey(userID string) string { return "kyc_otp_attempts:" + userID }
-func otpResendKey(userID string) string   { return "kyc_otp_resend:" + userID }
-
-// generateOTP returns a random OTPLength-digit numeric code, zero-padded.
-func generateOTP() (string, error) {
-	max := big.NewInt(1)
-	for i := 0; i < OTPLength; i++ {
-		max.Mul(max, big.NewInt(10))
-	}
-	n, err := rand.Int(rand.Reader, max)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%0*d", OTPLength, n.Int64()), nil
 }
 
 // ── Enhanced (documents + human review) ─────────────────────────────────────
@@ -509,8 +379,6 @@ func (s *Service) state(u *user.User) string {
 		return StateUnderReview
 	case u.KYCLevel == LevelBasic && u.KYCStatus == StatusVerified:
 		return StateBasicVerified
-	case u.KYCLevel == LevelBasic && u.KYCStatus == StatusPending:
-		return StateAwaitingPhoneVerification
 	default:
 		return StateNotStarted
 	}

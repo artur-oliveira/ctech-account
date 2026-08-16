@@ -125,7 +125,6 @@ type testApp struct {
 	clientRepo   *memClientRepo
 	kycPresigner *memPresigner
 	kycSvc       *kycDomain.Service
-	otpSender    *fakeOTPSender
 	passkeyRepo  *memPasskeyRepo
 }
 
@@ -182,8 +181,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	auditRepo := &memAuditRepo{}
 	auditSvc := audit.NewService(auditRepo)
 	kycPresigner := newMemPresigner()
-	otpSender := &fakeOTPSender{}
-	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner, cache.NewInMemory(), otpSender, riskDomain.NoopEvaluator{})
+	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner, riskDomain.NoopEvaluator{})
 
 	// WebAuthn instance for tests — uses localhost as RPID/origin.
 	wa, err := webauthn.New(&webauthn.Config{
@@ -252,23 +250,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		clientRepo:   sharedClientRepo,
 		kycPresigner: kycPresigner,
 		kycSvc:       kycSvc,
-		otpSender:    otpSender,
 		passkeyRepo:  passkeyRepo,
 	}
-}
-
-// fakeOTPSender captures the last code sent per phone number so tests can
-// read it back without a real SNS call.
-type fakeOTPSender struct {
-	sent map[string]string // phone -> last code
-}
-
-func (f *fakeOTPSender) SendOTP(_ context.Context, phone, code string) error {
-	if f.sent == nil {
-		f.sent = map[string]string{}
-	}
-	f.sent[phone] = code
-	return nil
 }
 
 // memKYCRepo implements kyc.Repository over the shared memUserRepo store with
@@ -320,18 +303,9 @@ func (m *memKYCRepo) SaveBasicSubmission(_ context.Context, userID string, rec k
 
 	u.CPF, u.LegalName, u.BirthDate, u.PhoneNumber = rec.CPF, rec.LegalName, rec.BirthDate, rec.PhoneNumber
 	u.Address = rec.Address
-	u.KYCLevel, u.KYCStatus = kycDomain.LevelBasic, kycDomain.StatusPending
+	u.KYCLevel, u.KYCStatus = kycDomain.LevelBasic, kycDomain.StatusVerified
 	u.KYCSubmittedAt = rec.SubmittedAt
-	u.KYCRejectionReason, u.PhoneVerifiedAt = "", ""
-	return nil
-}
-
-func (m *memKYCRepo) MarkPhoneVerified(_ context.Context, userID, verifiedAt string) error {
-	u, ok := m.users.byID[userID]
-	if !ok {
-		return userDomain.ErrNotFound
-	}
-	u.KYCStatus, u.PhoneVerifiedAt, u.KYCBasicVerifiedAt = kycDomain.StatusVerified, verifiedAt, verifiedAt
+	u.KYCRejectionReason, u.PhoneVerifiedAt, u.KYCBasicVerifiedAt = "", "", rec.SubmittedAt
 	return nil
 }
 

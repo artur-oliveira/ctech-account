@@ -321,33 +321,17 @@ const routes: Route[] = [
     handle: (_m, body) => {
       state.kyc = {
         ...state.kyc,
-        state: 'awaiting_phone_verification',
+        state: 'basic_verified',
         level: 'basic',
         legal_name: String(body.legal_name ?? ''),
         birth_date: String(body.birth_date ?? ''),
         cpf_masked: '***.***.***-00',
         phone_masked: '***' + String(body.phone_number ?? '').slice(-4),
         submitted_at: new Date().toISOString(),
-      }
-      return state.kyc
-    },
-  },
-  {
-    method: 'post',
-    pattern: /^\/v1\.0\/account\/kyc\/basic\/verify-phone$/,
-    handle: () => {
-      state.kyc = {
-        ...state.kyc,
-        state: 'basic_verified',
         basic_verified_at: new Date().toISOString(),
       }
       return state.kyc
     },
-  },
-  {
-    method: 'post',
-    pattern: /^\/v1\.0\/account\/kyc\/basic\/resend-code$/,
-    handle: () => state.kyc,
   },
   {
     method: 'post',

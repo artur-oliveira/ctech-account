@@ -51,6 +51,17 @@ function readPayload(e: SyntheticEvent<HTMLFormElement>, scopes: string[]): OAut
   }
 }
 
+function hasValidRedirectURIs(uris: string[]): boolean {
+  return uris.length > 0 && uris.every((uri) => {
+    try {
+      const parsed = new URL(uri)
+      return parsed.protocol === 'https:' || (parsed.protocol === 'http:' && parsed.hostname === 'localhost')
+    } catch {
+      return false
+    }
+  })
+}
+
 /** Default selection for new clients: standard OIDC sign-in scopes. */
 const DEFAULT_CLIENT_SCOPES = ['openid', 'profile', 'email']
 
@@ -112,8 +123,8 @@ function ClientFormFields({
         <ScopePicker value={scopes} onChange={onScopesChange} includeIdentity />
         <p className="text-xs text-muted-foreground">{t('oauthClients.dialog.scopesHint')}</p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="audience">{t('oauthClients.dialog.audience')}</Label>
+      <details className="space-y-1.5">
+        <summary className="cursor-pointer text-sm font-medium">{t('oauthClients.dialog.audience')}</summary>
         <Input
           id="audience"
           name="audience"
@@ -121,7 +132,7 @@ function ClientFormFields({
           defaultValue={client?.audience?.join(' ') ?? ''}
         />
         <p className="text-xs text-muted-foreground">{t('oauthClients.dialog.audienceHint')}</p>
-      </div>
+      </details>
     </>
   )
 }
@@ -131,6 +142,7 @@ export function CreateOAuthClientDialog() {
   const [open, setOpen] = useState(false)
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
   const [scopes, setScopes] = useState<string[]>(DEFAULT_CLIENT_SCOPES)
+  const [validationError, setValidationError] = useState('')
   const queryClient = useQueryClient()
 
   const { mutate, isPending, reset } = useMutation({
@@ -152,8 +164,15 @@ export function CreateOAuthClientDialog() {
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const redirectURIs = splitList((fd.get('redirect_uris') as string) ?? '')
+    if (!hasValidRedirectURIs(redirectURIs)) {
+      setValidationError(t('oauthClients.dialog.redirectURIsError'))
+      return
+    }
+    setValidationError('')
     mutate({
       ...readPayload(e, scopes),
+      redirect_uris: redirectURIs,
       client_type: (fd.get('client_type') as 'public' | 'confidential') ?? 'confidential',
     })
   }
@@ -186,6 +205,7 @@ export function CreateOAuthClientDialog() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <ClientFormFields scopes={scopes} onScopesChange={setScopes} />
+            {validationError && <Alert variant="destructive"><AlertDescription>{validationError}</AlertDescription></Alert>}
             <fieldset className="space-y-2 border-0">
               <legend className="text-sm leading-none font-medium select-none">
                 {t('oauthClients.dialog.clientType')}
@@ -218,6 +238,7 @@ export function EditOAuthClientDialog({ client }: { client: OAuthClient }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [scopes, setScopes] = useState<string[]>(client.allowed_scopes)
+  const [validationError, setValidationError] = useState('')
   const queryClient = useQueryClient()
 
   const { mutate, isPending } = useMutation({
@@ -234,7 +255,13 @@ export function EditOAuthClientDialog({ client }: { client: OAuthClient }) {
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
-    mutate(readPayload(e, scopes))
+    const payload = readPayload(e, scopes)
+    if (!hasValidRedirectURIs(payload.redirect_uris)) {
+      setValidationError(t('oauthClients.dialog.redirectURIsError'))
+      return
+    }
+    setValidationError('')
+    mutate(payload)
   }
 
   return (
@@ -254,6 +281,7 @@ export function EditOAuthClientDialog({ client }: { client: OAuthClient }) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <ClientFormFields client={client} scopes={scopes} onScopesChange={setScopes} />
+          {validationError && <Alert variant="destructive"><AlertDescription>{validationError}</AlertDescription></Alert>}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isPending}>
               {isPending ? t('oauthClients.dialog.saving') : t('oauthClients.dialog.save')}
