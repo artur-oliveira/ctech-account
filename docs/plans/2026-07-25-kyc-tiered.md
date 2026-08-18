@@ -1,23 +1,36 @@
 # Tiered KYC (Basic + Enhanced) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Split KYC into Basic (CPF/name/birthdate/phone, SMS-verified via AWS SNS) and Enhanced (3 documents, human-reviewed) levels, reusing ctech-wallet's existing `""|"basic"|"verified"` JWT claim contract, and add an informational-only risk-scoring hook.
+**Goal:** Split KYC into Basic (CPF/name/birthdate/phone, SMS-verified via AWS SNS) and Enhanced (3 documents,
+human-reviewed) levels, reusing ctech-wallet's existing `""|"basic"|"verified"` JWT claim contract, and add an
+informational-only risk-scoring hook.
 
-**Architecture:** `api/internal/domain/kyc` gets a rewritten state machine (level×status instead of a single doc-status field) plus Valkey-backed OTP verification; a new `api/internal/sms` package wraps SNS `Publish`; a new `api/internal/domain/risk` package defines a pluggable `Evaluator` (only a no-op implementation exists). `ui/` gets a linear Basic→OTP→Enhanced flow replacing the old address+6-document wizard. `cdk/` gains one IAM permission.
+**Architecture:** `api/internal/domain/kyc` gets a rewritten state machine (level×status instead of a single doc-status
+field) plus Valkey-backed OTP verification; a new `api/internal/sms` package wraps SNS `Publish`; a new
+`api/internal/domain/risk` package defines a pluggable `Evaluator` (only a no-op implementation exists). `ui/` gets a
+linear Basic→OTP→Enhanced flow replacing the old address+6-document wizard. `cdk/` gains one IAM permission.
 
-**Tech Stack:** Go 1.26 / Fiber v3 / DynamoDB / Valkey (existing), AWS SDK v2 `service/sns` (new dependency), Next.js 16 / React 19 / ShadCN 4 (existing).
+**Tech Stack:** Go 1.26 / Fiber v3 / DynamoDB / Valkey (existing), AWS SDK v2 `service/sns` (new dependency), Next.js
+16 / React 19 / ShadCN 4 (existing).
 
 ## Global Constraints
 
-- Spec: `docs/specs/2026-07-25-kyc-tiered.md` (committed `6f14627`) — every task below implements one of its sections; section refs are noted per task.
-- `kyc_level` JWT claim values stay exactly `""|"basic"|"verified"` — **never** emit `"enhanced"` (ctech-wallet's `middleware.RequireKYC` hard-codes this set; see spec §5). Zero changes to `ctech-wallet` or `ctech-dfe`.
+- Spec: `docs/specs/2026-07-25-kyc-tiered.md` (committed `6f14627`) — every task below implements one of its sections;
+  section refs are noted per task.
+- `kyc_level` JWT claim values stay exactly `""|"basic"|"verified"` — **never** emit `"enhanced"` (ctech-wallet's
+  `middleware.RequireKYC` hard-codes this set; see spec §5). Zero changes to `ctech-wallet` or `ctech-dfe`.
 - Every HTTP error is an `*apierror.Problem` via `problem.Send(c)` — never `c.Status().JSON()`.
-- `handler → service → repository` layering: no AWS SDK / DynamoDB calls in `kyc.Service`; no business logic in `kyc/repository.go` beyond what's needed to persist a decision already made by the service.
-- Services take repository **interfaces**; concrete infra clients (`*cache.Client`) are passed directly as fields, matching `passkey.Service`'s existing pattern — this is not a repository, so it doesn't need one.
-- All new constants (OTP length/TTL/cooldown, doc types, cache key prefixes) go in `kyc/model.go` — no magic strings/numbers at call sites.
+- `handler → service → repository` layering: no AWS SDK / DynamoDB calls in `kyc.Service`; no business logic in
+  `kyc/repository.go` beyond what's needed to persist a decision already made by the service.
+- Services take repository **interfaces**; concrete infra clients (`*cache.Client`) are passed directly as fields,
+  matching `passkey.Service`'s existing pattern — this is not a repository, so it doesn't need one.
+- All new constants (OTP length/TTL/cooldown, doc types, cache key prefixes) go in `kyc/model.go` — no magic
+  strings/numbers at call sites.
 - No production KYC data exists — every task treats field renames/removals as free schema changes, never as a migration.
-- `go build ./...` and `go test ./...` (from `api/`) must pass after every backend task; `npx eslint src --ext .ts,.tsx` and `npm run build` (from `ui/`) must pass after every UI task.
+- `go build ./...` and `go test ./...` (from `api/`) must pass after every backend task; `npx eslint src --ext .ts,.tsx`
+  and `npm run build` (from `ui/`) must pass after every UI task.
 - Never add a `Co-Authored-By` trailer to any commit.
 
 ---
@@ -27,17 +40,24 @@
 Implements spec §4, §5, §6 (constants only), §8 (OTP constants).
 
 **Files:**
+
 - Modify: `api/internal/domain/kyc/model.go`
 - Create: `api/internal/domain/kyc/phone.go`
 - Delete: `api/internal/domain/kyc/address.go`
 - Test: `api/internal/domain/kyc/model_test.go` (extend existing file)
 
 **Interfaces:**
-- Produces: `LevelNone/LevelBasic/LevelEnhanced`, `StatusNone/StatusPending/StatusVerified/StatusRejected`, `StateNotStarted/StateAwaitingPhoneVerification/StateBasicVerified/StateUnderReview/StateRejected/StateVerified`, `DocTypeIDFront/DocTypeIDBack/DocTypeSelfieWithDocument`, `RequiredDocTypes []string`, `ClaimLevel(level, status string) string`, `IsValidPhone(phone string) bool`, `MaskPhone(phone string) string`, all error vars below. Later tasks (2, 8-14) consume these names verbatim.
+
+- Produces: `LevelNone/LevelBasic/LevelEnhanced`, `StatusNone/StatusPending/StatusVerified/StatusRejected`,
+  `StateNotStarted/StateAwaitingPhoneVerification/StateBasicVerified/StateUnderReview/StateRejected/StateVerified`,
+  `DocTypeIDFront/DocTypeIDBack/DocTypeSelfieWithDocument`, `RequiredDocTypes []string`,
+  `ClaimLevel(level, status string) string`, `IsValidPhone(phone string) bool`, `MaskPhone(phone string) string`, all
+  error vars below. Later tasks (2, 8-14) consume these names verbatim.
 
 - [ ] **Step 1: Delete `api/internal/domain/kyc/address.go`**
 
-This file only defines `Address`-related helpers no longer needed once `address` is dropped from KYC entirely (spec §3, §6).
+This file only defines `Address`-related helpers no longer needed once `address` is dropped from KYC entirely (spec §3,
+§6).
 
 - [ ] **Step 2: Rewrite `api/internal/domain/kyc/model.go`**
 
@@ -356,12 +376,16 @@ func TestMaskPhone(t *testing.T) {
 - [ ] **Step 5: Run the new tests to verify they fail (compile error — old model.go removed)**
 
 Run: `cd api && go test ./internal/domain/kyc/... -run 'TestClaimLevel|TestIsValidPhone|TestMaskPhone' -v`
-Expected: FAIL (undefined: ClaimLevel / IsValidPhone / MaskPhone) until Steps 2-3 are in place — since Steps 2-3 are written above, running now should PASS. If it fails for any other reason, fix before continuing.
+Expected: FAIL (undefined: ClaimLevel / IsValidPhone / MaskPhone) until Steps 2-3 are in place — since Steps 2-3 are
+written above, running now should PASS. If it fails for any other reason, fix before continuing.
 
 - [ ] **Step 6: Run the full kyc package test suite**
 
 Run: `cd api && go test ./internal/domain/kyc/... -v`
-Expected: compile errors in `service.go`, `repository.go`, `service_test.go` (they still reference the old API) — this is expected until Tasks 8-10 land. Confirm the *new* tests (Step 4) pass in isolation once those are fixed; for now just confirm `model_test.go` and `cpf_test.go` compile logic is sound by inspection (the package won't build standalone until Task 8-10 complete). Do not commit yet — commit happens at the end of Task 10 once the whole package builds again.
+Expected: compile errors in `service.go`, `repository.go`, `service_test.go` (they still reference the old API) — this
+is expected until Tasks 8-10 land. Confirm the *new* tests (Step 4) pass in isolation once those are fixed; for now just
+confirm `model_test.go` and `cpf_test.go` compile logic is sound by inspection (the package won't build standalone until
+Task 8-10 complete). Do not commit yet — commit happens at the end of Task 10 once the whole package builds again.
 
 ---
 
@@ -370,10 +394,14 @@ Expected: compile errors in `service.go`, `repository.go`, `service_test.go` (th
 Implements spec §6.
 
 **Files:**
+
 - Modify: `api/internal/domain/user/model.go`
 
 **Interfaces:**
-- Produces: `User.KYCStatus` (renamed from `KYCDocStatus`), `User.PhoneNumber`, `User.PhoneVerifiedAt`, `User.KYCBasicVerifiedAt`, `User.KYCRiskScore`, `User.KYCRiskSignals`, `User.KYCRiskEvaluatedAt`. Removes `User.Address`, `User.KYCMethod`. Tasks 3, 8, 9, 11 consume these field names.
+
+- Produces: `User.KYCStatus` (renamed from `KYCDocStatus`), `User.PhoneNumber`, `User.PhoneVerifiedAt`,
+  `User.KYCBasicVerifiedAt`, `User.KYCRiskScore`, `User.KYCRiskSignals`, `User.KYCRiskEvaluatedAt`. Removes
+  `User.Address`, `User.KYCMethod`. Tasks 3, 8, 9, 11 consume these field names.
 
 - [ ] **Step 1: Edit `api/internal/domain/user/model.go`**
 
@@ -449,12 +477,15 @@ func (u *User) DisplayOrFullName() string {
 }
 ```
 
-The `Address` struct and its `IsZero()` method are deleted entirely — nothing outside `kyc`/`identity` referenced them (confirmed by grep during planning).
+The `Address` struct and its `IsZero()` method are deleted entirely — nothing outside `kyc`/`identity` referenced them
+(confirmed by grep during planning).
 
 - [ ] **Step 2: Compile-check (this package alone has no test file needing changes)**
 
 Run: `cd api && go build ./internal/domain/user/...`
-Expected: FAIL — every other file still referencing `KYCDocStatus`, `KYCMethod`, `Address` (kyc package, handler package) won't compile yet. This is expected; those are fixed in Tasks 1 (done), 8, 9, 11. Do not commit this task in isolation — it lands together with Task 9's commit once the whole module builds. Move directly to Task 3.
+Expected: FAIL — every other file still referencing `KYCDocStatus`, `KYCMethod`, `Address` (kyc package, handler
+package) won't compile yet. This is expected; those are fixed in Tasks 1 (done), 8, 9, 11. Do not commit this task in
+isolation — it lands together with Task 9's commit once the whole module builds. Move directly to Task 3.
 
 ---
 
@@ -463,11 +494,15 @@ Expected: FAIL — every other file still referencing `KYCDocStatus`, `KYCMethod
 Implements spec §9, §3 (no real detectors).
 
 **Files:**
+
 - Create: `api/internal/domain/risk/model.go`
 - Test: `api/internal/domain/risk/model_test.go`
 
 **Interfaces:**
-- Produces: `risk.Signal{Name, Score, Detail}`, `risk.Assessment{Score, Signals, EvaluatedAt}`, `risk.Evaluator` interface, `risk.NoopEvaluator{}`. Consumed by Task 8 (`kyc.Service`) and Task 8's repository dependency (Task 8's `SaveRiskAssessment`).
+
+- Produces: `risk.Signal{Name, Score, Detail}`, `risk.Assessment{Score, Signals, EvaluatedAt}`, `risk.Evaluator`
+  interface, `risk.NoopEvaluator{}`. Consumed by Task 8 (`kyc.Service`) and Task 8's repository dependency (Task 8's
+  `SaveRiskAssessment`).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -570,11 +605,15 @@ git commit -m "feat: add risk domain package (structural hook, no-op evaluator)"
 Implements spec §8 (delivery mechanism only — config gating is Task 5).
 
 **Files:**
+
 - Create: `api/internal/sms/client.go`
 - Modify: `api/go.mod` (new dependency)
 
 **Interfaces:**
-- Produces: `sms.Client`, `sms.New(ctx, region string) (*Client, error)`, `(*Client) SendOTP(ctx, phoneE164, code string) error`. Consumed by Task 17 (main.go wiring) via the `kyc.OTPSender` interface defined in Task 8.
+
+- Produces: `sms.Client`, `sms.New(ctx, region string) (*Client, error)`,
+  `(*Client) SendOTP(ctx, phoneE164, code string) error`. Consumed by Task 17 (main.go wiring) via the `kyc.OTPSender`
+  interface defined in Task 8.
 
 - [ ] **Step 1: Add the AWS SNS SDK dependency**
 
@@ -623,7 +662,8 @@ func (c *Client) SendOTP(ctx context.Context, phoneE164, code string) error {
 - [ ] **Step 3: Build-check**
 
 Run: `cd api && go build ./internal/sms/...`
-Expected: builds cleanly (no unit test here — it's a thin AWS SDK wrapper with no branching logic, same testing posture as `internal/email`, which also has none).
+Expected: builds cleanly (no unit test here — it's a thin AWS SDK wrapper with no branching logic, same testing posture
+as `internal/email`, which also has none).
 
 - [ ] **Step 4: Commit**
 
@@ -639,9 +679,11 @@ git commit -m "feat: add sms package wrapping SNS direct-to-phone Publish"
 Implements spec §8 (gating flag).
 
 **Files:**
+
 - Modify: `api/internal/config/config.go`
 
 **Interfaces:**
+
 - Produces: `Config.PhoneVerificationEnabled bool`. Consumed by Task 17 (main.go wiring).
 
 - [ ] **Step 1: Add the field and parsing**
@@ -683,10 +725,16 @@ git commit -m "feat: add PHONE_VERIFICATION_ENABLED config flag"
 Implements spec §7 (error constructors), §8 (503 gate).
 
 **Files:**
+
 - Modify: `api/internal/apierror/problem.go`
 
 **Interfaces:**
-- Produces: `apierror.KYCBasicRequired(instance string) *Problem`, `apierror.KYCInvalidCode(instance string) *Problem`, `apierror.KYCResendCooldown(retryAfter time.Duration, instance string) *Problem`, `apierror.KYCPhoneVerificationUnavailable(instance string) *Problem`. Removes `KYCCPFMismatch`, `KYCWrongMethod` (confirmed unused outside their own definitions during planning — dead code from the removed PIX-method design). Consumed by Task 11 (`handler/kyc.go`).
+
+- Produces: `apierror.KYCBasicRequired(instance string) *Problem`, `apierror.KYCInvalidCode(instance string) *Problem`,
+  `apierror.KYCResendCooldown(retryAfter time.Duration, instance string) *Problem`,
+  `apierror.KYCPhoneVerificationUnavailable(instance string) *Problem`. Removes `KYCCPFMismatch`, `KYCWrongMethod`
+  (confirmed unused outside their own definitions during planning — dead code from the removed PIX-method design).
+  Consumed by Task 11 (`handler/kyc.go`).
 
 - [ ] **Step 1: Add `RetryAfterSeconds` to the `Problem` struct**
 
@@ -708,7 +756,8 @@ type Problem struct {
 
 - [ ] **Step 2: Remove `KYCCPFMismatch` and `KYCWrongMethod`**
 
-Delete both functions (lines ~189-213 in the current file) — the PIX verification method they served was already removed per `docs/specs/2026-07-15-kyc-manual.md`, and no call site remains.
+Delete both functions (lines ~189-213 in the current file) — the PIX verification method they served was already removed
+per `docs/specs/2026-07-15-kyc-manual.md`, and no call site remains.
 
 - [ ] **Step 3: Add the four new constructors**
 
@@ -762,9 +811,11 @@ git commit -m "feat: add KYC basic/OTP problem constructors, drop unused PIX-era
 ## Task 7: `audit` — new phone-verified event
 
 **Files:**
+
 - Modify: `api/internal/domain/audit/events.go`
 
 **Interfaces:**
+
 - Produces: `audit.EventKYCPhoneVerified`. Consumed by Task 11 (`handler/kyc.go`).
 
 - [ ] **Step 1: Add the constant next to the other KYC events**
@@ -796,11 +847,23 @@ git commit -m "feat: add kyc.phone_verified audit event"
 Implements spec §6, §9 (risk persistence).
 
 **Files:**
+
 - Modify: `api/internal/domain/kyc/repository.go`
 
 **Interfaces:**
-- Consumes: `user.User` fields from Task 2, `risk.Assessment` from Task 3, `kyc.LevelBasic/LevelEnhanced/StatusPending/StatusVerified/StatusRejected/BuildCPFPK` from Task 1.
-- Produces: `Repository` interface with `GetUser`, `SaveBasicSubmission(ctx, userID string, rec BasicRecord, oldCPF string) error`, `MarkPhoneVerified(ctx, userID, verifiedAt string) error`, `AddDocument(ctx, userID string, doc Document) error` (docStatus param removed), `SavePendingDocument`/`GetPendingDocument`/`DeletePendingDocument` (unchanged), `SaveEnhancedSubmission(ctx, userID, submittedAt, expiresAt string) error`, `MarkVerified(ctx, userID, verifiedAt string) error`, `MarkRejected(ctx, userID, reason string) error`, `SaveRiskAssessment(ctx, userID string, a risk.Assessment) error`, `ListPendingKYC(ctx) ([]*user.User, error)` (now scoped to `kyc_level=enhanced AND kyc_status=pending`). `BasicRecord{CPF, LegalName, BirthDate, PhoneNumber, SubmittedAt string}`. Consumed by Task 9 (`kyc.Service`) and Task 12 (`handler` test helpers' in-memory mock).
+
+- Consumes: `user.User` fields from Task 2, `risk.Assessment` from Task 3,
+  `kyc.LevelBasic/LevelEnhanced/StatusPending/StatusVerified/StatusRejected/BuildCPFPK` from Task 1.
+- Produces: `Repository` interface with `GetUser`,
+  `SaveBasicSubmission(ctx, userID string, rec BasicRecord, oldCPF string) error`,
+  `MarkPhoneVerified(ctx, userID, verifiedAt string) error`, `AddDocument(ctx, userID string, doc Document) error`
+  (docStatus param removed), `SavePendingDocument`/`GetPendingDocument`/`DeletePendingDocument` (unchanged),
+  `SaveEnhancedSubmission(ctx, userID, submittedAt, expiresAt string) error`,
+  `MarkVerified(ctx, userID, verifiedAt string) error`, `MarkRejected(ctx, userID, reason string) error`,
+  `SaveRiskAssessment(ctx, userID string, a risk.Assessment) error`, `ListPendingKYC(ctx) ([]*user.User, error)` (now
+  scoped to `kyc_level=enhanced AND kyc_status=pending`).
+  `BasicRecord{CPF, LegalName, BirthDate, PhoneNumber, SubmittedAt string}`. Consumed by Task 9 (`kyc.Service`) and Task
+  12 (`handler` test helpers' in-memory mock).
 
 - [ ] **Step 1: Rewrite `api/internal/domain/kyc/repository.go`**
 
@@ -1164,7 +1227,10 @@ func (r *dynamoRepository) ListPendingKYC(ctx context.Context) ([]*user.User, er
 - [ ] **Step 2: Build-check (package still won't compile standalone — `service.go` not yet updated)**
 
 Run: `cd api && go vet ./internal/domain/kyc/... 2>&1 | head -50`
-Expected: errors only from `service.go`/`service_test.go` referencing the old API — confirm no errors originate from `repository.go` itself (i.e., every error message references `service.go` or `service_test.go`, not `repository.go`). Proceed to Task 9 without committing yet — Task 8+9+10 land together in Task 10's final commit once the package builds and tests pass.
+Expected: errors only from `service.go`/`service_test.go` referencing the old API — confirm no errors originate from
+`repository.go` itself (i.e., every error message references `service.go` or `service_test.go`, not `repository.go`).
+Proceed to Task 9 without committing yet — Task 8+9+10 land together in Task 10's final commit once the package builds
+and tests pass.
 
 ---
 
@@ -1173,11 +1239,22 @@ Expected: errors only from `service.go`/`service_test.go` referencing the old AP
 Implements spec §4, §5 (via `ClaimLevel`, already in `model.go`), §8, §9.
 
 **Files:**
+
 - Modify: `api/internal/domain/kyc/service.go`
 
 **Interfaces:**
-- Consumes: `Repository` from Task 8, `risk.Evaluator`/`risk.Assessment` from Task 3, `*cache.Client` (existing, `api/internal/cache`), `crypto.HashToken` (existing, `api/internal/crypto`).
-- Produces: `Service{repo, presigner, cache, sms, risk, now}`, `NewService(repo Repository, presigner Presigner, cache *cache.Client, sms OTPSender, riskEvaluator risk.Evaluator) *Service`, `OTPSender interface { SendOTP(ctx, phoneE164, code string) error }`, `(*Service) PhoneVerificationEnabled() bool`, `(*Service) SubmitBasic(ctx, userID, ip string, sub BasicSubmission) error`, `(*Service) VerifyPhone(ctx, userID, code string) error`, `(*Service) ResendCode(ctx, userID string) error`, `(*Service) SubmitEnhanced(ctx, userID, ip string) error`, `(*Service) PresignDocument`/`ConfirmDocument` (signatures unchanged), `(*Service) DocumentsEnabled() bool`, `(*Service) Review(ctx, userID, decision, reason string) error`, `(*Service) ListPendingKYC`/`DocumentURLs`/`Get`/`GetUser` (signatures unchanged). Consumed by Task 11 (`handler/kyc.go`), Task 16 (`cmd/kyc/main.go`), Task 17 (`cmd/api/main.go`).
+
+- Consumes: `Repository` from Task 8, `risk.Evaluator`/`risk.Assessment` from Task 3, `*cache.Client` (existing,
+  `api/internal/cache`), `crypto.HashToken` (existing, `api/internal/crypto`).
+- Produces: `Service{repo, presigner, cache, sms, risk, now}`,
+  `NewService(repo Repository, presigner Presigner, cache *cache.Client, sms OTPSender, riskEvaluator risk.Evaluator) *Service`,
+  `OTPSender interface { SendOTP(ctx, phoneE164, code string) error }`, `(*Service) PhoneVerificationEnabled() bool`,
+  `(*Service) SubmitBasic(ctx, userID, ip string, sub BasicSubmission) error`,
+  `(*Service) VerifyPhone(ctx, userID, code string) error`, `(*Service) ResendCode(ctx, userID string) error`,
+  `(*Service) SubmitEnhanced(ctx, userID, ip string) error`, `(*Service) PresignDocument`/`ConfirmDocument` (signatures
+  unchanged), `(*Service) DocumentsEnabled() bool`, `(*Service) Review(ctx, userID, decision, reason string) error`,
+  `(*Service) ListPendingKYC`/`DocumentURLs`/`Get`/`GetUser` (signatures unchanged). Consumed by Task 11
+  (`handler/kyc.go`), Task 16 (`cmd/kyc/main.go`), Task 17 (`cmd/api/main.go`).
 
 - [ ] **Step 1: Rewrite `api/internal/domain/kyc/service.go`**
 
@@ -1716,7 +1793,8 @@ func (s *Service) purgeRejectedObjects(docs []Document) {
 - [ ] **Step 2: Build-check**
 
 Run: `cd api && go build ./internal/domain/kyc/...`
-Expected: FAIL only on `service_test.go` (still references the old `Submit`/`Address`/`Record` API) — confirm no errors from `service.go` or `repository.go` themselves. Proceed to Task 10.
+Expected: FAIL only on `service_test.go` (still references the old `Submit`/`Address`/`Record` API) — confirm no errors
+from `service.go` or `repository.go` themselves. Proceed to Task 10.
 
 ---
 
@@ -1725,9 +1803,11 @@ Expected: FAIL only on `service_test.go` (still references the old `Submit`/`Add
 Implements spec §13 (kyc/service_test.go bullet).
 
 **Files:**
+
 - Modify: `api/internal/domain/kyc/service_test.go` (full rewrite)
 
 **Interfaces:**
+
 - Consumes everything from Tasks 1, 3, 8, 9.
 
 - [ ] **Step 1: Rewrite the in-memory test fixtures at the top of `service_test.go`**
@@ -2392,7 +2472,8 @@ func assertState(t *testing.T, svc *Service, userID, want string) {
 - [ ] **Step 4: Run the full package test suite**
 
 Run: `cd api && go test ./internal/domain/kyc/... -v`
-Expected: PASS — every test in `model_test.go`, `cpf_test.go`, and the rewritten `service_test.go` (this also confirms Task 1's Step 6 and Task 8's Step 2 deferred checks).
+Expected: PASS — every test in `model_test.go`, `cpf_test.go`, and the rewritten `service_test.go` (this also confirms
+Task 1's Step 6 and Task 8's Step 2 deferred checks).
 
 - [ ] **Step 5: Commit Tasks 1-2, 8-10 together**
 
@@ -2408,11 +2489,18 @@ git commit -m "feat: split KYC into Basic (phone-verified) and Enhanced (reviewe
 Implements spec §7.
 
 **Files:**
+
 - Modify: `api/internal/handler/kyc.go`
 
 **Interfaces:**
-- Consumes: `kyc.BasicSubmission`, `kyc.Err*` from Task 1, `kyc.Service.SubmitBasic/VerifyPhone/ResendCode/SubmitEnhanced` from Task 9, `apierror.KYC*` from Task 6, `audit.EventKYCPhoneVerified` from Task 7, `clientIP(c)` (existing, `handler/helpers.go`).
-- Produces: routes `POST /account/kyc/basic`, `POST /account/kyc/basic/verify-phone`, `POST /account/kyc/basic/resend-code`, `POST /account/kyc/enhanced` (new); `GET /account/kyc`, `POST /account/kyc/documents`, `POST /account/kyc/documents/confirm` (updated). Consumed by Task 12 (tests), Task 19 (README).
+
+- Consumes: `kyc.BasicSubmission`, `kyc.Err*` from Task 1,
+  `kyc.Service.SubmitBasic/VerifyPhone/ResendCode/SubmitEnhanced` from Task 9, `apierror.KYC*` from Task 6,
+  `audit.EventKYCPhoneVerified` from Task 7, `clientIP(c)` (existing, `handler/helpers.go`).
+- Produces: routes `POST /account/kyc/basic`, `POST /account/kyc/basic/verify-phone`,
+  `POST /account/kyc/basic/resend-code`, `POST /account/kyc/enhanced` (new); `GET /account/kyc`,
+  `POST /account/kyc/documents`, `POST /account/kyc/documents/confirm` (updated). Consumed by Task 12 (tests), Task 19
+  (README).
 
 - [ ] **Step 1: Rewrite `api/internal/handler/kyc.go`**
 
@@ -2672,7 +2760,8 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 - [ ] **Step 2: Build-check**
 
 Run: `cd api && go build ./internal/handler/...`
-Expected: FAIL only in `kyc_test.go` and `testhelpers_test.go` (Task 12 rewrites both) — confirm no error originates from `kyc.go` itself.
+Expected: FAIL only in `kyc_test.go` and `testhelpers_test.go` (Task 12 rewrites both) — confirm no error originates
+from `kyc.go` itself.
 
 - [ ] **Step 3: Commit deferred to Task 12** (the package must build+test green first)
 
@@ -2683,15 +2772,20 @@ Expected: FAIL only in `kyc_test.go` and `testhelpers_test.go` (Task 12 rewrites
 Implements spec §13 (`handler/kyc_test.go` bullet).
 
 **Files:**
+
 - Modify: `api/internal/handler/testhelpers_test.go` (the `memKYCRepo` fixture + `newTestApp` wiring)
-- Modify: `api/internal/handler/kyc_test.go` (full rewrite of the KYC-specific tests; the client-credentials tests at the top of the file are unrelated to this spec and must be left untouched)
+- Modify: `api/internal/handler/kyc_test.go` (full rewrite of the KYC-specific tests; the client-credentials tests at
+  the top of the file are unrelated to this spec and must be left untouched)
 
 **Interfaces:**
+
 - Consumes: everything from Tasks 1, 3, 8, 9, 11.
 
 - [ ] **Step 1: Rewrite `memKYCRepo` in `testhelpers_test.go` to satisfy the new `kyc.Repository`**
 
-Locate the existing `memKYCRepo` type and its methods (`GetUser`, `SavePendingDocument`, `GetPendingDocument`, `DeletePendingDocument`, `SaveSubmission`, `AddDocument`, `MarkVerified`, `MarkRejected`, `ListPendingKYC`) and replace them with:
+Locate the existing `memKYCRepo` type and its methods (`GetUser`, `SavePendingDocument`, `GetPendingDocument`,
+`DeletePendingDocument`, `SaveSubmission`, `AddDocument`, `MarkVerified`, `MarkRejected`, `ListPendingKYC`) and replace
+them with:
 
 ```go
 // memKYCRepo implements kyc.Repository over the shared memUserRepo store with
@@ -2815,15 +2909,20 @@ func (m *memKYCRepo) ListPendingKYC(ctx context.Context) ([]*userDomain.User, er
 }
 ```
 
-If `memUserRepo` does not already expose a `replace(u *userDomain.User) error` helper or an `all(ctx) ([]*userDomain.User, error)` helper, add them (small additions — `replace` is a keyed map write, `all` returns every stored value; follow whatever the existing `memUserRepo` internal storage field is named). Add `riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"` to the file's imports.
+If `memUserRepo` does not already expose a `replace(u *userDomain.User) error` helper or an
+`all(ctx) ([]*userDomain.User, error)` helper, add them (small additions — `replace` is a keyed map write, `all` returns
+every stored value; follow whatever the existing `memUserRepo` internal storage field is named). Add
+`riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"` to the file's imports.
 
-Locate the `newOAuthTestApp`/`newTestApp` constructor's `kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner)` line and update it to:
+Locate the `newOAuthTestApp`/`newTestApp` constructor's
+`kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner)` line and update it to:
 
 ```go
 	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner, cache.NewInMemory(), &fakeOTPSender{}, riskDomain.NoopEvaluator{})
 ```
 
-Add a `fakeOTPSender` type (records sent codes, same shape as `fakeSMS` in `kyc/service_test.go` but exported within the `handler_test` package) near the other test doubles in `testhelpers_test.go`:
+Add a `fakeOTPSender` type (records sent codes, same shape as `fakeSMS` in `kyc/service_test.go` but exported within the
+`handler_test` package) near the other test doubles in `testhelpers_test.go`:
 
 ```go
 // fakeOTPSender captures the last code sent per phone number so tests can
@@ -2841,7 +2940,8 @@ func (f *fakeOTPSender) SendOTP(_ context.Context, phone, code string) error {
 }
 ```
 
-Add `f := &fakeOTPSender{}` to the constructor's local variables and store it on `testApp` (new field `otpSender *fakeOTPSender`) so tests can read `ta.otpSender.sent[phone]`.
+Add `f := &fakeOTPSender{}` to the constructor's local variables and store it on `testApp` (new field
+`otpSender *fakeOTPSender`) so tests can read `ta.otpSender.sent[phone]`.
 
 - [ ] **Step 2: Build-check the test helpers alone**
 
@@ -2850,7 +2950,9 @@ Expected: remaining errors all originate from `kyc_test.go` (Step 3 rewrites it)
 
 - [ ] **Step 3: Rewrite the KYC section of `kyc_test.go`**
 
-Keep the file's client-credentials tests (`TestClientCredentialsIssuesToken` through `TestClientCredentialsClampsScopes`) and the imports/helpers they use (`seedM2MClient`, `clientCredentialsForm`, `decodeJWTPayload`) exactly as-is. Replace everything from the `// ── KYC route tests` comment onward with:
+Keep the file's client-credentials tests (`TestClientCredentialsIssuesToken` through
+`TestClientCredentialsClampsScopes`) and the imports/helpers they use (`seedM2MClient`, `clientCredentialsForm`,
+`decodeJWTPayload`) exactly as-is. Replace everything from the `// ── KYC route tests` comment onward with:
 
 ```go
 // ── KYC route tests (user-facing + internal) ────────────────────────────────
@@ -3269,7 +3371,12 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 }
 ```
 
-Note: this rewrite drops the old `TestSubmitKYCRequiresAddress`/`TestSubmitKYCRejectsUnknownState` tests (address no longer exists) and the old `TestKYCStatusExposesAwaitingFilesState` test (that intermediate doc status no longer exists — documents may now accumulate freely while `basic_verified`, with no distinct state). `TestSubmitAfterVerifiedConflict`'s intent is preserved by `TestSubmitBasicLockedOnceVerified` already covered at the `kyc.Service` unit-test layer (Task 10); it is not duplicated here to avoid redundant coverage across layers for the same rule.
+Note: this rewrite drops the old `TestSubmitKYCRequiresAddress`/`TestSubmitKYCRejectsUnknownState` tests (address no
+longer exists) and the old `TestKYCStatusExposesAwaitingFilesState` test (that intermediate doc status no longer
+exists — documents may now accumulate freely while `basic_verified`, with no distinct state).
+`TestSubmitAfterVerifiedConflict`'s intent is preserved by `TestSubmitBasicLockedOnceVerified` already covered at the
+`kyc.Service` unit-test layer (Task 10); it is not duplicated here to avoid redundant coverage across layers for the
+same rule.
 
 - [ ] **Step 4: Run the full handler test suite**
 
@@ -3295,9 +3402,11 @@ git commit -m "feat: add Basic/OTP/Enhanced KYC routes, rewrite KYC integration 
 Implements spec §5.
 
 **Files:**
+
 - Modify: `api/internal/handler/token.go`
 
 **Interfaces:**
+
 - Consumes: `kyc.ClaimLevel(level, status string) string` from Task 1.
 
 - [ ] **Step 1: Update `kycClaimFor` (around line 452-459)**
@@ -3351,7 +3460,9 @@ Expected: PASS
 - [ ] **Step 4: Run the existing claim regression test**
 
 Run: `cd api && go test ./internal/handler/... -run TestAccessTokenCarriesKYCLevelAfterRefresh -v`
-Expected: PASS (this test was already updated in Task 12 to seed `KYCLevel: kyc.LevelEnhanced, KYCStatus: kyc.StatusVerified` and assert `claims["kyc_level"] == "verified"` — it now exercises `ClaimLevel` specifically).
+Expected: PASS (this test was already updated in Task 12 to seed
+`KYCLevel: kyc.LevelEnhanced, KYCStatus: kyc.StatusVerified` and assert `claims["kyc_level"] == "verified"` — it now
+exercises `ClaimLevel` specifically).
 
 - [ ] **Step 5: Commit**
 
@@ -3367,10 +3478,12 @@ git commit -m "feat: derive kyc_level claim via kyc.ClaimLevel at token issuance
 Implements spec §5.
 
 **Files:**
+
 - Modify: `api/internal/handler/userinfo.go`
 - Test: `api/internal/handler/userinfo_test.go` (new file — none existed before)
 
 **Interfaces:**
+
 - Consumes: `kyc.ClaimLevel` from Task 1.
 
 - [ ] **Step 1: Update `UserInfo`**
@@ -3444,14 +3557,20 @@ func TestUserInfoReportsVerifiedKYCLevel(t *testing.T) {
 }
 ```
 
-If `testApp` has no `issueTokenWithScopes(userID string, scopes []string) string` helper yet, check `testhelpers_test.go` for the closest existing token-issuing helper (`issueToken`, `issueMachineToken`) and add a small `issueTokenWithScopes` that mirrors `issueToken`'s signing call but accepts an explicit scope slice instead of a hardcoded default set — this is a small, focused addition, not a new pattern.
+If `testApp` has no `issueTokenWithScopes(userID string, scopes []string) string` helper yet, check
+`testhelpers_test.go` for the closest existing token-issuing helper (`issueToken`, `issueMachineToken`) and add a small
+`issueTokenWithScopes` that mirrors `issueToken`'s signing call but accepts an explicit scope slice instead of a
+hardcoded default set — this is a small, focused addition, not a new pattern.
 
 - [ ] **Step 3: Run it to verify the enhanced/pending case fails against the old code**
 
-(This step is about verifying you're testing the right thing — since Step 1 and Step 2 are written together above, run after both are in place.)
+(This step is about verifying you're testing the right thing — since Step 1 and Step 2 are written together above, run
+after both are in place.)
 
 Run: `cd api && go test ./internal/handler/... -run TestUserInfo -v`
-Expected: PASS (both tests). If `TestUserInfoOmitsKYCLevelWhenEnhancedPending` fails, it means Step 1's `kyc.ClaimLevel` substitution is missing or wrong — the pre-fix code (`u.KYCLevel != ""`) would have leaked the raw `"enhanced"` string, so this test is the one that would have caught that regression.
+Expected: PASS (both tests). If `TestUserInfoOmitsKYCLevelWhenEnhancedPending` fails, it means Step 1's `kyc.ClaimLevel`
+substitution is missing or wrong — the pre-fix code (`u.KYCLevel != ""`) would have leaked the raw `"enhanced"` string,
+so this test is the one that would have caught that regression.
 
 - [ ] **Step 4: Commit**
 
@@ -3467,10 +3586,13 @@ git commit -m "feat: derive kyc_level claim via kyc.ClaimLevel in /userinfo"
 Implements spec §7 (cmd/kyc row).
 
 **Files:**
+
 - Modify: `api/cmd/kyc/main.go`
 
 **Interfaces:**
-- Consumes: `kyc.Service.ListPendingKYC/Review/DocumentURLs/GetUser` (unchanged signatures from Task 9), `kyc.NewService` (new signature from Task 9).
+
+- Consumes: `kyc.Service.ListPendingKYC/Review/DocumentURLs/GetUser` (unchanged signatures from Task 9),
+  `kyc.NewService` (new signature from Task 9).
 
 - [ ] **Step 1: Update the `kyc.NewService` call**
 
@@ -3478,7 +3600,10 @@ Implements spec §7 (cmd/kyc row).
 	kycSvc := kycDomain.NewService(kycRepo, presigner, cache.NewInMemory(), nil, riskDomain.NoopEvaluator{})
 ```
 
-Add imports `"gopkg.aoctech.app/account/api/internal/cache"` and `riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"`. `cache.NewInMemory()` and a `nil` `OTPSender` are safe here: `cmd/kyc`'s four subcommands (`list`/`show`/`approve`/`reject`) never call `SubmitBasic`/`VerifyPhone`/`ResendCode`, so the OTP/cache path is never exercised.
+Add imports `"gopkg.aoctech.app/account/api/internal/cache"` and
+`riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"`. `cache.NewInMemory()` and a `nil` `OTPSender` are
+safe here: `cmd/kyc`'s four subcommands (`list`/`show`/`approve`/`reject`) never call `SubmitBasic`/`VerifyPhone`/
+`ResendCode`, so the OTP/cache path is never exercised.
 
 - [ ] **Step 2: Update `runShow` to print phone and risk fields**
 
@@ -3497,16 +3622,20 @@ Replace the `fmt.Printf` block in `runShow` with:
 	fmt.Printf("risk_signals: %v\n", u.KYCRiskSignals)
 ```
 
-(`runList`, `runReview`, and the `usage`/`main` dispatch need no changes — `ListPendingKYC` is already scoped to `enhanced`+`pending` by Task 8's repository rewrite, and `Review` already gates on the same pair per Task 9.)
+(`runList`, `runReview`, and the `usage`/`main` dispatch need no changes — `ListPendingKYC` is already scoped to
+`enhanced`+`pending` by Task 8's repository rewrite, and `Review` already gates on the same pair per Task 9.)
 
 - [ ] **Step 3: Build-check**
 
 Run: `cd api && go build ./cmd/kyc/...`
 Expected: PASS
 
-- [ ] **Step 4: Manual smoke test (no automated test — this is an operator CLI, matching the existing testing posture for `cmd/kyc`)**
+- [ ] **Step 4: Manual smoke test (no automated test — this is an operator CLI, matching the existing testing posture
+  for `cmd/kyc`)**
 
-Run: `cd api && AWS_REGION=us-east-1 TABLE_PREFIX=dev go run ./cmd/kyc list` against a local/dev table if one is available; otherwise skip and rely on Task 12's `handler` integration tests, which already exercise `Service.Review`/`ListPendingKYC`/`DocumentURLs` end-to-end.
+Run: `cd api && AWS_REGION=us-east-1 TABLE_PREFIX=dev go run ./cmd/kyc list` against a local/dev table if one is
+available; otherwise skip and rely on Task 12's `handler` integration tests, which already exercise `Service.Review`/
+`ListPendingKYC`/`DocumentURLs` end-to-end.
 
 - [ ] **Step 5: Commit**
 
@@ -3522,14 +3651,18 @@ git commit -m "feat: cmd/kyc show prints phone number and risk assessment"
 Implements spec §8, §9, §11 (deploy note is Task 19).
 
 **Files:**
+
 - Modify: `api/cmd/api/main.go`
 
 **Interfaces:**
-- Consumes: `sms.New`/`sms.Client` from Task 4, `risk.NoopEvaluator` from Task 3, `cfg.PhoneVerificationEnabled` from Task 5, `kyc.NewService`'s new signature from Task 9.
+
+- Consumes: `sms.New`/`sms.Client` from Task 4, `risk.NoopEvaluator` from Task 3, `cfg.PhoneVerificationEnabled` from
+  Task 5, `kyc.NewService`'s new signature from Task 9.
 
 - [ ] **Step 1: Add the SMS client and risk evaluator, update the `kyc.NewService` call**
 
-Locate the existing `kycSvc := kycDomain.NewService(kycRepo, kycPresigner)` line (right after the `kycPresigner`/`KYC_DOCUMENTS_BUCKET` block) and replace the surrounding block with:
+Locate the existing `kycSvc := kycDomain.NewService(kycRepo, kycPresigner)` line (right after the `kycPresigner`/
+`KYC_DOCUMENTS_BUCKET` block) and replace the surrounding block with:
 
 ```go
 	// KYC document uploads need a bucket; without one, Enhanced document
@@ -3587,6 +3720,7 @@ git commit -m "feat: wire sms client and risk evaluator into kyc.Service"
 Implements spec §10 (phone number is now collected, so acceptance scope changed).
 
 **Files:**
+
 - Modify: `api/internal/legal/version.go`
 
 **Interfaces:** none new — `legal.CurrentToSVersion`/`CurrentPrivacyVersion` are read by existing callers unchanged.
@@ -3603,7 +3737,8 @@ const (
 - [ ] **Step 2: Run the existing version test**
 
 Run: `cd api && go test ./internal/legal/... -v`
-Expected: PASS (the test in `version_test.go` uses `legal.CurrentToSVersion`/`CurrentPrivacyVersion` symbolically, not a hardcoded string, so the bump doesn't require a test change).
+Expected: PASS (the test in `version_test.go` uses `legal.CurrentToSVersion`/`CurrentPrivacyVersion` symbolically, not a
+hardcoded string, so the bump doesn't require a test change).
 
 - [ ] **Step 3: Commit**
 
@@ -3619,6 +3754,7 @@ git commit -m "chore: bump ToS/Privacy version for phone number collection at Ba
 Implements spec §11.
 
 **Files:**
+
 - Modify: `cdk/lib/iam-stack.ts`
 
 **Interfaces:** none — this only widens the existing `appRole`'s policy.
@@ -3641,7 +3777,8 @@ In `cdk/lib/iam-stack.ts`, after the existing SES policy statement (`ses:SendEma
 - [ ] **Step 2: Synth-check**
 
 Run: `cd cdk && npm install && cdk synth`
-Expected: synthesizes cleanly; inspect the generated `IAMStack` template to confirm the new `sns:Publish` statement with `Resource: "*"` is present on `AppRole`.
+Expected: synthesizes cleanly; inspect the generated `IAMStack` template to confirm the new `sns:Publish` statement with
+`Resource: "*"` is present on `AppRole`.
 
 - [ ] **Step 3: Commit**
 
@@ -3657,6 +3794,7 @@ git commit -m "feat: grant sns:Publish for phone-verification OTP delivery"
 Implements spec §7, §8, §11 (documentation obligations from `api/CLAUDE.md` and `cdk/CLAUDE.md`).
 
 **Files:**
+
 - Modify: `README.md` (root)
 
 **Interfaces:** none — documentation only.
@@ -3676,7 +3814,10 @@ Implements spec §7, §8, §11 (documentation obligations from `api/CLAUDE.md` a
 
 - [ ] **Step 2: Rewrite the "KYC (identity verification)" narrative section (around lines 332-388)**
 
-Replace the section with a description of the two-level Basic/Enhanced flow, the SMS OTP mechanics (Valkey keys, TTLs, cooldown, max attempts), the `PHONE_VERIFICATION_ENABLED` hard-block behavior, the risk-score informational hook, and the updated `cmd/kyc` usage (unchanged commands, now scoped to `enhanced`/`pending`). Base the wording on spec §4, §8, §9 — keep it at the same level of detail as the section it replaces (a few paragraphs, not exhaustive).
+Replace the section with a description of the two-level Basic/Enhanced flow, the SMS OTP mechanics (Valkey keys, TTLs,
+cooldown, max attempts), the `PHONE_VERIFICATION_ENABLED` hard-block behavior, the risk-score informational hook, and
+the updated `cmd/kyc` usage (unchanged commands, now scoped to `enhanced`/`pending`). Base the wording on spec §4, §8,
+§9 — keep it at the same level of detail as the section it replaces (a few paragraphs, not exhaustive).
 
 - [ ] **Step 3: Update the config vars table (around line 450)**
 
@@ -3688,11 +3829,15 @@ Add a row after `KYC_DOCUMENTS_BUCKET`:
 
 - [ ] **Step 4: Update the `kyc` OIDC scope description (around lines 173-174)**
 
-Change "`kyc` adds the `kyc_level` claim (`""` \| `verified`) to access tokens, id_tokens" to "`kyc` adds the `kyc_level` claim (`""` \| `"basic"` \| `"verified"`) to access tokens, id_tokens".
+Change "`kyc` adds the `kyc_level` claim (`""` \| `verified`) to access tokens, id_tokens" to "`kyc` adds the
+`kyc_level` claim (`""` \| `"basic"` \| `"verified"`) to access tokens, id_tokens".
 
 - [ ] **Step 5: Add the SNS first-deploy note**
 
-In the "First Deploy" checklist, add a step (after the KYC documents bucket note, if one exists, otherwise near the end): "Once AWS grants production SNS SMS access, run `aws sns set-sms-attributes` once per account/region to set the monthly spend limit, then set `PHONE_VERIFICATION_ENABLED=true` in SSM — this is outside CDK's scope (no such resource exists to provision)."
+In the "First Deploy" checklist, add a step (after the KYC documents bucket note, if one exists, otherwise near the
+end): "Once AWS grants production SNS SMS access, run `aws sns set-sms-attributes` once per account/region to set the
+monthly spend limit, then set `PHONE_VERIFICATION_ENABLED=true` in SSM — this is outside CDK's scope (no such resource
+exists to provision)."
 
 - [ ] **Step 6: Commit**
 
@@ -3708,14 +3853,20 @@ git commit -m "docs: document Basic/Enhanced KYC routes, PHONE_VERIFICATION_ENAB
 Implements spec §6, §7, §10.
 
 **Files:**
+
 - Modify: `ui/src/lib/types.ts`
 
 **Interfaces:**
-- Produces: `KYCLevel = '' | 'basic' | 'enhanced'`, `KYCState` (6 values), `KYCDocumentType = 'id_front' | 'id_back' | 'selfie_with_document'`, `KYCStatus` (no `address`/`method`, adds `phone_masked`/`basic_verified_at`), `KYCBasicSubmission`. Removes `Address`, `KYCMethod`. Consumed by every UI task below.
+
+- Produces: `KYCLevel = '' | 'basic' | 'enhanced'`, `KYCState` (6 values),
+  `KYCDocumentType = 'id_front' | 'id_back' | 'selfie_with_document'`, `KYCStatus` (no `address`/`method`, adds
+  `phone_masked`/`basic_verified_at`), `KYCBasicSubmission`. Removes `Address`, `KYCMethod`. Consumed by every UI task
+  below.
 
 - [ ] **Step 1: Replace the KYC-related types**
 
-Remove the `KYCMethod` type and the `Address` interface entirely. Replace `KYCLevel`, `KYCState`, `KYCDocumentType`, `KYCStatus`, `KYCSubmission` with:
+Remove the `KYCMethod` type and the `Address` interface entirely. Replace `KYCLevel`, `KYCState`, `KYCDocumentType`,
+`KYCStatus`, `KYCSubmission` with:
 
 ```ts
 export type KYCLevel = '' | 'basic' | 'enhanced'
@@ -3766,7 +3917,8 @@ export interface KYCBasicSubmission {
 - [ ] **Step 2: Build-check (this alone won't compile the package — consumers still reference the old shapes)**
 
 Run: `cd ui && npx tsc --noEmit 2>&1 | head -40`
-Expected: errors from every file Tasks 21-29 update — confirm no error originates from `types.ts` itself. Do not commit yet; this lands with Task 29's final commit once the whole `ui/` package builds.
+Expected: errors from every file Tasks 21-29 update — confirm no error originates from `types.ts` itself. Do not commit
+yet; this lands with Task 29's final commit once the whole `ui/` package builds.
 
 ---
 
@@ -3775,10 +3927,13 @@ Expected: errors from every file Tasks 21-29 update — confirm no error origina
 Implements spec §6, §8, §10.
 
 **Files:**
+
 - Modify: `ui/src/lib/constants.ts`
 
 **Interfaces:**
-- Produces: `REQUIRED_DOC_TYPES` (3 entries), `OTP_CODE_LENGTH`, `OTP_RESEND_COOLDOWN_SECONDS`. Removes `BRAZILIAN_STATES`, `ZIP_CODE_DIGITS`, `SELFIE_CLIP_CONTENT_TYPE`, `SELFIE_CLIP_MIME_CANDIDATES`.
+
+- Produces: `REQUIRED_DOC_TYPES` (3 entries), `OTP_CODE_LENGTH`, `OTP_RESEND_COOLDOWN_SECONDS`. Removes
+  `BRAZILIAN_STATES`, `ZIP_CODE_DIGITS`, `SELFIE_CLIP_CONTENT_TYPE`, `SELFIE_CLIP_MIME_CANDIDATES`.
 
 - [ ] **Step 1: Rewrite the KYC block of `constants.ts`**
 
@@ -3811,7 +3966,9 @@ export const OTP_RESEND_COOLDOWN_SECONDS = 60
 export const SUPPORT_EMAIL = 'dpo@aoctech.app'
 ```
 
-Remove `BRAZILIAN_STATES`, `ZIP_CODE_DIGITS`, `SELFIE_CLIP_CONTENT_TYPE`, `SELFIE_CLIP_MIME_CANDIDATES` — confirmed during planning that nothing outside the identity page/its components/`lib/viacep.ts` (deleted in Task 22) referenced them.
+Remove `BRAZILIAN_STATES`, `ZIP_CODE_DIGITS`, `SELFIE_CLIP_CONTENT_TYPE`, `SELFIE_CLIP_MIME_CANDIDATES` — confirmed
+during planning that nothing outside the identity page/its components/`lib/viacep.ts` (deleted in Task 22) referenced
+them.
 
 - [ ] **Step 2: Build-check deferred to Task 29** (consumers still reference removed constants until then)
 
@@ -3822,13 +3979,16 @@ Remove `BRAZILIAN_STATES`, `ZIP_CODE_DIGITS`, `SELFIE_CLIP_CONTENT_TYPE`, `SELFI
 Implements spec §3 (address dropped entirely).
 
 **Files:**
+
 - Delete: `ui/src/lib/viacep.ts`
 
 - [ ] **Step 1: Delete the file**
 
-`lookupZipCode`/`normalizeZipCode`/`formatZipCodeInput` served the old address form only; confirmed via grep during planning that no other file imports `lib/viacep`.
+`lookupZipCode`/`normalizeZipCode`/`formatZipCodeInput` served the old address form only; confirmed via grep during
+planning that no other file imports `lib/viacep`.
 
-- [ ] **Step 2: Build-check deferred to Task 29** (`identity/page.tsx` and its test still import this until Tasks 28-29 land)
+- [ ] **Step 2: Build-check deferred to Task 29** (`identity/page.tsx` and its test still import this until Tasks 28-29
+  land)
 
 ---
 
@@ -3837,10 +3997,15 @@ Implements spec §3 (address dropped entirely).
 Implements spec §7.
 
 **Files:**
+
 - Modify: `ui/src/lib/mutations.ts`
 
 **Interfaces:**
-- Produces: `submitBasicKYCAPI(payload: KYCBasicSubmission): Promise<KYCStatus>`, `verifyPhoneKYCAPI(code: string): Promise<KYCStatus>`, `resendKYCCodeAPI(): Promise<KYCStatus>`, `submitEnhancedKYCAPI(): Promise<KYCStatus>`. `uploadKYCDocumentAPI`'s `type` parameter now accepts the narrowed `KYCDocumentType`. Removes `submitKYCAPI`.
+
+- Produces: `submitBasicKYCAPI(payload: KYCBasicSubmission): Promise<KYCStatus>`,
+  `verifyPhoneKYCAPI(code: string): Promise<KYCStatus>`, `resendKYCCodeAPI(): Promise<KYCStatus>`,
+  `submitEnhancedKYCAPI(): Promise<KYCStatus>`. `uploadKYCDocumentAPI`'s `type` parameter now accepts the narrowed
+  `KYCDocumentType`. Removes `submitKYCAPI`.
 
 - [ ] **Step 1: Replace `submitKYCAPI` with the four new mutations**
 
@@ -3877,7 +4042,10 @@ export async function submitEnhancedKYCAPI(): Promise<KYCStatus> {
 }
 ```
 
-Update the file's type-only import line to `import type { KYCBasicSubmission, KYCDocumentType, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'` (drop `KYCSubmission`). `presignKYCDocumentAPI`/`confirmKYCDocumentAPI`/`uploadKYCDocumentAPI` need no body changes — their `type: KYCDocumentType` parameter narrows automatically from Task 20's type change.
+Update the file's type-only import line to
+`import type { KYCBasicSubmission, KYCDocumentType, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'`
+(drop `KYCSubmission`). `presignKYCDocumentAPI`/`confirmKYCDocumentAPI`/`uploadKYCDocumentAPI` need no body changes —
+their `type: KYCDocumentType` parameter narrows automatically from Task 20's type change.
 
 - [ ] **Step 2: Build-check deferred to Task 29**
 
@@ -3888,10 +4056,13 @@ Update the file's type-only import line to `import type { KYCBasicSubmission, KY
 Implements spec §7, §10.
 
 **Files:**
+
 - Create: `ui/src/components/kyc-basic-form.tsx`
 
 **Interfaces:**
-- Consumes: `submitBasicKYCAPI` (Task 23), `KYCStatus`/`KYCBasicSubmission` (Task 20), `CPF_DIGITS`/`KYC_MIN_AGE_YEARS` (Task 21).
+
+- Consumes: `submitBasicKYCAPI` (Task 23), `KYCStatus`/`KYCBasicSubmission` (Task 20), `CPF_DIGITS`/`KYC_MIN_AGE_YEARS`
+  (Task 21).
 - Produces: `<KYCBasicForm status={KYCStatus} />`. Consumed by Task 28 (`identity/page.tsx`).
 
 - [ ] **Step 1: Write `ui/src/components/kyc-basic-form.tsx`**
@@ -4096,9 +4267,11 @@ export function KYCBasicForm({ status }: { status: KYCStatus }) {
 Implements spec §7, §8, §10.
 
 **Files:**
+
 - Create: `ui/src/components/kyc-otp-form.tsx`
 
 **Interfaces:**
+
 - Consumes: `verifyPhoneKYCAPI`/`resendKYCCodeAPI` (Task 23), `OTP_CODE_LENGTH`/`OTP_RESEND_COOLDOWN_SECONDS` (Task 21).
 - Produces: `<KYCOtpForm status={KYCStatus} />`. Consumed by Task 28.
 
@@ -4219,10 +4392,12 @@ export function KYCOtpForm({ status }: { status: KYCStatus }) {
 Implements spec §3, §10.
 
 **Files:**
+
 - Delete: `ui/src/components/selfie-capture.tsx`
 - Create: `ui/src/components/kyc-selfie-photo.tsx`
 
 **Interfaces:**
+
 - Consumes: `uploadKYCDocumentAPI` (existing, `lib/mutations.ts`), `KYCDocumentType` (Task 20).
 - Produces: `<KYCSelfiePhoto uploaded={boolean} />`. Consumed by Task 28.
 
@@ -4420,9 +4595,11 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
 Implements spec §3, §10.
 
 **Files:**
+
 - Modify: `ui/src/components/kyc-document-upload.tsx`
 
 **Interfaces:**
+
 - Consumes: `KYCDocumentType` (Task 20).
 
 - [ ] **Step 1: Update `TYPE_LABEL_KEY` — drop the four selfie-pose entries, add `selfie_with_document`**
@@ -4435,7 +4612,9 @@ const TYPE_LABEL_KEY: Record<KYCDocumentType, string> = {
 }
 ```
 
-`DOCUMENT_TYPES` (the file-picker's own selectable list) stays `['id_front', 'id_back']` unchanged — `selfie_with_document` is captured via `<KYCSelfiePhoto/>` (Task 26), not this file picker, mirroring how the old four selfie poses went through `<SelfieCapture/>` instead of this component.
+`DOCUMENT_TYPES` (the file-picker's own selectable list) stays `['id_front', 'id_back']` unchanged —
+`selfie_with_document` is captured via `<KYCSelfiePhoto/>` (Task 26), not this file picker, mirroring how the old four
+selfie poses went through `<SelfieCapture/>` instead of this component.
 
 - [ ] **Step 2: Build-check deferred to Task 29**
 
@@ -4446,10 +4625,13 @@ const TYPE_LABEL_KEY: Record<KYCDocumentType, string> = {
 Implements spec §10.
 
 **Files:**
+
 - Modify: `ui/src/app/account/identity/page.tsx` (full rewrite)
 
 **Interfaces:**
-- Consumes: `KYCBasicForm` (Task 24), `KYCOtpForm` (Task 25), `KYCSelfiePhoto` (Task 26), `KYCDocumentUpload` (Task 27), `submitEnhancedKYCAPI` (Task 23), `KYCStatus`/`KYCState` (Task 20), `REQUIRED_DOC_TYPES`/`SUPPORT_EMAIL` (Task 21).
+
+- Consumes: `KYCBasicForm` (Task 24), `KYCOtpForm` (Task 25), `KYCSelfiePhoto` (Task 26), `KYCDocumentUpload` (Task 27),
+  `submitEnhancedKYCAPI` (Task 23), `KYCStatus`/`KYCState` (Task 20), `REQUIRED_DOC_TYPES`/`SUPPORT_EMAIL` (Task 21).
 
 - [ ] **Step 1: Rewrite `ui/src/app/account/identity/page.tsx`**
 
@@ -4723,6 +4905,7 @@ export default function IdentityPage() {
 Implements spec §13 (UI regression coverage parity with the old suite).
 
 **Files:**
+
 - Modify: `ui/src/app/account/identity/page.test.tsx` (full rewrite)
 
 **Interfaces:** consumes everything from Tasks 20-28.
@@ -4834,7 +5017,9 @@ describe('IdentityPage — phone verification step', () => {
 })
 ```
 
-Adjust the exact English copy strings above (`'Submit'`, `'Verify'`, `'The code you entered is invalid or has expired.'`, etc.) to whatever `en.json` ends up containing after Task 30 — the test must assert against the real translated strings, not invented ones.
+Adjust the exact English copy strings above (`'Submit'`, `'Verify'`,
+`'The code you entered is invalid or has expired.'`, etc.) to whatever `en.json` ends up containing after Task 30 — the
+test must assert against the real translated strings, not invented ones.
 
 - [ ] **Step 2: Run the UI test suite**
 
@@ -4844,11 +5029,16 @@ Expected: PASS
 - [ ] **Step 3: Run the full UI verification suite**
 
 Run: `cd ui && npx eslint src --ext .ts,.tsx && npm run build`
-Expected: both succeed cleanly — this is the point where `ui/` compiles end-to-end (confirms Tasks 20-23's deferred build-checks).
+Expected: both succeed cleanly — this is the point where `ui/` compiles end-to-end (confirms Tasks 20-23's deferred
+build-checks).
 
 - [ ] **Step 4: Manual smoke test in a browser**
 
-Run: `cd ui && npm run dev` (with `NEXT_PUBLIC_MOCK_API=true` in `.env.local` if a local API isn't running), then visit `/account/identity` and click through: Basic form submit → OTP screen appears → (mock) enter any code → Enhanced document step appears → upload id_front/id_back → capture the selfie-with-document photo → "submit for review" button enables only once all 3 are present. This is required per `ui/CLAUDE.md`'s "test the golden path in a browser before reporting complete" rule — automated tests alone don't verify the camera flow renders correctly.
+Run: `cd ui && npm run dev` (with `NEXT_PUBLIC_MOCK_API=true` in `.env.local` if a local API isn't running), then visit
+`/account/identity` and click through: Basic form submit → OTP screen appears → (mock) enter any code → Enhanced
+document step appears → upload id_front/id_back → capture the selfie-with-document photo → "submit for review" button
+enables only once all 3 are present. This is required per `ui/CLAUDE.md`'s "test the golden path in a browser before
+reporting complete" rule — automated tests alone don't verify the camera flow renders correctly.
 
 - [ ] **Step 5: Commit**
 
@@ -4862,15 +5052,23 @@ git commit -m "feat: rewrite identity page around Basic/OTP/Enhanced KYC flow"
 
 ## Task 30: Locale files — `en.json` / `pt-BR.json` `identity` section
 
-Implements spec §10 (UI copy needed to make Task 28-29 actually render/pass — content itself is otherwise out of spec scope).
+Implements spec §10 (UI copy needed to make Task 28-29 actually render/pass — content itself is otherwise out of spec
+scope).
 
 **Files:**
+
 - Modify: `ui/src/locales/en.json`
 - Modify: `ui/src/locales/pt-BR.json`
 
 - [ ] **Step 1: Replace the `identity` object in `pt-BR.json`**
 
-Remove every address/selfie-video-specific key (`stepAddressHeading`, `zipCode`, `street`, `number`, `complement`, `district`, `city`, `state`, `selectState`, `zipNotFound`, `zipFound`, `address`, `livenessUp/Down/Left/Right`, `selfieUp/Down/Left/Right`, `selfieHint`, `selfieAllDone`, `retake`, `poseUp/Down/Left/Right`, `selfieConsentBody` (replaced), `selfiePreviewTitle/Retake/Keep`, `selfieClipReady`, `stepDocuments`, `stepSelfie`, `stepNavLabel`, `stepLocked`, `finishChecklistNote`, `progressLabel`, `documentType`, `reviewCta`, `reviewNote`, `confirmSubmit*`, `editDetails`, `awaitingFiles`, `levelAwaitingFiles`, `cameraRetry`, `cameraBlocked`). Add the new Basic/OTP/Enhanced keys. Replace the `"identity": { ... }` block with:
+Remove every address/selfie-video-specific key (`stepAddressHeading`, `zipCode`, `street`, `number`, `complement`,
+`district`, `city`, `state`, `selectState`, `zipNotFound`, `zipFound`, `address`, `livenessUp/Down/Left/Right`,
+`selfieUp/Down/Left/Right`, `selfieHint`, `selfieAllDone`, `retake`, `poseUp/Down/Left/Right`, `selfieConsentBody`
+(replaced), `selfiePreviewTitle/Retake/Keep`, `selfieClipReady`, `stepDocuments`, `stepSelfie`, `stepNavLabel`,
+`stepLocked`, `finishChecklistNote`, `progressLabel`, `documentType`, `reviewCta`, `reviewNote`, `confirmSubmit*`,
+`editDetails`, `awaitingFiles`, `levelAwaitingFiles`, `cameraRetry`, `cameraBlocked`). Add the new Basic/OTP/Enhanced
+keys. Replace the `"identity": { ... }` block with:
 
 ```json
   "identity": {
@@ -4955,12 +5153,17 @@ Remove every address/selfie-video-specific key (`stepAddressHeading`, `zipCode`,
   }
 ```
 
-- [ ] **Step 2: Replace the `identity` object in `en.json`** with the same key set, English copy (mirror the tone of the existing English strings elsewhere in that file — e.g. `"submit": "Submit"`, `"cpf": "CPF"`, `"legalName": "Full legal name"`, `"birthDate": "Date of birth"`, `"phoneNumber": "Phone number"`, `"otpCodeLabel": "Verification code"`, `"otpSubmit": "Verify"`, `"otpInvalidCode": "The code you entered is invalid or has expired."`, etc. — translate every key from Step 1 1:1).
+- [ ] **Step 2: Replace the `identity` object in `en.json`** with the same key set, English copy (mirror the tone of the
+  existing English strings elsewhere in that file — e.g. `"submit": "Submit"`, `"cpf": "CPF"`,
+  `"legalName": "Full legal name"`, `"birthDate": "Date of birth"`, `"phoneNumber": "Phone number"`,
+  `"otpCodeLabel": "Verification code"`, `"otpSubmit": "Verify"`,
+  `"otpInvalidCode": "The code you entered is invalid or has expired."`, etc. — translate every key from Step 1 1:1).
 
 - [ ] **Step 3: Confirm Task 29's test strings match**
 
 Run: `cd ui && npm test -- identity`
-Expected: PASS — if any assertion string doesn't match what's actually in `en.json`, fix the test (Task 29) to match the shipped copy, not the other way around.
+Expected: PASS — if any assertion string doesn't match what's actually in `en.json`, fix the test (Task 29) to match the
+shipped copy, not the other way around.
 
 - [ ] **Step 4: Full verification**
 
@@ -4979,7 +5182,9 @@ git commit -m "feat: add Basic/OTP/Enhanced KYC copy to en/pt-BR locales"
 ## Self-Review
 
 **Spec coverage:**
-- §1-3 (background/goals/non-goals): reflected throughout — no risk gate, no migration, no PIX, no address, no video selfie.
+
+- §1-3 (background/goals/non-goals): reflected throughout — no risk gate, no migration, no PIX, no address, no video
+  selfie.
 - §4 (levels/status/state machine): Task 1 (constants), Task 9 (`state()` derivation), Task 10 (state tests).
 - §5 (JWT claim mapping): Task 1 (`ClaimLevel`), Tasks 13-14 (both choke points).
 - §6 (data model): Task 2 (user fields), Task 8 (repository persistence).
@@ -4988,14 +5193,20 @@ git commit -m "feat: add Basic/OTP/Enhanced KYC copy to en/pt-BR locales"
 - §9 (risk scoring): Task 3 (package), Task 9 (`evaluateRisk` call sites), Task 8 (persistence).
 - §10 (UI): Tasks 20-30.
 - §11 (cdk): Task 18.
-- §12 (cross-project impact): no task touches `ctech-wallet`/`ctech-dfe` — confirmed by construction (every change is additive to `ClaimLevel`'s already-matching output set).
-- §13 (testing): Task 10 (`kyc/service_test.go`), Task 3 (`risk` test), Task 12 (`handler/kyc_test.go`), Tasks 13-14 (`token`/`userinfo` claim tests), Task 29 (UI test).
+- §12 (cross-project impact): no task touches `ctech-wallet`/`ctech-dfe` — confirmed by construction (every change is
+  additive to `ClaimLevel`'s already-matching output set).
+- §13 (testing): Task 10 (`kyc/service_test.go`), Task 3 (`risk` test), Task 12 (`handler/kyc_test.go`), Tasks 13-14
+  (`token`/`userinfo` claim tests), Task 29 (UI test).
 
 **Placeholder scan:** no `TBD`/`TODO` remain; every step has literal code or an exact command.
 
-**Type consistency:** `kyc.BasicSubmission`/`kyc.BasicRecord`/`kyc.Status` field names match across Tasks 1, 8, 9, 11; `KYCBasicSubmission`/`KYCStatus` match across UI Tasks 20, 23, 24, 28; `OTPSender` interface name matches between Task 9's definition and Tasks 4, 16's callers.
+**Type consistency:** `kyc.BasicSubmission`/`kyc.BasicRecord`/`kyc.Status` field names match across Tasks 1, 8, 9, 11;
+`KYCBasicSubmission`/`KYCStatus` match across UI Tasks 20, 23, 24, 28; `OTPSender` interface name matches between Task
+9's definition and Tasks 4, 16's callers.
 
-**Ambiguity check:** the one genuine judgment call — whether Basic's form needs a two-step review/confirm like the old Enhanced form — is resolved explicitly in Task 24's step 1 comment (no confirm step, since Basic remains freely resubmittable until phone-verified, unlike the old scheme where any submit was immediately locked).
+**Ambiguity check:** the one genuine judgment call — whether Basic's form needs a two-step review/confirm like the old
+Enhanced form — is resolved explicitly in Task 24's step 1 comment (no confirm step, since Basic remains freely
+resubmittable until phone-verified, unlike the old scheme where any submit was immediately locked).
 
 ---
 

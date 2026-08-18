@@ -1,24 +1,42 @@
 # GeoIP Replacement + New-Device Login Notification Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the broken third-party GeoIP API with a local, auto-updating MaxMind GeoLite2 City database, and use the country data it provides to detect and email-notify users about logins from a new device/location.
+**Goal:** Replace the broken third-party GeoIP API with a local, auto-updating MaxMind GeoLite2 City database, and use
+the country data it provides to detect and email-notify users about logins from a new device/location.
 
-**Architecture:** `internal/geo` becomes a synchronous, in-process lookup backed by an `atomic.Pointer[geoip2.Reader]` over a local `.mmdb` file. A new `internal/geoupdater` package (structurally parallel to `internal/keystore`'s rotation loop, but with no distributed lock — each EC2 instance keeps its own independent local copy) downloads and refreshes that file every 24h once it's 7+ days old. `session.Service` gains `HasSeenDevice` (reusing the existing `ListByUserID` repository method — no new repository method) and `Session` gains a `GeoCountry` field. The five login call sites (password, MFA, passkey, Google direct, Google post-terms) call `geo.Lookup` and `HasSeenDevice` synchronously before `session.Service.Create`, and fire a backgrounded SES email when the device/country pair is new. `internal/email` gains `SendNewDeviceLoginEmail`. `audit.EventLoginSuccess` gains a `new_device: "true"` metadata entry on those same events.
+**Architecture:** `internal/geo` becomes a synchronous, in-process lookup backed by an `atomic.Pointer[geoip2.Reader]`
+over a local `.mmdb` file. A new `internal/geoupdater` package (structurally parallel to `internal/keystore`'s rotation
+loop, but with no distributed lock — each EC2 instance keeps its own independent local copy) downloads and refreshes
+that file every 24h once it's 7+ days old. `session.Service` gains `HasSeenDevice` (reusing the existing `ListByUserID`
+repository method — no new repository method) and `Session` gains a `GeoCountry` field. The five login call sites
+(password, MFA, passkey, Google direct, Google post-terms) call `geo.Lookup` and `HasSeenDevice` synchronously before
+`session.Service.Create`, and fire a backgrounded SES email when the device/country pair is new. `internal/email` gains
+`SendNewDeviceLoginEmail`. `audit.EventLoginSuccess` gains a `new_device: "true"` metadata entry on those same events.
 
-**Tech Stack:** Go 1.26, Fiber v3, DynamoDB, Valkey, AWS SES v2, `github.com/oschwald/geoip2-golang` v1.13.0 (new dependency), stdlib `archive/tar` + `compress/gzip` (no new dependency for the updater).
+**Tech Stack:** Go 1.26, Fiber v3, DynamoDB, Valkey, AWS SES v2, `github.com/oschwald/geoip2-golang` v1.13.0 (new
+dependency), stdlib `archive/tar` + `compress/gzip` (no new dependency for the updater).
 
 **Spec:** `docs/specs/2026-08-15-geoip-device-login-notification-design.md`
 
 ## Global Constraints
 
-- Every HTTP error MUST be an `*apierror.Problem` sent via `problem.Send(c)` — this plan adds no new HTTP error paths, but any new handler code must still follow this if it touches error returns.
-- `handler → service → repository` layering: `geo.Lookup` and email-sending happen in the handler layer (same layer `enrichSessionAsync` lived in today); `session.Service` never imports `internal/geo` or `internal/email`.
-- Services take repository **interfaces**, never concrete types — `session.Repository` is unchanged in shape except for removing `UpdateGeoData` (no longer called by anything after this plan).
-- No magic strings/numbers: MaxMind download URL, staleness threshold, ticker interval, and DB path default are named constants, not inline literals.
-- A login must never fail because of a GeoIP or notification-email failure — `geo.Lookup` returns a zero `Location` on any failure, `HasSeenDevice` failing is treated as "not new" (fail toward *not* alerting), and email send failures are logged, never surfaced to the caller.
-- Every core function needs a test (unit for services/packages, integration for routes) per `api/CLAUDE.md`'s testing table. `go build ./...`, `go vet ./...`, and `go test ./...` must pass before any task is considered done.
-- `README.md` MUST be updated for the two new SSM parameters and the new GeoIP behavior in the same change (Mandatory Documentation Policy, no exceptions).
+- Every HTTP error MUST be an `*apierror.Problem` sent via `problem.Send(c)` — this plan adds no new HTTP error paths,
+  but any new handler code must still follow this if it touches error returns.
+- `handler → service → repository` layering: `geo.Lookup` and email-sending happen in the handler layer (same layer
+  `enrichSessionAsync` lived in today); `session.Service` never imports `internal/geo` or `internal/email`.
+- Services take repository **interfaces**, never concrete types — `session.Repository` is unchanged in shape except for
+  removing `UpdateGeoData` (no longer called by anything after this plan).
+- No magic strings/numbers: MaxMind download URL, staleness threshold, ticker interval, and DB path default are named
+  constants, not inline literals.
+- A login must never fail because of a GeoIP or notification-email failure — `geo.Lookup` returns a zero `Location` on
+  any failure, `HasSeenDevice` failing is treated as "not new" (fail toward *not* alerting), and email send failures are
+  logged, never surfaced to the caller.
+- Every core function needs a test (unit for services/packages, integration for routes) per `api/CLAUDE.md`'s testing
+  table. `go build ./...`, `go vet ./...`, and `go test ./...` must pass before any task is considered done.
+- `README.md` MUST be updated for the two new SSM parameters and the new GeoIP behavior in the same change (Mandatory
+  Documentation Policy, no exceptions).
 - Fiber v3: use `c.Context()`, never `c.UserContext()`.
 
 ---
@@ -26,13 +44,21 @@
 ### Task 1: `internal/geo` — local MaxMind lookup
 
 **Files:**
+
 - Modify: `api/internal/geo/geo.go` (full rewrite)
 - Create: `api/internal/geo/geo_test.go`
-- Create: `api/internal/geo/testdata/GeoIP2-City-Test.mmdb` — **already vendored** at this path (22,569 bytes, sha256 `ed972738e4e03a3e56e12041a6af4d91592249d110f7e4a647e5f2fa0e639c09`). This is MaxMind's own public test fixture (from `github.com/maxmind/MaxMind-DB`, `test-data/GeoIP2-City-Test.mmdb`), small enough to commit directly — it is not fetched via `go mod` because MaxMind ships it as a git submodule, which Go's module proxy does not include. No action needed to create this file; just write the test against it.
+- Create: `api/internal/geo/testdata/GeoIP2-City-Test.mmdb` — **already vendored** at this path (22,569 bytes, sha256
+  `ed972738e4e03a3e56e12041a6af4d91592249d110f7e4a647e5f2fa0e639c09`). This is MaxMind's own public test fixture (from
+  `github.com/maxmind/MaxMind-DB`, `test-data/GeoIP2-City-Test.mmdb`), small enough to commit directly — it is not
+  fetched via `go mod` because MaxMind ships it as a git submodule, which Go's module proxy does not include. No action
+  needed to create this file; just write the test against it.
 - Modify: `api/go.mod`, `api/go.sum` (new dependency)
 
 **Interfaces:**
-- Produces: `geo.Location{City, Region, Country string; Latitude, Longitude float64}`, `geo.Lookup(ip string) Location`, `geo.SetReader(r *geoip2.Reader)` — the only two exported symbols other than the struct. `internal/geoupdater` (Task 5) is the sole caller of `SetReader`.
+
+- Produces: `geo.Location{City, Region, Country string; Latitude, Longitude float64}`, `geo.Lookup(ip string) Location`,
+  `geo.SetReader(r *geoip2.Reader)` — the only two exported symbols other than the struct. `internal/geoupdater` (Task
+  5) is the sole caller of `SetReader`.
 
 - [ ] **Step 1: Add the new dependency**
 
@@ -119,7 +145,8 @@ func TestLookupReturnsZeroValueForIPNotInDatabase(t *testing.T) {
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `cd api && go test ./internal/geo/... -v`
-Expected: FAIL — `Location`, `Lookup`, `SetReader` either don't compile against the new test or still return the old freeipapi-based shape (no `Country` field, wrong signature).
+Expected: FAIL — `Location`, `Lookup`, `SetReader` either don't compile against the new test or still return the old
+freeipapi-based shape (no `Country` field, wrong signature).
 
 - [ ] **Step 4: Rewrite `geo.go`**
 
@@ -208,23 +235,32 @@ git commit -m "feat(geo): replace freeipapi with local MaxMind GeoLite2 City loo
 ### Task 2: `session.Service` — GeoCountry, GeoData, HasSeenDevice
 
 **Files:**
+
 - Modify: `api/internal/domain/session/model.go`
 - Modify: `api/internal/domain/session/service.go`
 - Modify: `api/internal/domain/session/repository.go`
 - Modify: `api/internal/domain/session/service_test.go`
 
 **Interfaces:**
-- Consumes: nothing new (this task does not import `internal/geo` — the handler layer does the translation, per the Global Constraints layering rule).
+
+- Consumes: nothing new (this task does not import `internal/geo` — the handler layer does the translation, per the
+  Global Constraints layering rule).
 - Produces:
-  - `session.GeoData{City, Region, Country string; Latitude, Longitude float64}`
-  - `session.Service.Create(ctx context.Context, userID, deviceName, ip, userAgent string, amr []string, geoData GeoData) (*Session, string, error)` — same as today plus the trailing `geoData` parameter.
-  - `session.Service.HasSeenDevice(ctx context.Context, userID, deviceName, country string) (bool, error)`
-  - `Session.GeoCountry string` (dynamodbav `geo_country,omitempty`)
-  - `session.Repository` interface: `UpdateGeoData` removed (its only caller, `Service.UpdateGeoData`, is removed too — geo is now set at `Create` time).
+    - `session.GeoData{City, Region, Country string; Latitude, Longitude float64}`
+    -
+    `session.Service.Create(ctx context.Context, userID, deviceName, ip, userAgent string, amr []string, geoData GeoData) (*Session, string, error)` —
+    same as today plus the trailing `geoData` parameter.
+    - `session.Service.HasSeenDevice(ctx context.Context, userID, deviceName, country string) (bool, error)`
+    - `Session.GeoCountry string` (dynamodbav `geo_country,omitempty`)
+    - `session.Repository` interface: `UpdateGeoData` removed (its only caller, `Service.UpdateGeoData`, is removed
+      too — geo is now set at `Create` time).
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `api/internal/domain/session/service_test.go` (the existing `mockRepo.Create` and other methods stay as-is; only `UpdateGeoData` is removed from the mock in Step 4 below, and all existing `svc.Create(...)` calls in this file gain a trailing `session.GeoData{}` argument — grep the file for every `.Create(ctx,` call and add `, session.GeoData{}` before the closing paren):
+Add to `api/internal/domain/session/service_test.go` (the existing `mockRepo.Create` and other methods stay as-is; only
+`UpdateGeoData` is removed from the mock in Step 4 below, and all existing `svc.Create(...)` calls in this file gain a
+trailing `session.GeoData{}` argument — grep the file for every `.Create(ctx,` call and add `, session.GeoData{}` before
+the closing paren):
 
 ```go
 func TestCreateSetsGeoFieldsFromGeoData(t *testing.T) {
@@ -422,7 +458,10 @@ And delete the `dynamoRepository.UpdateGeoData` method (the last method in the f
 
 - [ ] **Step 6: Update `service_test.go`'s `mockRepo`**
 
-Delete `mockRepo.UpdateGeoData` (lines 40-42 in the current file). Then find every existing `svc.Create(ctx, ...)` call already in this file (there are calls in tests exercising rotation, MFA recording, etc.) and add a trailing `session.GeoData{}` argument to each — `go vet` will point at every call site that still has the old arity if any are missed.
+Delete `mockRepo.UpdateGeoData` (lines 40-42 in the current file). Then find every existing `svc.Create(ctx, ...)` call
+already in this file (there are calls in tests exercising rotation, MFA recording, etc.) and add a trailing
+`session.GeoData{}` argument to each — `go vet` will point at every call site that still has the old arity if any are
+missed.
 
 - [ ] **Step 7: Run the tests to verify they pass**
 
@@ -441,10 +480,13 @@ git commit -m "feat(session): add GeoCountry, HasSeenDevice, and geo-at-create-t
 ### Task 3: `SendNewDeviceLoginEmail`
 
 **Files:**
+
 - Modify: `api/internal/email/ses.go`
 
 **Interfaces:**
-- Produces: `(c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, deviceName, city, country, ip string, when time.Time) error`
+
+- Produces:
+  `(c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, deviceName, city, country, ip string, when time.Time) error`
 
 - [ ] **Step 1: Add the method and template, following the existing `SendPasswordResetEmail` shape**
 
@@ -540,7 +582,8 @@ Expected: PASS.
 - [ ] **Step 4: Build the whole module**
 
 Run: `cd api && go build ./...`
-Expected: succeeds. (Nothing calls `SendNewDeviceLoginEmail` yet — that's Task 4 — this step just confirms `ses.go` itself compiles cleanly.)
+Expected: succeeds. (Nothing calls `SendNewDeviceLoginEmail` yet — that's Task 4 — this step just confirms `ses.go`
+itself compiles cleanly.)
 
 - [ ] **Step 5: Commit**
 
@@ -554,6 +597,7 @@ git commit -m "feat(email): add new-device login notification template"
 ### Task 4: Wire `geo.Lookup` + `HasSeenDevice` into the five login call sites
 
 **Files:**
+
 - Modify: `api/internal/handler/helpers.go`
 - Modify: `api/internal/handler/auth.go`
 - Modify: `api/internal/handler/social.go`
@@ -561,8 +605,12 @@ git commit -m "feat(email): add new-device login notification template"
 - Modify: `api/internal/handler/testhelpers_test.go`
 
 **Interfaces:**
-- Consumes: `geo.Lookup(ip string) geo.Location` (Task 1), `session.Service.Create(..., session.GeoData)`, `session.Service.HasSeenDevice(...)` (Task 2), `email.Client.SendNewDeviceLoginEmail(...)` (Task 3, already implemented at this point in the task order).
-- Produces: `SocialHandler.emailCli`, `PasskeyHandler.emailCli` fields (mirroring `AuthHandler.emailCli`); `NewSocialHandler` and `NewPasskeyHandler` both gain a trailing `emailCli *email.Client` parameter.
+
+- Consumes: `geo.Lookup(ip string) geo.Location` (Task 1), `session.Service.Create(..., session.GeoData)`,
+  `session.Service.HasSeenDevice(...)` (Task 2), `email.Client.SendNewDeviceLoginEmail(...)` (Task 3, already
+  implemented at this point in the task order).
+- Produces: `SocialHandler.emailCli`, `PasskeyHandler.emailCli` fields (mirroring `AuthHandler.emailCli`);
+  `NewSocialHandler` and `NewPasskeyHandler` both gain a trailing `emailCli *email.Client` parameter.
 
 - [ ] **Step 1: Add `emailCli` to `SocialHandler` and `PasskeyHandler`**
 
@@ -583,7 +631,8 @@ func NewSocialHandler(userSvc *user.Service, sessionSvc *session.Service, c *cac
 }
 ```
 
-Add `"gopkg.aoctech.app/account/api/internal/email"` to `social.go`'s imports if not already present (it isn't — `social.go` currently has no email dependency).
+Add `"gopkg.aoctech.app/account/api/internal/email"` to `social.go`'s imports if not already present (it isn't —
+`social.go` currently has no email dependency).
 
 In `api/internal/handler/passkey.go`, same shape:
 
@@ -608,7 +657,9 @@ Add the same import to `passkey.go`.
 
 - [ ] **Step 2: Replace `enrichSessionAsync` with `sendNewDeviceEmailAsync` in `helpers.go`**
 
-In `api/internal/handler/helpers.go`, delete the entire `enrichSessionAsync` function (and its now-unused `"context"`/`"time"` imports if nothing else in the file needs them — check before removing; `time` is still used by `setAuthCookie` etc., so only drop `"context"` if truly unused elsewhere in the file after this edit). Replace it with:
+In `api/internal/handler/helpers.go`, delete the entire `enrichSessionAsync` function (and its now-unused `"context"`/
+`"time"` imports if nothing else in the file needs them — check before removing; `time` is still used by `setAuthCookie`
+etc., so only drop `"context"` if truly unused elsewhere in the file after this edit). Replace it with:
 
 ```go
 // sendNewDeviceEmailAsync fires a goroutine sending the new-device login
@@ -713,7 +764,8 @@ Replace lines 240-245:
 		recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 ```
 
-(Indentation matches the surrounding block in the existing file — verify against the actual file before pasting, since this sits inside an `if`/handler body.)
+(Indentation matches the surrounding block in the existing file — verify against the actual file before pasting, since
+this sits inside an `if`/handler body.)
 
 Add `"gopkg.aoctech.app/account/api/internal/geo"` to `passkey.go`'s imports.
 
@@ -777,10 +829,12 @@ Add `"gopkg.aoctech.app/account/api/internal/geo"` to `social.go`'s imports.
 - [ ] **Step 7: Update `testhelpers_test.go`**
 
 In `api/internal/handler/testhelpers_test.go`:
+
 - Delete `memSessionRepo.UpdateGeoData` (the method currently sitting between `DeleteRefreshToken` and `UpdateMFA`).
 - Change the three constructor call sites:
-  - `handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc)` → append `, nil` (twice — once per call site, lines 217 and 230 in the current file).
-  - `handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc)` → append `, nil` (line 239).
+    - `handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc)` → append `, nil`
+      (twice — once per call site, lines 217 and 230 in the current file).
+    - `handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc)` → append `, nil` (line 239).
 
 - [ ] **Step 8: Update `main.go` wiring (constructor calls only — full geoupdater wiring is Task 6)**
 
@@ -789,6 +843,7 @@ In `api/cmd/api/main.go`, update the two constructor calls to pass `emailCli`:
 ```go
 socialH := handler.NewSocialHandler(userSvc, sessionSvc, valkeyClient, cfg, auditSvc, emailCli)
 ```
+
 ```go
 passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc, emailCli)
 ```
@@ -796,7 +851,10 @@ passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, 
 - [ ] **Step 9: Build and run the full handler test suite**
 
 Run: `cd api && go build ./... && go test ./internal/handler/... -v`
-Expected: compiles; all existing handler tests still pass (none of them assert on `GeoCity` being populated post-login today, so removing the async enrichment doesn't break an existing assertion — verified during plan research). If any test constructs a `session.Service` directly and calls `.Create` with the old 6-arg signature, add a trailing `session.GeoData{}`.
+Expected: compiles; all existing handler tests still pass (none of them assert on `GeoCity` being populated post-login
+today, so removing the async enrichment doesn't break an existing assertion — verified during plan research). If any
+test constructs a `session.Service` directly and calls `.Create` with the old 6-arg signature, add a trailing
+`session.GeoData{}`.
 
 - [ ] **Step 10: Commit**
 
@@ -810,16 +868,21 @@ git commit -m "feat(handler): synchronous geo lookup + new-device detection on l
 ### Task 5: `internal/geoupdater` — per-instance auto-update
 
 **Files:**
+
 - Create: `api/internal/geoupdater/updater.go`
 - Create: `api/internal/geoupdater/updater_test.go`
 
 **Interfaces:**
+
 - Consumes: `geo.SetReader(*geoip2.Reader)` (Task 1)
 - Produces:
-  - `geoupdater.Config{DBPath, AccountID, LicenseKey string; Interval, StaleAfter time.Duration; Now func() time.Time; HTTPClient *http.Client}`
-  - `geoupdater.Startup(ctx context.Context, cfg Config)` — call once at boot, blocking.
-  - `geoupdater.Run(ctx context.Context, cfg Config)` — blocks; run in a goroutine, mirrors `keystore.RunRotator`'s calling convention.
-  - `geoupdater.DefaultInterval = 24 * time.Hour`, `geoupdater.DefaultStaleAfter = 7 * 24 * time.Hour` (exported constants main.go wires in).
+    -
+    `geoupdater.Config{DBPath, AccountID, LicenseKey string; Interval, StaleAfter time.Duration; Now func() time.Time; HTTPClient *http.Client}`
+    - `geoupdater.Startup(ctx context.Context, cfg Config)` — call once at boot, blocking.
+    - `geoupdater.Run(ctx context.Context, cfg Config)` — blocks; run in a goroutine, mirrors `keystore.RunRotator`'s
+      calling convention.
+    - `geoupdater.DefaultInterval = 24 * time.Hour`, `geoupdater.DefaultStaleAfter = 7 * 24 * time.Hour` (exported
+      constants main.go wires in).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1015,7 +1078,8 @@ func TestStartupDegradesGeoWhenNoFileAndDownloadFails(t *testing.T) {
 }
 ```
 
-Note: `Config` needs an unexported `downloadURL` field so tests can point at an `httptest.Server` instead of the real MaxMind endpoint — production code never sets it, so it defaults to the real constant (see Step 2).
+Note: `Config` needs an unexported `downloadURL` field so tests can point at an `httptest.Server` instead of the real
+MaxMind endpoint — production code never sets it, so it defaults to the real constant (see Step 2).
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1250,6 +1314,7 @@ git commit -m "feat(geoupdater): per-instance auto-update of the MaxMind databas
 ### Task 6: Config, main.go wiring, CDK, and docs
 
 **Files:**
+
 - Modify: `api/internal/config/config.go`
 - Modify: `api/cmd/api/main.go`
 - Modify: `cdk/lib/compute-stack.ts`
@@ -1257,8 +1322,11 @@ git commit -m "feat(geoupdater): per-instance auto-update of the MaxMind databas
 - Modify: `PLAN.md`
 
 **Interfaces:**
-- Consumes: `geoupdater.Startup`, `geoupdater.Run`, `geoupdater.Config`, `geoupdater.DefaultInterval`, `geoupdater.DefaultStaleAfter` (Task 5)
-- Produces: `config.Config.MaxMindAccountID`, `config.Config.MaxMindLicenseKey`, `config.Config.MaxMindDBPath` — no new interfaces consumed by later tasks (this is the last task).
+
+- Consumes: `geoupdater.Startup`, `geoupdater.Run`, `geoupdater.Config`, `geoupdater.DefaultInterval`,
+  `geoupdater.DefaultStaleAfter` (Task 5)
+- Produces: `config.Config.MaxMindAccountID`, `config.Config.MaxMindLicenseKey`, `config.Config.MaxMindDBPath` — no new
+  interfaces consumed by later tasks (this is the last task).
 
 - [ ] **Step 1: Add config fields**
 
@@ -1286,7 +1354,8 @@ In `Load()`, add to the returned `&Config{...}` literal:
 
 - [ ] **Step 2: Wire `geoupdater` into `main.go`**
 
-In `api/cmd/api/main.go`, add near the JWK rotation block (after it, before the repository construction section starting at `userRepo := ...`):
+In `api/cmd/api/main.go`, add near the JWK rotation block (after it, before the repository construction section starting
+at `userRepo := ...`):
 
 ```go
 	// GeoIP: per-instance auto-updating local MaxMind database. Disabled
@@ -1337,13 +1406,15 @@ And to the `export` list right after:
       `export MAXMIND_LICENSE_KEY`,
 ```
 
-No IAM change is needed: `iam-stack.ts` already grants `ssm:GetParameter` on the whole `/ctech-account/${environment}/*` subtree (lines 49-55), which covers these two new parameter names.
+No IAM change is needed: `iam-stack.ts` already grants `ssm:GetParameter` on the whole `/ctech-account/${environment}/*`
+subtree (lines 49-55), which covers these two new parameter names.
 
 Run: `cd cdk && npx cdk synth > /dev/null` to confirm the stack still synthesizes cleanly.
 
 - [ ] **Step 5: Document in `README.md`**
 
-Add a new subsection near the existing GeoIP-adjacent content (search for where session/device info is documented, or add after "### Rate limiting (`429`)"):
+Add a new subsection near the existing GeoIP-adjacent content (search for where session/device info is documented, or
+add after "### Rate limiting (`429`)"):
 
 ```markdown
 ### GeoIP + new-device login notification
@@ -1389,8 +1460,8 @@ Add a bullet to "Architecture Notes":
 
 - [ ] **Step 7: Final full-repo check**
 
-Run: `cd api && go build ./... && go vet ./... && go test ./...` and `cd cdk && npx cdk synth > /dev/null`.
-Expected: everything green.
+Run: `cd api && go build ./... && go vet ./... && go test ./...` and `cd cdk && npx cdk synth > /dev/null`. Expected:
+everything green.
 
 - [ ] **Step 8: Commit**
 
@@ -1403,4 +1474,5 @@ git commit -m "feat(geo): wire MaxMind auto-update config, CDK secrets, and docs
 
 ## Cross-Project Impact (carried from the spec — restate at PR time)
 
-None. No JWT/JWKS/OAuth flow change. `ctech-dfe`/`ctech-wallet` don't call these endpoints and don't consume `Session` or `account_audit` records.
+None. No JWT/JWKS/OAuth flow change. `ctech-dfe`/`ctech-wallet` don't call these endpoints and don't consume `Session`
+or `account_audit` records.

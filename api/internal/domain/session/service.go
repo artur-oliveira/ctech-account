@@ -182,20 +182,30 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("generating new refresh token: %w", err)
 	}
-	// Capture the superseded hash before the rotation so the consumed-token
-	// marker below points at the old token, not the freshly written one.
 	oldHash := t.RefreshTokenHash
-	if err := s.repo.UpdateRefreshTokenHash(ctx, t.UserID(), t.SessionID, t.ClientID, newHash, oldHash); err != nil {
-		if errors.Is(err, ErrTokenReuse) {
-			return nil, "", nil, ErrTokenReuse
-		}
-		return nil, "", nil, fmt.Errorf("rotating refresh token: %w", err)
+	now := time.Now().UTC()
+	// Create new refresh token with fresh TTL
+	newToken := &RefreshToken{
+		PK:               BuildPK(t.UserID()),
+		SK:               BuildRefreshSK(t.SessionID, t.ClientID),
+		RefreshTokenHash: newHash,
+		SessionID:        t.SessionID,
+		ClientID:         t.ClientID,
+		Scopes:           t.Scopes,
+		CreatedAt:        now.Format(time.RFC3339),
+		LastUsedAt:       now.Format(time.RFC3339),
+		ExpiresAt:        now.Add(SessionTTL).Unix(),
 	}
-	// Leave a marker linking the superseded hash to its session so a replay of
-	// the old token (token-reuse attempt) can revoke the now-compromised grant.
-	// Best-effort: a marker write failure must not fail the rotation, and reuse
-	// is still reported as such even if the marker is missing.
+	// Put consumed token marker for the old token (best-effort)
 	_ = s.repo.PutConsumedToken(ctx, t.UserID(), t.SessionID, t.ClientID, oldHash, sess.ExpiresAt)
+	// Delete the old refresh token record
+	if err := s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID); err != nil {
+		return nil, "", nil, fmt.Errorf("deleting old refresh token: %w", err)
+	}
+	// Put the new refresh token record
+	if err := s.repo.PutRefreshToken(ctx, newToken); err != nil {
+		return nil, "", nil, fmt.Errorf("persisting new refresh token: %w", err)
+	}
 	return sess, newRaw, t.Scopes, nil
 }
 

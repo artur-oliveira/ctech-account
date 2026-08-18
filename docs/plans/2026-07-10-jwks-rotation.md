@@ -1,39 +1,51 @@
 # JWKS Auto-Rotation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Signing keys live versioned in SSM (`jwk/active` + `jwk/previous`), JWKS serves both, and an in-process loop (Valkey `SetNX` lock) rotates the active key every ~90 days with no deploy and no downstream breakage.
+**Goal:** Signing keys live versioned in SSM (`jwk/active` + `jwk/previous`), JWKS serves both, and an in-process loop
+(Valkey `SetNX` lock) rotates the active key every ~90 days with no deploy and no downstream breakage.
 
-**Architecture:** New `internal/keystore` package (SSM load/save + rotation loop). `crypto.JWTService` becomes multi-key: signs with active, verifies by `kid`, hot-reloads under `sync.RWMutex`. Dev keeps the `RSA_PRIVATE_KEY` env override (single key, no rotation). Spec: `docs/specs/2026-07-10-account-hardening-design.md` §C. **Critical area** (CLAUDE.md: JWKS/KID rotation impacts ctech-dfe) — every task here must keep a previously-issued token verifiable.
+**Architecture:** New `internal/keystore` package (SSM load/save + rotation loop). `crypto.JWTService` becomes
+multi-key: signs with active, verifies by `kid`, hot-reloads under `sync.RWMutex`. Dev keeps the `RSA_PRIVATE_KEY` env
+override (single key, no rotation). Spec: `docs/specs/2026-07-10-account-hardening-design.md` §C. **Critical area**
+(CLAUDE.md: JWKS/KID rotation impacts ctech-dfe) — every task here must keep a previously-issued token verifiable.
 
 **Tech Stack:** Go 1.26, aws-sdk-go-v2 (ssm), Valkey, CDK TypeScript.
 
 ## Global Constraints
 
-- Rotation cadence: `keystore.KeyMaxAge = 90 * 24 * time.Hour`; check interval `keystore.CheckInterval = time.Hour`; lock `SET rotate_jwk_lock NX EX 3600`.
-- SSM paths: `/ctech-account/{env}/jwk/active`, `/ctech-account/{env}/jwk/previous` (SecureString, JSON `{"kid","pem","created_at"}`).
+- Rotation cadence: `keystore.KeyMaxAge = 90 * 24 * time.Hour`; check interval `keystore.CheckInterval = time.Hour`;
+  lock `SET rotate_jwk_lock NX EX 3600`.
+- SSM paths: `/ctech-account/{env}/jwk/active`, `/ctech-account/{env}/jwk/previous` (SecureString, JSON
+  `{"kid","pem","created_at"}`).
 - Previous key stays served in JWKS until the **next** rotation (~90 d grace ≫ 15-min access / 1-h id token lifetimes).
 - RSA 2048, RS256 only — no new algorithms.
 - Valkey disabled ⇒ auto-rotation disabled (manual `cmd/rotatekeys` only). SSM write failures must never crash the API.
-- KID derivation for new keys: same scheme as `config.loadRSAKey` (first 16 hex chars of SHA-256 over PKIX public key DER) — extract that into a shared helper, do not duplicate.
-- Rollout safety: ship Tasks 1–4 (code + manual command) first; enable the auto loop (Task 5) only after `cmd/rotatekeys --init` has run in prod and a deploy has verified dual-KID JWKS.
+- KID derivation for new keys: same scheme as `config.loadRSAKey` (first 16 hex chars of SHA-256 over PKIX public key
+  DER) — extract that into a shared helper, do not duplicate.
+- Rollout safety: ship Tasks 1–4 (code + manual command) first; enable the auto loop (Task 5) only after
+  `cmd/rotatekeys --init` has run in prod and a deploy has verified dual-KID JWKS.
 
 ---
 
 ### Task 1: Key material types + shared KID helper
 
 **Files:**
+
 - Create: `internal/keystore/key.go`
 - Create: `internal/keystore/key_test.go`
 - Modify: `internal/config/config.go` (reuse helper in `loadRSAKey`)
 
 **Interfaces:**
+
 - Produces:
-  - `keystore.Key{KID string; Private *rsa.PrivateKey; CreatedAt time.Time}`
-  - `keystore.KeyJSON{KID string `json:"kid"`; PEM string `json:"pem"`; CreatedAt string `json:"created_at"`}` — SSM wire format (RFC3339)
-  - `keystore.ParseKey(j KeyJSON) (*Key, error)` / `(*Key) MarshalJSON-free helper ToJSON() (KeyJSON, error)`
-  - `keystore.Generate(now time.Time) (*Key, error)` — new RSA-2048 key with derived KID
-  - `keystore.DeriveKID(pub *rsa.PublicKey) (string, error)` — extracted from `config.loadRSAKey`, used by both
+    - `keystore.Key{KID string; Private *rsa.PrivateKey; CreatedAt time.Time}`
+    - `keystore.KeyJSON{KID string `json:"kid"`; PEM string `json:"pem"`; CreatedAt string `json:"created_at"`}` — SSM
+      wire format (RFC3339)
+    - `keystore.ParseKey(j KeyJSON) (*Key, error)` / `(*Key) MarshalJSON-free helper ToJSON() (KeyJSON, error)`
+    - `keystore.Generate(now time.Time) (*Key, error)` — new RSA-2048 key with derived KID
+    - `keystore.DeriveKID(pub *rsa.PublicKey) (string, error)` — extracted from `config.loadRSAKey`, used by both
 
 - [ ] **Step 1: Failing tests**
 
@@ -156,7 +168,9 @@ func ParseKey(j KeyJSON) (*Key, error) {
 }
 ```
 
-Then refactor `config.loadRSAKey` to call `keystore.DeriveKID` (delete the inline SHA-256 block). Watch for an import cycle: if `config` importing `keystore` cycles (keystore should NOT import config — keep it dependency-free), this is safe.
+Then refactor `config.loadRSAKey` to call `keystore.DeriveKID` (delete the inline SHA-256 block). Watch for an import
+cycle: if `config` importing `keystore` cycles (keystore should NOT import config — keep it dependency-free), this is
+safe.
 
 - [ ] **Step 4: Run — verify PASS** — `go test ./internal/keystore/ ./internal/config/ -v` and `go build ./...`.
 
@@ -172,20 +186,23 @@ git commit -m "feat: add keystore key material types with shared KID derivation"
 ### Task 2: JWTService multi-key — sign active, verify by kid, hot reload
 
 **Files:**
+
 - Modify: `internal/crypto/jwt.go`
 - Modify: `internal/handler/wellknown.go` (serve all JWKs)
 - Test: `internal/crypto/jwt_test.go`, `internal/handler/wellknown_test.go`
 - Modify: `cmd/api/main.go` + `internal/handler/testhelpers_test.go` (construction)
 
 **Interfaces:**
+
 - Consumes: `keystore.Key` (Task 1).
 - Produces:
-  - `crypto.NewJWTService(cfg *config.Config, active, previous *keystore.Key) (*JWTService, error)` (previous may be nil)
-  - `(*JWTService) Reload(active, previous *keystore.Key)` — swaps keys under write lock
-  - `(*JWTService) PublicKeyJWKs() []map[string]any` — active first, previous second
-  - `(*JWTService) KID() string` — active KID (kept for compatibility)
-  - `Verify` resolves the verification key by the token's `kid` header; unknown kid ⇒ invalid token
-  - Existing `PublicKeyJWK()` deleted; `wellknown.go` switches to `PublicKeyJWKs()`
+    - `crypto.NewJWTService(cfg *config.Config, active, previous *keystore.Key) (*JWTService, error)` (previous may be
+      nil)
+    - `(*JWTService) Reload(active, previous *keystore.Key)` — swaps keys under write lock
+    - `(*JWTService) PublicKeyJWKs() []map[string]any` — active first, previous second
+    - `(*JWTService) KID() string` — active KID (kept for compatibility)
+    - `Verify` resolves the verification key by the token's `kid` header; unknown kid ⇒ invalid token
+    - Existing `PublicKeyJWK()` deleted; `wellknown.go` switches to `PublicKeyJWKs()`
 
 - [ ] **Step 1: Failing tests** (add to `internal/crypto/jwt_test.go`)
 
@@ -238,7 +255,8 @@ func TestJWKSListsActiveThenPrevious(t *testing.T) {
 
 - [ ] **Step 3: Implement**
 
-Rewrite `JWTService` internals (keep exported method signatures used elsewhere — `SignAccessToken`, `SignIDToken`, `Verify`, `KID`; keep the step-up claims from the step-up plan if already merged):
+Rewrite `JWTService` internals (keep exported method signatures used elsewhere — `SignAccessToken`, `SignIDToken`,
+`Verify`, `KID`; keep the step-up claims from the step-up plan if already merged):
 
 ```go
 type JWTService struct {
@@ -301,9 +319,12 @@ func (j *JWTService) keyForKID(kid string) *rsa.PublicKey {
 	}, opts...)
 ```
 
-`PublicKeyJWKs()` builds the same JWK map as today per key (extract the map-building into `jwkFor(pub *rsa.PublicKey, kid string) map[string]any`). `wellknown.go`: `"keys": jwtSvc.PublicKeyJWKs()`.
+`PublicKeyJWKs()` builds the same JWK map as today per key (extract the map-building into
+`jwkFor(pub *rsa.PublicKey, kid string) map[string]any`). `wellknown.go`: `"keys": jwtSvc.PublicKeyJWKs()`.
 
-Construction: `cmd/api/main.go` and `testhelpers_test.go` wrap the config key: `active := &keystore.Key{KID: cfg.PublicKeyKID, Private: cfg.RSAPrivateKey, CreatedAt: time.Now()}` for now (Task 3 replaces this with the real loader; dev-env path keeps exactly this wrap).
+Construction: `cmd/api/main.go` and `testhelpers_test.go` wrap the config key:
+`active := &keystore.Key{KID: cfg.PublicKeyKID, Private: cfg.RSAPrivateKey, CreatedAt: time.Now()}` for now (Task 3
+replaces this with the real loader; dev-env path keeps exactly this wrap).
 
 - [ ] **Step 4: Run — verify PASS** — `go test ./...` (wellknown test asserts ≥1 key; add the 2-key case).
 
@@ -319,21 +340,32 @@ git commit -m "feat: multi-key JWTService with kid-based verification and hot re
 ### Task 3: SSM store + boot loading + cache SetNX
 
 **Files:**
+
 - Create: `internal/keystore/ssm.go`
 - Create: `internal/keystore/ssm_test.go` (interface-mocked SSM client)
 - Modify: `internal/cache/valkey.go` + `internal/cache/valkey_test.go` (add `SetNX`)
 - Modify: `internal/config/config.go`, `cmd/api/main.go` (boot path)
 
 **Interfaces:**
-- Produces:
-  - `keystore.SSMAPI` interface: `GetParameter(ctx, *ssm.GetParameterInput, ...) (*ssm.GetParameterOutput, error)`; `PutParameter(ctx, *ssm.PutParameterInput, ...) (*ssm.PutParameterOutput, error)` (satisfied by `*ssm.Client`)
-  - `keystore.NewStore(client SSMAPI, environment string) *Store`
-  - `(*Store) Load(ctx) (active *Key, previous *Key, err error)` — previous nil when the parameter is absent (`ParameterNotFound` is not an error)
-  - `(*Store) Save(ctx, active, previous *Key) error` — writes **previous first**, then active (crash between the two leaves old active still valid)
-  - `cache.(*Client).SetNX(ctx, key string, value string, ttl time.Duration) (bool, error)` — false when key exists or cache disabled
-  - Boot: `RSA_PRIVATE_KEY` env set ⇒ legacy single-key mode (dev); else load from SSM via `keystore.Store` (region from `AWS_REGION`)
 
-- [ ] **Step 1: Failing tests** — `ssm_test.go` with a `fakeSSM` map-backed mock: Load round-trip, Load with missing previous, Load with missing active (error), Save writes both params SecureString with `Overwrite: true` and previous-before-active order (record call order in the fake). `valkey_test.go`: SetNX true-then-false with real ttl semantics if the test suite uses a real/miniredis client — follow whatever the existing cache tests do; disabled client returns `(false, nil)`.
+- Produces:
+    - `keystore.SSMAPI` interface: `GetParameter(ctx, *ssm.GetParameterInput, ...) (*ssm.GetParameterOutput, error)`;
+      `PutParameter(ctx, *ssm.PutParameterInput, ...) (*ssm.PutParameterOutput, error)` (satisfied by `*ssm.Client`)
+    - `keystore.NewStore(client SSMAPI, environment string) *Store`
+    - `(*Store) Load(ctx) (active *Key, previous *Key, err error)` — previous nil when the parameter is absent
+      (`ParameterNotFound` is not an error)
+    - `(*Store) Save(ctx, active, previous *Key) error` — writes **previous first**, then active (crash between the two
+      leaves old active still valid)
+    - `cache.(*Client).SetNX(ctx, key string, value string, ttl time.Duration) (bool, error)` — false when key exists or
+      cache disabled
+    - Boot: `RSA_PRIVATE_KEY` env set ⇒ legacy single-key mode (dev); else load from SSM via `keystore.Store` (region
+      from `AWS_REGION`)
+
+- [ ] **Step 1: Failing tests** — `ssm_test.go` with a `fakeSSM` map-backed mock: Load round-trip, Load with missing
+  previous, Load with missing active (error), Save writes both params SecureString with `Overwrite: true` and
+  previous-before-active order (record call order in the fake). `valkey_test.go`: SetNX true-then-false with real ttl
+  semantics if the test suite uses a real/miniredis client — follow whatever the existing cache tests do; disabled
+  client returns `(false, nil)`.
 
 - [ ] **Step 2: Run — verify FAIL.**
 
@@ -364,9 +396,12 @@ func (s *Store) Load(ctx context.Context) (*Key, *Key, error) {
 }
 ```
 
-(`getKey`: GetParameter WithDecryption → `json.Unmarshal` into `KeyJSON` → `ParseKey`. `Save`: marshal each to JSON, `PutParameter` Type SecureString, Overwrite true — previous first.)
+(`getKey`: GetParameter WithDecryption → `json.Unmarshal` into `KeyJSON` → `ParseKey`. `Save`: marshal each to JSON,
+`PutParameter` Type SecureString, Overwrite true — previous first.)
 
-`cache.SetNX`: use valkey-go builder `c.client.B().Set().Key(key).Value(value).Nx().Ex(ttl).Build()`; result `IsCacheHit`/nil-error string "OK" ⇒ true, `valkey.IsValkeyNil`-style empty reply ⇒ false (mirror error-handling idiom of existing `Incr`).
+`cache.SetNX`: use valkey-go builder `c.client.B().Set().Key(key).Value(value).Nx().Ex(ttl).Build()`; result
+`IsCacheHit`/nil-error string "OK" ⇒ true, `valkey.IsValkeyNil`-style empty reply ⇒ false (mirror error-handling idiom
+of existing `Incr`).
 
 Boot (`cmd/api/main.go`): replace the Task-2 temporary wrap:
 
@@ -385,7 +420,8 @@ if os.Getenv("RSA_PRIVATE_KEY") != "" {
 }
 ```
 
-`config.Load` change: `RSA_PRIVATE_KEY` becomes optional — when absent, skip `loadRSAKey` and leave `RSAPrivateKey`/`PublicKeyKID` empty (main decides the path). Keep the hard error only in the env path (invalid PEM still fails).
+`config.Load` change: `RSA_PRIVATE_KEY` becomes optional — when absent, skip `loadRSAKey` and leave `RSAPrivateKey`/
+`PublicKeyKID` empty (main decides the path). Keep the hard error only in the env path (invalid PEM still fails).
 
 - [ ] **Step 4: Run — verify PASS** — `go test ./...`.
 
@@ -401,15 +437,21 @@ git commit -m "feat: load signing keys from versioned SSM parameters with cache 
 ### Task 4: cmd/rotatekeys — init + manual rotation
 
 **Files:**
+
 - Create: `cmd/rotatekeys/main.go`
-- Test: covered by `keystore` unit tests (Task 3 fake SSM) — add `keystore.Rotate` + `keystore.InitFromLegacy` functions there so the command is a thin shell
+- Test: covered by `keystore` unit tests (Task 3 fake SSM) — add `keystore.Rotate` + `keystore.InitFromLegacy` functions
+  there so the command is a thin shell
 
 **Interfaces:**
+
 - Consumes: `keystore.Store`, `keystore.Generate`.
 - Produces:
-  - `keystore.Rotate(ctx, store *Store, now time.Time) (*Key, error)` — Load → Save(previous←old active, active←new) → return new key
-  - `keystore.InitFromLegacy(ctx, store *Store, legacy SSMAPI-read of `/ctech-account/{env}/rsa-private-key`, now time.Time) error` — wraps legacy PEM into `jwk/active` (KID via `DeriveKID`, `created_at = now`); errors if `jwk/active` already exists
-  - CLI: `rotatekeys -env prod [-init]` using `AWS_REGION` from env
+    - `keystore.Rotate(ctx, store *Store, now time.Time) (*Key, error)` — Load → Save (previous←old active,
+      active←new) → return new key
+    - `keystore.InitFromLegacy(ctx, store *Store, legacy SSMAPI-read of `/ctech-account/{env}/rsa-private-key
+      `, now time.Time) error` — wraps legacy PEM into `jwk/active` (KID via `DeriveKID`, `created_at = now`); errors if
+      `jwk/active` already exists
+    - CLI: `rotatekeys -env prod [-init]` using `AWS_REGION` from env
 
 - [ ] **Step 1: Failing tests** (in `internal/keystore/rotate_test.go`, using the Task-3 fake)
 
@@ -449,9 +491,9 @@ import (
 	"log"
 	"time"
 
-	"gopkg.aoctech.app/account/internal/keystore"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"gopkg.aoctech.app/account/internal/keystore"
 )
 
 func main() {
@@ -499,11 +541,13 @@ git commit -m "feat: add rotatekeys command with legacy key migration"
 ### Task 5: Rotation loop (hourly reload + 90d auto-rotate under Valkey lock)
 
 **Files:**
+
 - Create: `internal/keystore/rotator.go`
 - Create: `internal/keystore/rotator_test.go`
 - Modify: `cmd/api/main.go` (start loop; only in SSM mode)
 
 **Interfaces:**
+
 - Consumes: `Store.Load`, `Rotate`, `cache.(*Client).SetNX`, `(*crypto.JWTService).Reload`.
 - Produces: `keystore.RunRotator(ctx context.Context, cfg RotatorConfig)` where
 
@@ -518,7 +562,8 @@ type RotatorConfig struct {
 }
 ```
 
-- [ ] **Step 1: Failing tests** — drive the loop body directly (export `tick(ctx, cfg) error` and have `RunRotator` loop over it; test `tick`, not goroutine timing):
+- [ ] **Step 1: Failing tests** — drive the loop body directly (export `tick(ctx, cfg) error` and have `RunRotator` loop
+  over it; test `tick`, not goroutine timing):
 
 ```go
 func TestTickReloadsWithoutRotationWhenKeyYoung(t *testing.T) {
@@ -626,11 +671,14 @@ git commit -m "feat: hourly key reload with 90-day auto-rotation under Valkey lo
 ### Task 6: CDK (IAM + user-data) + docs
 
 **Files:**
+
 - Modify: `cdk/lib/iam-stack.ts:47-52` (add PutParameter on jwk path)
 - Modify: `cdk/lib/compute-stack.ts:248,266` (drop `RSA_PRIVATE_KEY` fetch/export from start.sh)
-- Modify: `README.md` (config vars: RSA_PRIVATE_KEY now dev-only; SSM key scheme; rotatekeys usage), `PLAN.md` (KID rotation note now automated)
+- Modify: `README.md` (config vars: RSA_PRIVATE_KEY now dev-only; SSM key scheme; rotatekeys usage), `PLAN.md` (KID
+  rotation note now automated)
 
 **Interfaces:**
+
 - Consumes: everything above deployed.
 
 - [ ] **Step 1: IAM** — extend the existing SSM policy statement block:
@@ -647,11 +695,16 @@ git commit -m "feat: hourly key reload with 90-day auto-rotation under Valkey lo
 
 (`ssm:GetParameter` already covers `/ctech-account/${environment}/*`.)
 
-- [ ] **Step 2: user-data** — delete the `RSA_PRIVATE_KEY=$(aws ssm get-parameter ...)` line and the `export RSA_PRIVATE_KEY` line from start.sh in `compute-stack.ts`. `PUBLIC_KEY_KID` fetch/export can also go (KID now travels inside the JWK JSON) — remove both lines.
+- [ ] **Step 2: user-data** — delete the `RSA_PRIVATE_KEY=$(aws ssm get-parameter ...)` line and the
+  `export RSA_PRIVATE_KEY` line from start.sh in `compute-stack.ts`. `PUBLIC_KEY_KID` fetch/export can also go (KID now
+  travels inside the JWK JSON) — remove both lines.
 
-- [ ] **Step 3: Build** — `cd cdk && npm run build` passes; `npx cdk diff` shows only the IAM statement + launch-template user-data change.
+- [ ] **Step 3: Build** — `cd cdk && npm run build` passes; `npx cdk diff` shows only the IAM statement +
+  launch-template user-data change.
 
-- [ ] **Step 4: Docs** — README: new section "Signing key rotation" (SSM paths, 90d cadence, grace semantics, `go run ./cmd/rotatekeys -env prod [-init]`, dev override). PLAN.md architecture note: replace the manual 4-step KID rotation bullet with a pointer to the automated scheme.
+- [ ] **Step 4: Docs** — README: new section "Signing key rotation" (SSM paths, 90d cadence, grace semantics,
+  `go run ./cmd/rotatekeys -env prod [-init]`, dev override). PLAN.md architecture note: replace the manual 4-step KID
+  rotation bullet with a pointer to the automated scheme.
 
 - [ ] **Step 5: Commit**
 
@@ -661,6 +714,7 @@ git commit -m "feat(cdk): grant jwk parameter writes and stop injecting RSA key 
 ```
 
 **Prod rollout (operator steps, after merge):**
+
 1. `go run ./cmd/rotatekeys -env prod -init` (wraps legacy key — KID unchanged, zero token impact).
 2. Deploy backend + CDK.
 3. Verify `GET /.well-known/jwks.json` still serves the same KID; ctech-dfe unaffected.

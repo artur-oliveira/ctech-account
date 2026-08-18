@@ -316,14 +316,19 @@ func main() {
 		Cache: valkeyClient, Prefix: "pwreset", Max: middleware.FailedLoginMax,
 		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
 	})
-	tokenLimiter := middleware.RateLimit(middleware.RateLimitConfig{
-		Cache: valkeyClient, Prefix: "token", Max: middleware.FailedLoginMax,
+	tokenLimiterBruteForce := middleware.RateLimit(middleware.RateLimitConfig{
+		Cache: valkeyClient, Prefix: "token_brute", Max: middleware.FailedLoginMax,
 		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
+	})
+	tokenLimiterThroughput := middleware.RateLimit(middleware.RateLimitConfig{
+		Cache: valkeyClient, Prefix: "token_throughput", Max: 50,
+		Window: time.Minute, KeyFunc: ipKey, CountOnlyFailures: false, FailClosed: true,
 	})
 	perUserLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 		Cache: valkeyClient, Prefix: "user", Max: middleware.PerUserMax,
 		Window: middleware.PerUserWindow, KeyFunc: middleware.GetUserID, CountOnlyFailures: false, FailClosed: true,
 	})
+	lockoutMiddleware := middleware.AccountLockoutMiddleware(valkeyClient, cfg)
 	// Conditional WebAuthn starts a discoverable challenge when the login page
 	// loads. Bound the public Valkey-writing endpoint without probing an email.
 	passkeyBeginLimiter := middleware.RateLimit(middleware.RateLimitConfig{
@@ -342,20 +347,20 @@ func main() {
 		Cache: valkeyClient, Prefix: "google", Max: middleware.FailedLoginMax,
 		Window: middleware.FailedLoginWindow, KeyFunc: ipKey, CountOnlyFailures: true, FailClosed: true,
 	})
-	v1.Use("/auth/login", authLimiter)
-	v1.Use("/auth/mfa/challenge", authLimiter)
+	v1.Use("/auth/login", authLimiter, lockoutMiddleware)
+	v1.Use("/auth/mfa/challenge", authLimiter, lockoutMiddleware)
 	v1.Use("/authorize", authLimiter)
 	v1.Use("/authorize/consent", authLimiter)
-	v1.Use("/auth/forgot-password", pwResetLimiter)
-	v1.Use("/auth/reset-password", pwResetLimiter)
-	v1.Use("/auth/resend-verification", pwResetLimiter)
-	v1.Use("/auth/register", pwResetLimiter)
-	v1.Use("/auth/passkeys/authenticate/begin", passkeyBeginLimiter)
-	v1.Use("/auth/passkeys/authenticate/complete", passkeyCompleteLimiter)
-	v1.Use("/auth/google", googleLimiter)
-	v1.Use("/auth/google/callback", googleLimiter)
-	v1.Use("/token", tokenLimiter)
-	v1.Use("/revoke", tokenLimiter)
+	v1.Use("/auth/forgot-password", pwResetLimiter, lockoutMiddleware)
+	v1.Use("/auth/reset-password", pwResetLimiter, lockoutMiddleware)
+	v1.Use("/auth/resend-verification", pwResetLimiter, lockoutMiddleware)
+	v1.Use("/auth/register", pwResetLimiter, lockoutMiddleware)
+	v1.Use("/auth/passkeys/authenticate/begin", passkeyBeginLimiter, lockoutMiddleware)
+	v1.Use("/auth/passkeys/authenticate/complete", passkeyCompleteLimiter, lockoutMiddleware)
+	v1.Use("/auth/google", googleLimiter, lockoutMiddleware)
+	v1.Use("/auth/google/callback", googleLimiter, lockoutMiddleware)
+	v1.Use("/token", tokenLimiterBruteForce, tokenLimiterThroughput)
+	v1.Use("/revoke", tokenLimiterBruteForce, tokenLimiterThroughput)
 
 	handler.NewScopesHandler(scopesCatalogSvc).Register(v1)
 	authH.Register(v1)

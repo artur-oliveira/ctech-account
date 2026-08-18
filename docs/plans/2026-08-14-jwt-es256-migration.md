@@ -1,48 +1,78 @@
 # JWT RS256 → ES256 Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add ECDSA P-256 (ES256) signing support to ctech-account's JWT issuance and to the shared `jwtverify` library so access/ID tokens can be cut over from RS256 to ES256 without breaking `ctech-dfe` or `ctech-wallet`, then perform the cutover.
+**Goal:** Add ECDSA P-256 (ES256) signing support to ctech-account's JWT issuance and to the shared `jwtverify` library
+so access/ID tokens can be cut over from RS256 to ES256 without breaking `ctech-dfe` or `ctech-wallet`, then perform the
+cutover.
 
-**Architecture:** Both `ctech-account`'s own key material (`internal/keystore`) and its signing/verification code (`internal/crypto/jwt.go`) generalize from a hardcoded `*rsa.PrivateKey` to `crypto.Signer` + an explicit `Alg` field (`"RS256"` | `"ES256"`), carried alongside the key everywhere it's stored or looked up by `kid`. The shared `ctech-go-common/jwtverify` library (consumed by `ctech-dfe` and `ctech-wallet`) is generalized the same way on the verification side. Every verification path resolves the expected algorithm **from the `kid`**, not from the token's own `alg` header, so a token can never claim a different algorithm than the key it was actually issued under (this is the alg-confusion defense, and it's what makes the algorithm swap safe to do live). The shared library ships and rolls out to all consumers *before* ctech-account ever signs an ES256 token, so no consumer is ever asked to validate an algorithm it doesn't understand yet.
+**Architecture:** Both `ctech-account`'s own key material (`internal/keystore`) and its signing/verification code
+(`internal/crypto/jwt.go`) generalize from a hardcoded `*rsa.PrivateKey` to `crypto.Signer` + an explicit `Alg` field
+(`"RS256"` | `"ES256"`), carried alongside the key everywhere it's stored or looked up by `kid`. The shared
+`ctech-go-common/jwtverify` library (consumed by `ctech-dfe` and `ctech-wallet`) is generalized the same way on the
+verification side. Every verification path resolves the expected algorithm **from the `kid`**, not from the token's own
+`alg` header, so a token can never claim a different algorithm than the key it was actually issued under (this is the
+alg-confusion defense, and it's what makes the algorithm swap safe to do live). The shared library ships and rolls out
+to all consumers *before* ctech-account ever signs an ES256 token, so no consumer is ever asked to validate an algorithm
+it doesn't understand yet.
 
-**Tech Stack:** Go 1.26, `github.com/golang-jwt/jwt/v5`, AWS SSM (Parameter Store, `SecureString`), Valkey (rotation lock), Fiber v3.
+**Tech Stack:** Go 1.26, `github.com/golang-jwt/jwt/v5`, AWS SSM (Parameter Store, `SecureString`), Valkey (rotation
+lock), Fiber v3.
 
-**Spec:** No separate spec document — this plan was derived directly from reading the current implementation (`ctech-account/api/internal/crypto/jwt.go`, `ctech-account/api/internal/keystore/*.go`, `ctech-go-common/jwtverify/verifier.go`) and is self-contained; the Architecture section above is the design.
+**Spec:** No separate spec document — this plan was derived directly from reading the current implementation
+(`ctech-account/api/internal/crypto/jwt.go`, `ctech-account/api/internal/keystore/*.go`,
+`ctech-go-common/jwtverify/verifier.go`) and is self-contained; the Architecture section above is the design.
 
 ## Global Constraints
 
-- `crypto.JWTService` today signs **RS256 only. No HS256, no `SECRET_KEY`.** (`api/CLAUDE.md`) — this plan updates that line to "RS256 and ES256; no HS256, no `SECRET_KEY`" as part of Task 8's documentation update, alongside the actual capability.
+- `crypto.JWTService` today signs **RS256 only. No HS256, no `SECRET_KEY`.** (`api/CLAUDE.md`) — this plan updates that
+  line to "RS256 and ES256; no HS256, no `SECRET_KEY`" as part of Task 8's documentation update, alongside the actual
+  capability.
 - Go 1.26; `errors.AsType[*T]` generic errors — do not downgrade.
 - Fiber v3: use `c.Context()`, never `c.UserContext()`.
-- Every domain package exports a `Repository` interface; services take interfaces, never concretes (unaffected by this plan — no repository changes).
+- Every domain package exports a `Repository` interface; services take interfaces, never concretes (unaffected by this
+  plan — no repository changes).
 - Every core function must have an integration/unit test (project testing policy).
-- **Mandatory Documentation Policy:** every behavior/config/security change ships its doc update in the same change — enforced here as Task 8, not deferred.
-- No magic strings: algorithm names must be named constants (`keystore.AlgRS256`, `keystore.AlgES256`), not inline `"RS256"`/`"ES256"` literals, except in `wellknown.go`'s already-literal OIDC metadata map (matches existing style there).
-- JWKS/KID rotation impacts all downstream services — cross-project impact must be stated for `ctech-dfe` and `ctech-wallet` (stated per-task below; net effect is "redeploy with a bumped dependency, zero code changes").
+- **Mandatory Documentation Policy:** every behavior/config/security change ships its doc update in the same change —
+  enforced here as Task 8, not deferred.
+- No magic strings: algorithm names must be named constants (`keystore.AlgRS256`, `keystore.AlgES256`), not inline
+  `"RS256"`/`"ES256"` literals, except in `wellknown.go`'s already-literal OIDC metadata map (matches existing style
+  there).
+- JWKS/KID rotation impacts all downstream services — cross-project impact must be stated for `ctech-dfe` and
+  `ctech-wallet` (stated per-task below; net effect is "redeploy with a bumped dependency, zero code changes").
 
 ---
 
 ## Task 1: `ctech-go-common/jwtverify` — accept RSA and EC (ES256) keys
 
-**Why first:** this is the verification side used by every downstream consumer. It must support both algorithms *before* ctech-account ever issues an ES256 token, or the first ES256 token minted would be unverifiable anywhere downstream.
+**Why first:** this is the verification side used by every downstream consumer. It must support both algorithms *before*
+ctech-account ever issues an ES256 token, or the first ES256 token minted would be unverifiable anywhere downstream.
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-go-common/jwtverify/verifier.go`
-- Test: `/home/artur/Documents/Projects/Ctech/ctech-go-common/jwtverify/verifier_test.go` (create if it doesn't already exist — check first with `ls`)
+- Test: `/home/artur/Documents/Projects/Ctech/ctech-go-common/jwtverify/verifier_test.go` (create if it doesn't already
+  exist — check first with `ls`)
 
 **Interfaces:**
-- Produces: `jwkToKey(k *jwk) (crypto.PublicKey, jwt.SigningMethod, error)` — new; replaces `jwkToRSA` as the single dispatch point. `(v *Verifier) keyForKID(ctx, kid) (crypto.PublicKey, jwt.SigningMethod, error)` — signature changed (was `(*rsa.PublicKey, error)`). No change to `VerifyClaims`'s public signature or the `Claims` struct.
+
+- Produces: `jwkToKey(k *jwk) (crypto.PublicKey, jwt.SigningMethod, error)` — new; replaces `jwkToRSA` as the single
+  dispatch point. `(v *Verifier) keyForKID(ctx, kid) (crypto.PublicKey, jwt.SigningMethod, error)` — signature changed
+  (was `(*rsa.PublicKey, error)`). No change to `VerifyClaims`'s public signature or the `Claims` struct.
 
 - [ ] **Step 1: Check for an existing test file and read current coverage**
 
 Run: `ls /home/artur/Documents/Projects/Ctech/ctech-go-common/jwtverify/`
 
-If `verifier_test.go` exists, read it fully before writing new tests below — extend its existing `cache.Backend` test double / JWKS test-server helpers rather than duplicating them. If it doesn't exist, the steps below build the minimal fixtures needed.
+If `verifier_test.go` exists, read it fully before writing new tests below — extend its existing `cache.Backend` test
+double / JWKS test-server helpers rather than duplicating them. If it doesn't exist, the steps below build the minimal
+fixtures needed.
 
 - [ ] **Step 2: Write the failing tests**
 
-Add to `verifier_test.go` (create the file with this content if none exists; otherwise add these functions and reuse any existing in-memory `cache.Backend` fake / JWKS test-server helper already present):
+Add to `verifier_test.go` (create the file with this content if none exists; otherwise add these functions and reuse any
+existing in-memory `cache.Backend` fake / JWKS test-server helper already present):
 
 ```go
 package jwtverify
@@ -182,9 +212,11 @@ func TestJwkToKeyRejectsUnsupportedKty(t *testing.T) {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-go-common && go test ./jwtverify/... -run 'TestVerifyClaimsAcceptsES256Token|TestVerifyClaimsRejectsAlgConfusionRSAKidSignedES256|TestJwkToKeyRejectsUnsupportedKty' -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-go-common && go test ./jwtverify/... -run 'TestVerifyClaimsAcceptsES256Token|TestVerifyClaimsRejectsAlgConfusionRSAKidSignedES256|TestJwkToKeyRejectsUnsupportedKty' -v`
 
-Expected: FAIL — compile error (`jwk` has no field `Crv`/`X`/`Y`, `jwkToKey` undefined) or, if it compiles by coincidence, the ES256 test fails with "unsupported JWK metadata".
+Expected: FAIL — compile error (`jwk` has no field `Crv`/`X`/`Y`, `jwkToKey` undefined) or, if it compiles by
+coincidence, the ES256 test fails with "unsupported JWK metadata".
 
 - [ ] **Step 4: Implement — generalize `jwk` struct and key resolution**
 
@@ -355,7 +387,8 @@ Update `VerifyClaims` (the `keyForKID` call and the `jwt.Parse` callback):
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-go-common && go test ./jwtverify/... -v`
 
-Expected: PASS, including the pre-existing RS256 tests in this package (they must still pass unchanged — this is a pure generalization, no behavior change for RSA-only JWKS).
+Expected: PASS, including the pre-existing RS256 tests in this package (they must still pass unchanged — this is a pure
+generalization, no behavior change for RSA-only JWKS).
 
 - [ ] **Step 6: Full package build check**
 
@@ -371,19 +404,27 @@ git add jwtverify/verifier.go jwtverify/verifier_test.go
 git commit -m "feat(jwtverify): accept ES256 (EC P-256) keys alongside RS256"
 ```
 
-Bump the module's version per this repo's usual release process (tag, changelog, etc. — follow whatever `ctech-go-common` already does for releases; this plan does not prescribe a new one). Note the resulting version for Task 2 (this plan assumes it becomes `v1.6.0`; substitute the actual tag).
+Bump the module's version per this repo's usual release process (tag, changelog, etc. — follow whatever
+`ctech-go-common` already does for releases; this plan does not prescribe a new one). Note the resulting version for
+Task 2 (this plan assumes it becomes `v1.6.0`; substitute the actual tag).
 
 ---
 
 ## Task 2: Roll `jwtverify` v1.6.0 out to `ctech-dfe` and `ctech-wallet`
 
-**Why:** every consumer must be running code that accepts *both* algorithms before ctech-account issues its first ES256 token, or that consumer rejects the new tokens outright. Neither repo's own code changes — `ctech-dfe/api/internal/middleware/auth.go:71` and `ctech-wallet/api/internal/middleware/auth.go:36` only call `v.VerifyClaims(...)`, which keeps its signature.
+**Why:** every consumer must be running code that accepts *both* algorithms before ctech-account issues its first ES256
+token, or that consumer rejects the new tokens outright. Neither repo's own code changes —
+`ctech-dfe/api/internal/middleware/auth.go:71` and `ctech-wallet/api/internal/middleware/auth.go:36` only call
+`v.VerifyClaims(...)`, which keeps its signature.
 
 **Files:**
-- Modify: `/home/artur/Documents/Projects/Ctech/ctech-dfe/api/go.mod` (bump `gopkg.aoctech.app/api-commons` from `v1.5.0` to `v1.6.0`)
+
+- Modify: `/home/artur/Documents/Projects/Ctech/ctech-dfe/api/go.mod` (bump `gopkg.aoctech.app/api-commons` from
+  `v1.5.0` to `v1.6.0`)
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-wallet/api/go.mod` (same bump)
 
 **Interfaces:**
+
 - Consumes: `jwtverify.Verifier.VerifyClaims` — unchanged signature from Task 1.
 
 - [ ] **Step 1: Bump and tidy ctech-dfe**
@@ -398,7 +439,8 @@ go mod tidy
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-dfe/api && go test ./internal/middleware/... -v`
 
-Expected: PASS, unchanged — this is a dependency bump with no behavior change (JWKS served by ctech-account is still 100% RSA at this point in the migration).
+Expected: PASS, unchanged — this is a dependency bump with no behavior change (JWKS served by ctech-account is still
+100% RSA at this point in the migration).
 
 - [ ] **Step 3: Bump and tidy ctech-wallet**
 
@@ -430,23 +472,34 @@ git commit -m "chore(deps): bump api-commons to v1.6.0 (ES256 JWT support)"
 
 - [ ] **Step 6: Deploy both services and confirm healthy**
 
-Deploy `ctech-dfe/api` and `ctech-wallet/api` through their normal pipeline. After rollout, hit each service's health check and confirm existing RS256-authenticated requests still succeed (e.g. an authenticated smoke-test call through each service's existing auth-required route). **Do not proceed to Task 9 (the production cutover) until both are confirmed deployed and healthy** — this is the gate that makes the cutover safe.
+Deploy `ctech-dfe/api` and `ctech-wallet/api` through their normal pipeline. After rollout, hit each service's health
+check and confirm existing RS256-authenticated requests still succeed (e.g. an authenticated smoke-test call through
+each service's existing auth-required route). **Do not proceed to Task 9 (the production cutover) until both are
+confirmed deployed and healthy** — this is the gate that makes the cutover safe.
 
 ---
 
 ## Task 3: `ctech-account/internal/keystore` — generalize `Key` to `crypto.Signer` + `Alg`
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/key.go`
 - Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/key_test.go`
 
 **Interfaces:**
+
 - Consumes: nothing outside stdlib.
-- Produces: `Key{KID string; Alg string; Private crypto.Signer; CreatedAt time.Time}`, `KeyJSON{KID, Alg, PEM, CreatedAt string}`, `Generate(now time.Time, alg string) (*Key, error)`, `DeriveKID(pub crypto.PublicKey) (string, error)`, `AlgRS256 = "RS256"`, `AlgES256 = "ES256"` constants. Tasks 4, 5, 6 consume these exact names.
+- Produces: `Key{KID string; Alg string; Private crypto.Signer; CreatedAt time.Time}`,
+  `KeyJSON{KID, Alg, PEM, CreatedAt string}`, `Generate(now time.Time, alg string) (*Key, error)`,
+  `DeriveKID(pub crypto.PublicKey) (string, error)`, `AlgRS256 = "RS256"`, `AlgES256 = "ES256"` constants. Tasks 4, 5, 6
+  consume these exact names.
 
 - [ ] **Step 1: Write the failing tests**
 
-Read the existing `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/key_test.go` first (it has `TestGenerateRoundTripsThroughJSON` and `TestDeriveKIDFullSHA256` today — Step 4 below rewrites `TestGenerateRoundTripsThroughJSON` to be table-driven over both algorithms instead of adding a parallel EC-only test, to avoid duplicating the round-trip assertions). Add:
+Read the existing `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/key_test.go` first (it has
+`TestGenerateRoundTripsThroughJSON` and `TestDeriveKIDFullSHA256` today — Step 4 below rewrites
+`TestGenerateRoundTripsThroughJSON` to be table-driven over both algorithms instead of adding a parallel EC-only test,
+to avoid duplicating the round-trip assertions). Add:
 
 ```go
 func TestGenerateES256ProducesECKey(t *testing.T) {
@@ -553,7 +606,8 @@ Add `"crypto/ecdsa"` to the test file's imports.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/keystore/... -run 'TestGenerateES256ProducesECKey|TestParseKeyAcceptsLegacyPKCS1RSAWireFormat|TestParseKeyRejectsAlgMismatch|TestGenerateRoundTripsThroughJSON' -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/keystore/... -run 'TestGenerateES256ProducesECKey|TestParseKeyAcceptsLegacyPKCS1RSAWireFormat|TestParseKeyRejectsAlgMismatch|TestGenerateRoundTripsThroughJSON' -v`
 
 Expected: FAIL — compile errors (`AlgES256`/`AlgRS256` undefined, `Generate` takes 1 arg not 2).
 
@@ -759,11 +813,16 @@ func parseLegacyPEM(pemStr string, now time.Time) (*Key, error) {
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/keystore/... -v`
 
-Expected: PASS — including pre-existing `TestDeriveKIDFullSHA256` (signature-compatible: `crypto.PublicKey` accepts `*rsa.PublicKey` unchanged) and the `ssm_test.go`/`rotator_test.go` tests, which Task 4 will touch next; if any of those fail to compile right now because they call `Generate(now)` with one argument, that's expected — Task 4 fixes those call sites. Confirm at minimum that `key_test.go`'s own tests pass in isolation:
+Expected: PASS — including pre-existing `TestDeriveKIDFullSHA256` (signature-compatible: `crypto.PublicKey` accepts
+`*rsa.PublicKey` unchanged) and the `ssm_test.go`/`rotator_test.go` tests, which Task 4 will touch next; if any of those
+fail to compile right now because they call `Generate(now)` with one argument, that's expected — Task 4 fixes those call
+sites. Confirm at minimum that `key_test.go`'s own tests pass in isolation:
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go vet ./internal/keystore/... 2>&1 | head -50`
 
-Expected output at this point: compile errors only in `ssm.go`/`ssm_test.go`/`rotator.go` (which call `Generate`/reference `Key.Private` as `*rsa.PrivateKey`) — that's the known, expected state until Task 4. `key.go`/`key_test.go` themselves must compile and pass cleanly.
+Expected output at this point: compile errors only in `ssm.go`/`ssm_test.go`/`rotator.go` (which call `Generate`
+/reference `Key.Private` as `*rsa.PrivateKey`) — that's the known, expected state until Task 4. `key.go`/`key_test.go`
+themselves must compile and pass cleanly.
 
 - [ ] **Step 5: Commit**
 
@@ -773,25 +832,33 @@ git add api/internal/keystore/key.go api/internal/keystore/key_test.go
 git commit -m "feat(keystore): generalize Key to crypto.Signer + Alg for ES256 support"
 ```
 
-(This commit intentionally leaves the package non-building until Task 4 lands — both tasks are part of one PR/branch if you're following `superpowers:finishing-a-development-branch`; do not merge to main between Task 3 and Task 4.)
+(This commit intentionally leaves the package non-building until Task 4 lands — both tasks are part of one PR/branch if
+you're following `superpowers:finishing-a-development-branch`; do not merge to main between Task 3 and Task 4.)
 
 ---
 
 ## Task 4: `ctech-account/internal/keystore` — algorithm-aware rotation
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/ssm.go`
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/rotator.go`
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/cmd/rotatekeys/main.go`
 - Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/ssm_test.go`
 
 **Interfaces:**
+
 - Consumes: `keystore.Key`, `keystore.Generate(now, alg)`, `keystore.AlgRS256`, `keystore.AlgES256` from Task 3.
-- Produces: `Rotate(ctx, store, now time.Time, alg string) (*Key, error)` — signature changed (added `alg` param). Task 9 (the production cutover) invokes this indirectly via `rotatekeys -alg ES256`.
+- Produces: `Rotate(ctx, store, now time.Time, alg string) (*Key, error)` — signature changed (added `alg` param). Task
+  9 (the production cutover) invokes this indirectly via `rotatekeys -alg ES256`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/ssm_test.go` fully first — it has `TestRotatePromotesActiveToPrevious` and `TestInitFromLegacyWrapsPEMPreservingKID` using a fake `SSMAPI`. Update the existing `TestRotatePromotesActiveToPrevious` call site to pass an explicit alg (it currently calls `Rotate(ctx, store, now)` — add `, AlgRS256` as the new third argument, preserving its current assertions unchanged), and add:
+Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/ssm_test.go` fully first — it has
+`TestRotatePromotesActiveToPrevious` and `TestInitFromLegacyWrapsPEMPreservingKID` using a fake `SSMAPI`. Update the
+existing `TestRotatePromotesActiveToPrevious` call site to pass an explicit alg (it currently calls
+`Rotate(ctx, store, now)` — add `, AlgRS256` as the new third argument, preserving its current assertions unchanged),
+and add:
 
 ```go
 func TestRotateWithExplicitAlgSwitchesAlgorithm(t *testing.T) {
@@ -827,7 +894,8 @@ func TestRotateWithExplicitAlgSwitchesAlgorithm(t *testing.T) {
 }
 ```
 
-(Adjust `newFakeSSMAPI(t)` to whatever the actual existing test helper/constructor is named in `ssm_test.go` — read the file first and reuse it verbatim; do not introduce a second fake.)
+(Adjust `newFakeSSMAPI(t)` to whatever the actual existing test helper/constructor is named in `ssm_test.go` — read the
+file first and reuse it verbatim; do not introduce a second fake.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -860,7 +928,9 @@ func Rotate(ctx context.Context, store *Store, now time.Time, alg string) (*Key,
 
 - [ ] **Step 4: Implement — `rotator.go`**
 
-In `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/rotator.go`, update the `tick` function's rotation call so the routine 90-day rotation **keeps the current active key's algorithm** (it must never silently change algorithm on its own — only the explicit CLI cutover in Step 5 does that):
+In `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/keystore/rotator.go`, update the `tick` function's
+rotation call so the routine 90-day rotation **keeps the current active key's algorithm** (it must never silently change
+algorithm on its own — only the explicit CLI cutover in Step 5 does that):
 
 ```go
 		} else if won {
@@ -946,7 +1016,8 @@ func main() {
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/keystore/... -v`
 
-Expected: PASS, all of them — including the updated `TestRotatePromotesActiveToPrevious` and the new `TestRotateWithExplicitAlgSwitchesAlgorithm`.
+Expected: PASS, all of them — including the updated `TestRotatePromotesActiveToPrevious` and the new
+`TestRotateWithExplicitAlgSwitchesAlgorithm`.
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go build ./cmd/rotatekeys/...`
 
@@ -965,12 +1036,16 @@ git commit -m "feat(keystore): algorithm-aware rotation and rotatekeys -alg cuto
 ## Task 5: `ctech-account/internal/config` — generalize dev-mode key loading
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/config/config.go`
-- Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/config/config_test.go` (check whether it exists first; create if not)
+- Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/config/config_test.go` (check whether it exists
+  first; create if not)
 
 **Interfaces:**
+
 - Consumes: `keystore.AlgRS256`, `keystore.AlgES256`, `keystore.DeriveKID` from Task 3.
-- Produces: `Config.SigningKey crypto.Signer` and `Config.SigningKeyAlg string` — replace the old `Config.RSAPrivateKey *rsa.PrivateKey` field. Task 6 consumes these two exact field names.
+- Produces: `Config.SigningKey crypto.Signer` and `Config.SigningKeyAlg string` — replace the old
+  `Config.RSAPrivateKey *rsa.PrivateKey` field. Task 6 consumes these two exact field names.
 
 - [ ] **Step 1: Check for an existing config test file**
 
@@ -1070,11 +1145,13 @@ func TestLoadSigningKeyReturnsNilWhenUnset(t *testing.T) {
 
 ```
 
-(Drop the `_ = os.Unsetenv` line and the `"os"` import if it turns out unused after you check the rest of the file — it's only there in case no other test in the file already imports `os`.)
+(Drop the `_ = os.Unsetenv` line and the `"os"` import if it turns out unused after you check the rest of the file —
+it's only there in case no other test in the file already imports `os`.)
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/config/... -run 'TestLoadSigningKey' -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/config/... -run 'TestLoadSigningKey' -v`
 
 Expected: FAIL — `loadSigningKey` undefined (current function is `loadRSAKey`, no `EC_PRIVATE_KEY` support).
 
@@ -1138,7 +1215,8 @@ with:
 	}
 ```
 
-Find the `return &Config{...}` literal further down in `Load()` and replace whichever two lines currently set `RSAPrivateKey: privateKey,` and `PublicKeyKID: kid,` with:
+Find the `return &Config{...}` literal further down in `Load()` and replace whichever two lines currently set
+`RSAPrivateKey: privateKey,` and `PublicKeyKID: kid,` with:
 
 ```go
 		SigningKey:    signingKey,
@@ -1255,17 +1333,25 @@ git commit -m "feat(config): support EC_PRIVATE_KEY (ES256) alongside RSA_PRIVAT
 ## Task 6: `ctech-account/internal/crypto` — generalize `JWTService` sign/verify/JWKS
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/crypto/jwt.go`
 - Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/crypto/jwt_test.go`
-- Modify (call sites only): `/home/artur/Documents/Projects/Ctech/ctech-account/api/cmd/api/main.go:82` (`cfg.RSAPrivateKey != nil` → `cfg.SigningKey != nil`)
+- Modify (call sites only): `/home/artur/Documents/Projects/Ctech/ctech-account/api/cmd/api/main.go:82`
+  (`cfg.RSAPrivateKey != nil` → `cfg.SigningKey != nil`)
 
 **Interfaces:**
-- Consumes: `keystore.Key{KID, Alg, Private crypto.Signer, CreatedAt}`, `config.Config{SigningKey, SigningKeyAlg, PublicKeyKID}` from Tasks 3 and 5.
-- Produces: unchanged public method signatures on `JWTService` (`SignAccessToken`, `SignIDToken`, `Verify`, `PublicKeyJWKs`, `KID`, `Reload`, `AccessTokenTTLSeconds`) — Task 7 (`wellknown.go`) is unaffected by any signature change here, only by the JWKS *content* now potentially containing an EC entry.
+
+- Consumes: `keystore.Key{KID, Alg, Private crypto.Signer, CreatedAt}`,
+  `config.Config{SigningKey, SigningKeyAlg, PublicKeyKID}` from Tasks 3 and 5.
+- Produces: unchanged public method signatures on `JWTService` (`SignAccessToken`, `SignIDToken`, `Verify`,
+  `PublicKeyJWKs`, `KID`, `Reload`, `AccessTokenTTLSeconds`) — Task 7 (`wellknown.go`) is unaffected by any signature
+  change here, only by the JWKS *content* now potentially containing an EC entry.
 
 - [ ] **Step 1: Write the failing tests**
 
-Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/crypto/jwt_test.go` fully first (reuse its existing test-fixture helpers for building a `*JWTService` — likely a helper that builds one from a generated RSA key; extend it rather than duplicating). Add:
+Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/crypto/jwt_test.go` fully first (reuse its
+existing test-fixture helpers for building a `*JWTService` — likely a helper that builds one from a generated RSA key;
+extend it rather than duplicating). Add:
 
 ```go
 func TestSignAndVerifyES256(t *testing.T) {
@@ -1357,13 +1443,16 @@ func TestJWKSRendersBothKeyTypesDuringCutover(t *testing.T) {
 }
 ```
 
-Adjust the `SignAccessToken` call's argument list above if the existing test file already has a shorter test helper wrapping it — reuse that helper instead of calling the 10-argument method directly, to match this file's existing style.
+Adjust the `SignAccessToken` call's argument list above if the existing test file already has a shorter test helper
+wrapping it — reuse that helper instead of calling the 10-argument method directly, to match this file's existing style.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/crypto/... -run 'TestSignAndVerifyES256|TestVerifyRejectsAlgConfusionAcrossActiveAndPrevious|TestJWKSRendersBothKeyTypesDuringCutover' -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/crypto/... -run 'TestSignAndVerifyES256|TestVerifyRejectsAlgConfusionAcrossActiveAndPrevious|TestJWKSRendersBothKeyTypesDuringCutover' -v`
 
-Expected: FAIL to compile at this point — `jwt.go` still hardcodes `*rsa.PublicKey`/`jwt.SigningMethodRS256` and `Key.Private` is now `crypto.Signer` (from Task 3), so `&key.Private.PublicKey` no longer compiles.
+Expected: FAIL to compile at this point — `jwt.go` still hardcodes `*rsa.PublicKey`/`jwt.SigningMethodRS256` and
+`Key.Private` is now `crypto.Signer` (from Task 3), so `&key.Private.PublicKey` no longer compiles.
 
 - [ ] **Step 3: Implement — rewrite `jwt.go`**
 
@@ -1656,7 +1745,8 @@ to:
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/crypto/... -v`
 
-Expected: PASS — all new tests plus every pre-existing `jwt_test.go` test (RS256-only tests must still pass unchanged; `jwkFor`'s RSA branch produces byte-identical output to the old dedicated RSA-only function).
+Expected: PASS — all new tests plus every pre-existing `jwt_test.go` test (RS256-only tests must still pass unchanged;
+`jwkFor`'s RSA branch produces byte-identical output to the old dedicated RSA-only function).
 
 Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go build ./... && go vet ./...`
 
@@ -1675,15 +1765,19 @@ git commit -m "feat(crypto): sign/verify ES256 alongside RS256 with per-kid alg-
 ## Task 7: `ctech-account/internal/handler` — advertise ES256 in OIDC discovery
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/handler/wellknown.go`
 - Test: `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/handler/wellknown_test.go`
 
 **Interfaces:**
+
 - Consumes: `JWTService.PublicKeyJWKs()` (unchanged signature, Task 6).
 
 - [ ] **Step 1: Read the existing test**
 
-Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/handler/wellknown_test.go:43-68` (`TestJWKS`) fully — it currently asserts `jwk["kty"] != "RSA"` and `jwk["alg"] != "RS256"` against whatever test key the handler test suite's shared fixture builds. Check `testhelpers_test.go` for how that fixture key is generated.
+Read `/home/artur/Documents/Projects/Ctech/ctech-account/api/internal/handler/wellknown_test.go:43-68` (`TestJWKS`)
+fully — it currently asserts `jwk["kty"] != "RSA"` and `jwk["alg"] != "RS256"` against whatever test key the handler
+test suite's shared fixture builds. Check `testhelpers_test.go` for how that fixture key is generated.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1724,11 +1818,13 @@ func TestOpenIDConfigurationAdvertisesBothSigningAlgs(t *testing.T) {
 }
 ```
 
-(Replace `newTestWellKnownApp(t)` with whatever `wellknown_test.go`'s actual existing Fiber test-app constructor is named — reuse it, don't add a second one.)
+(Replace `newTestWellKnownApp(t)` with whatever `wellknown_test.go`'s actual existing Fiber test-app constructor is
+named — reuse it, don't add a second one.)
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/handler/... -run TestOpenIDConfigurationAdvertisesBothSigningAlgs -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/handler/... -run TestOpenIDConfigurationAdvertisesBothSigningAlgs -v`
 
 Expected: FAIL — current response only lists `["RS256"]`.
 
@@ -1748,9 +1844,11 @@ to:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/handler/... -run 'TestJWKS|TestOpenIDConfigurationAdvertisesBothSigningAlgs' -v`
+Run:
+`cd /home/artur/Documents/Projects/Ctech/ctech-account/api && go test ./internal/handler/... -run 'TestJWKS|TestOpenIDConfigurationAdvertisesBothSigningAlgs' -v`
 
-Expected: PASS. `TestJWKS` must still pass unchanged (the test fixture's active key remains RSA at this point in the migration — the discovery document simply now advertises that ES256 is *also* accepted, ahead of the actual cutover).
+Expected: PASS. `TestJWKS` must still pass unchanged (the test fixture's active key remains RSA at this point in the
+migration — the discovery document simply now advertises that ES256 is *also* accepted, ahead of the actual cutover).
 
 - [ ] **Step 6: Commit**
 
@@ -1765,9 +1863,11 @@ git commit -m "feat(oidc): advertise ES256 in id_token_signing_alg_values_suppor
 ## Task 8: Documentation updates (Mandatory Documentation Policy)
 
 **Files:**
+
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/api/CLAUDE.md`
 - Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/README.md`
-- Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/CONDUCT.md` (if it documents the RS256-only constraint — check first)
+- Modify: `/home/artur/Documents/Projects/Ctech/ctech-account/CONDUCT.md` (if it documents the RS256-only constraint —
+  check first)
 
 **Interfaces:** none (docs only).
 
@@ -1801,7 +1901,9 @@ to:
 
 Run: `grep -n "RSA_PRIVATE_KEY\|RS256\|PUBLIC_KEY_KID" /home/artur/Documents/Projects/Ctech/ctech-account/README.md`
 
-For each match documenting the `RSA_PRIVATE_KEY` env var or RS256-only signing, add the `EC_PRIVATE_KEY` env var alongside it (mutually exclusive with `RSA_PRIVATE_KEY`, dev-mode only, selects ES256) and note that production keys (SSM-backed) can be either algorithm depending on `rotatekeys -alg`.
+For each match documenting the `RSA_PRIVATE_KEY` env var or RS256-only signing, add the `EC_PRIVATE_KEY` env var
+alongside it (mutually exclusive with `RSA_PRIVATE_KEY`, dev-mode only, selects ES256) and note that production keys
+(SSM-backed) can be either algorithm depending on `rotatekeys -alg`.
 
 - [ ] **Step 3: Check and update `CONDUCT.md`**
 
@@ -1821,13 +1923,18 @@ git commit -m "docs: document ES256 signing support and EC_PRIVATE_KEY dev env v
 
 ## Task 9: Production cutover (manual, no code — runbook)
 
-**Prerequisites:** Tasks 1–8 merged and deployed to production `ctech-account`; Task 2's rollout to `ctech-dfe` and `ctech-wallet` confirmed healthy (both running `api-commons` ≥ v1.6.0 in production).
+**Prerequisites:** Tasks 1–8 merged and deployed to production `ctech-account`; Task 2's rollout to `ctech-dfe` and
+`ctech-wallet` confirmed healthy (both running `api-commons` ≥ v1.6.0 in production).
 
-**Why this is safe now:** `ctech-account`'s own JWKS/verify code (Task 6) and every downstream verifier (Task 1, deployed via Task 2) already accept ES256 tokens, resolved per-kid — before this task runs, they simply never see one, because the active key is still RSA. This task's only job is flipping which algorithm the *next* signed token uses.
+**Why this is safe now:** `ctech-account`'s own JWKS/verify code (Task 6) and every downstream verifier (Task 1,
+deployed via Task 2) already accept ES256 tokens, resolved per-kid — before this task runs, they simply never see one,
+because the active key is still RSA. This task's only job is flipping which algorithm the *next* signed token uses.
 
 - [ ] **Step 1: Confirm rollout gate**
 
-Verify `ctech-dfe/api` and `ctech-wallet/api` are running builds with `api-commons` ≥ v1.6.0 in production (check the deployed build's `go.mod`/version endpoint per this repo's usual deploy verification, or `gh` release/deploy log). Do not proceed if either is unconfirmed.
+Verify `ctech-dfe/api` and `ctech-wallet/api` are running builds with `api-commons` ≥ v1.6.0 in production (check the
+deployed build's `go.mod`/version endpoint per this repo's usual deploy verification, or `gh` release/deploy log). Do
+not proceed if either is unconfirmed.
 
 - [ ] **Step 2: Run the cutover rotation**
 
@@ -1836,9 +1943,12 @@ cd /home/artur/Documents/Projects/Ctech/ctech-account/api
 go run ./cmd/rotatekeys -env prod -alg ES256
 ```
 
-Expected output: `rotated: new active kid=<new-ec-kid> alg=ES256 (instances pick it up within 5m; previous kid stays in JWKS)`.
+Expected output:
+`rotated: new active kid=<new-ec-kid> alg=ES256 (instances pick it up within 5m; previous kid stays in JWKS)`.
 
-This demotes the current RSA active key to `previous` (still served in JWKS) and makes a freshly generated EC P-256 key the new `active`. No restart needed — `RunRotator`'s 5-minute reload ticker (`keystore.CheckInterval`) picks it up on every running instance within 5 minutes.
+This demotes the current RSA active key to `previous` (still served in JWKS) and makes a freshly generated EC P-256 key
+the new `active`. No restart needed — `RunRotator`'s 5-minute reload ticker (`keystore.CheckInterval`) picks it up on
+every running instance within 5 minutes.
 
 - [ ] **Step 3: Verify the JWKS endpoint reflects the cutover**
 
@@ -1846,15 +1956,23 @@ This demotes the current RSA active key to `previous` (still served in JWKS) and
 curl -s https://accounts.aoctech.app/.well-known/jwks.json | jq '.keys[] | {kid, kty, alg}'
 ```
 
-Expected: one entry with `kty: "EC"`, `alg: "ES256"` (the new active key) and one entry with `kty: "RSA"`, `alg: "RS256"` (the demoted previous key).
+Expected: one entry with `kty: "EC"`, `alg: "ES256"` (the new active key) and one entry with `kty: "RSA"`,
+`alg: "RS256"` (the demoted previous key).
 
 - [ ] **Step 4: Verify a freshly issued token is ES256 and verifies end-to-end**
 
-Perform a normal login/token-exchange against production (or staging pointed at the same JWKS, if a staging cutover is done first — recommended: run Steps 1–3 in staging before prod). Decode the returned access token's header (e.g. `echo $TOKEN | cut -d. -f1 | base64 -d`) and confirm `"alg":"ES256"`. Then confirm that token is accepted by a `ctech-dfe` and a `ctech-wallet` authenticated endpoint (a normal authenticated smoke-test call against each, same as Task 2 Step 6).
+Perform a normal login/token-exchange against production (or staging pointed at the same JWKS, if a staging cutover is
+done first — recommended: run Steps 1–3 in staging before prod). Decode the returned access token's header (e.g.
+`echo $TOKEN | cut -d. -f1 | base64 -d`) and confirm `"alg":"ES256"`. Then confirm that token is accepted by a
+`ctech-dfe` and a `ctech-wallet` authenticated endpoint (a normal authenticated smoke-test call against each, same as
+Task 2 Step 6).
 
 - [ ] **Step 5: Monitor**
 
-Watch each service's auth-failure/error rate (whatever dashboard/logs this project normally uses for auth errors) for at least one full access-token TTL window (15 minutes) plus one id_token TTL window (1 hour) after cutover — this is the window during which both RSA-signed (pre-cutover) and EC-signed (post-cutover) tokens are simultaneously in flight and must both keep verifying.
+Watch each service's auth-failure/error rate (whatever dashboard/logs this project normally uses for auth errors) for at
+least one full access-token TTL window (15 minutes) plus one id_token TTL window (1 hour) after cutover — this is the
+window during which both RSA-signed (pre-cutover) and EC-signed (post-cutover) tokens are simultaneously in flight and
+must both keep verifying.
 
 - [ ] **Step 6: Rollback plan (if verification failures spike)**
 
@@ -1863,16 +1981,28 @@ cd /home/artur/Documents/Projects/Ctech/ctech-account/api
 go run ./cmd/rotatekeys -env prod -alg RS256
 ```
 
-This generates a fresh RSA active key (demoting the EC key to `previous`), reverting new-token issuance to RS256 within 5 minutes across all instances. Any EC-signed tokens issued during the brief ES256 window keep verifying (the EC key remains in JWKS as `previous`) until they naturally expire (≤1 hour).
+This generates a fresh RSA active key (demoting the EC key to `previous`), reverting new-token issuance to RS256 within
+5 minutes across all instances. Any EC-signed tokens issued during the brief ES256 window keep verifying (the EC key
+remains in JWKS as `previous`) until they naturally expire (≤1 hour).
 
 - [ ] **Step 7: After the cutover is confirmed stable (no rollback needed)**
 
-No further action required — the next scheduled 90-day rotation (`keystore.KeyMaxAge`) will rotate the EC key forward using `Rotate(..., active.Alg)` (Task 4), i.e. it stays ES256 from here on, and the demoted RSA `previous` key is naturally replaced by that next rotation's new EC `previous`. Nothing needs to be manually cleaned up.
+No further action required — the next scheduled 90-day rotation (`keystore.KeyMaxAge`) will rotate the EC key forward
+using `Rotate(..., active.Alg)` (Task 4), i.e. it stays ES256 from here on, and the demoted RSA `previous` key is
+naturally replaced by that next rotation's new EC `previous`. Nothing needs to be manually cleaned up.
 
 ---
 
 ## Self-Review Notes
 
-- **Spec coverage:** every code location identified during research (jwt.go signing/verify/JWKS, keystore Key/Generate/rotation/SSM wire format, config dev-key loading, wellknown discovery doc, rotatekeys CLI, jwtverify shared library, dfe/wallet consumption) has a corresponding task. The production cutover itself (the actual algorithm switch) is Task 9, deliberately last and gated on Tasks 1–8 plus the Task 2 rollout confirmation.
-- **Placeholder scan:** no TBD/TODO — every step shows the literal code change. `newFakeSSMAPI(t)` and `newTestWellKnownApp(t)` in Tasks 4 and 7 are explicitly flagged as "read the file, reuse its existing helper name" rather than invented names, since the actual helper names in those pre-existing test files weren't captured verbatim during research.
-- **Type consistency:** `keystore.Key.Alg` / `keystore.AlgRS256` / `keystore.AlgES256` (Task 3) are the exact names used unchanged through Tasks 4, 5, 6. `config.Config.SigningKey` / `SigningKeyAlg` (Task 5) are the exact names consumed in Task 6. `Rotate(ctx, store, now, alg)`'s 4-argument signature (Task 4) is used identically in Task 9's runbook.
+- **Spec coverage:** every code location identified during research (jwt.go signing/verify/JWKS, keystore
+  Key/Generate/rotation/SSM wire format, config dev-key loading, wellknown discovery doc, rotatekeys CLI, jwtverify
+  shared library, dfe/wallet consumption) has a corresponding task. The production cutover itself (the actual algorithm
+  switch) is Task 9, deliberately last and gated on Tasks 1–8 plus the Task 2 rollout confirmation.
+- **Placeholder scan:** no TBD/TODO — every step shows the literal code change. `newFakeSSMAPI(t)` and
+  `newTestWellKnownApp(t)` in Tasks 4 and 7 are explicitly flagged as "read the file, reuse its existing helper name"
+  rather than invented names, since the actual helper names in those pre-existing test files weren't captured verbatim
+  during research.
+- **Type consistency:** `keystore.Key.Alg` / `keystore.AlgRS256` / `keystore.AlgES256` (Task 3) are the exact names used
+  unchanged through Tasks 4, 5, 6. `config.Config.SigningKey` / `SigningKeyAlg` (Task 5) are the exact names consumed in
+  Task 6. `Rotate(ctx, store, now, alg)`'s 4-argument signature (Task 4) is used identically in Task 9's runbook.

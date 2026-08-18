@@ -88,6 +88,11 @@ type Config struct {
 	// crypto.JWTService so the signed `exp` and the advertised `expires_in`
 	// always agree (BUG-027). Defaults to 15 minutes.
 	AccessTokenTTL time.Duration
+
+	// Account lockout settings
+	AccountLockoutThreshold       int    // ACCOUNT_LOCKOUT_THRESHOLD env var
+	AccountLockoutDurationMinutes int    // ACCOUNT_LOCKOUT_DURATION_MINUTES env var
+	AccountLockoutAuditEnabled    bool   // ACCOUNT_LOCKOUT_AUDIT_ENABLED env var
 }
 
 func Load() (*Config, error) {
@@ -187,6 +192,10 @@ func Load() (*Config, error) {
 		TOTPIssuer:         TOTPIssuer,
 		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
 		AccessTokenTTL:     accessTokenTTL,
+		// Account lockout settings
+		AccountLockoutThreshold:       func() int { v, _ := strconv.Atoi(os.Getenv("ACCOUNT_LOCKOUT_THRESHOLD")); if v == 0 { return 5 }; return v }(),
+		AccountLockoutDurationMinutes: func() int { v, _ := strconv.Atoi(os.Getenv("ACCOUNT_LOCKOUT_DURATION_MINUTES")); if v == 0 { return 15 }; return v }(),
+		AccountLockoutAuditEnabled:    os.Getenv("ACCOUNT_LOCKOUT_AUDIT_ENABLED") == "true",
 	}, nil
 }
 
