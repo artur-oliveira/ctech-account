@@ -74,6 +74,12 @@ func main() {
 	}
 	valkeyRequired := cfg.Environment != "dev" && cfg.Environment != "development"
 
+	sealer, err := crypto.NewSealer(cfg)
+
+	if err != nil {
+		log.Fatalf("creating sealer: %v", err)
+	}
+
 	// Signing keys: RSA_PRIVATE_KEY env = dev mode (single key, no rotation);
 	// otherwise versioned keys come from SSM and rotate automatically.
 	var jwtSvc *crypto.JWTService
@@ -190,7 +196,7 @@ func main() {
 	}
 	log.Printf("Account frontend OAuth client ready (client_id=%s changed=%v scopes=%d)", selfClient.ID(), selfClientChanged, len(selfClient.AllowedScopes))
 	consentSvc := consentDomain.NewService(consentRepo)
-	totpSvc := totpDomain.NewService(db, cfg.TablePrefix)
+	totpSvc := totpDomain.NewService(db, sealer, cfg.TablePrefix)
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
 	// KYC document uploads need a bucket; without one, Enhanced document
 	// verification is unavailable entirely (see kyc.Service.DocumentsEnabled).

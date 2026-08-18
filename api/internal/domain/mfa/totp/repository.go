@@ -30,19 +30,21 @@ type Repository interface {
 type dynamoRepository struct {
 	base      database.Base
 	db        *dynamodb.Client
+	sealer    *crypto.Sealer
 	tableName string
 }
 
-func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
+func NewRepository(db *dynamodb.Client, sealer *crypto.Sealer, tablePrefix string) Repository {
 	return &dynamoRepository{
 		base:      database.NewBase(db, tablePrefix, "account_mfa"),
 		db:        db,
+		sealer:    sealer,
 		tableName: database.TableName(tablePrefix, "account_mfa"),
 	}
 }
 
 func (r *dynamoRepository) Create(ctx context.Context, s *TOTPSecret) error {
-	enc, err := crypto.Seal(s.Secret)
+	enc, err := r.sealer.Seal(s.Secret)
 	if err != nil {
 		return fmt.Errorf("encrypting totp secret: %w", err)
 	}
@@ -72,7 +74,7 @@ func (r *dynamoRepository) Get(ctx context.Context, userID string) (*TOTPSecret,
 	// Decrypt the envelope-encrypted secret into the in-memory plaintext field.
 	// Open fails on legacy plaintext records (written before encryption): keep
 	// the stored value as-is so old data remains readable until migrated.
-	if plain, derr := crypto.Open(t.EncryptedSecret); derr == nil {
+	if plain, derr := r.sealer.Unseal(t.EncryptedSecret); derr == nil {
 		t.Secret = plain
 	} else {
 		t.Secret = t.EncryptedSecret

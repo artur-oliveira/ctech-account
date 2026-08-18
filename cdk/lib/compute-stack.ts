@@ -224,7 +224,7 @@ export class ComputeStack extends cdk.Stack {
       // Format: YYMMDDHHMM:<7-char commit>. Surfaced as releaseId on the health check.
       `if [ -f /opt/app/current/release.env ]; then set -a; . /opt/app/current/release.env; set +a; fi`,
       `TRUSTED_PROXIES=127.0.0.1`,
-      `INTERNAL_TOKEN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/internal-token" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "placeholder")`,
+      `SECRET_ENC_KEY=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/secret-encryption-key" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
       `BASE_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/base-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
       `ALLOWED_ORIGINS=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/allowed-origins" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
       `APP_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
@@ -246,7 +246,7 @@ export class ComputeStack extends cdk.Stack {
       `export ALLOWED_ORIGINS`,
       `export APP_URL`,
       `export WEBAUTHN_RPID`,
-      `export INTERNAL_TOKEN`,
+      `export SECRET_ENC_KEY`,
       `export GOOGLE_CLIENT_ID`,
       `export GOOGLE_CLIENT_SECRET`,
       `export COOKIE_DOMAIN`,

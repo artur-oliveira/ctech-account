@@ -1,16 +1,21 @@
 package crypto
 
-import "testing"
+import (
+	"testing"
+
+	"gopkg.aoctech.app/account/api/internal/config"
+)
 
 func TestSealOpenRoundTrip(t *testing.T) {
-	ct, err := Seal("my-secret-totp-base32-value")
+	s, _ := NewSealer(&config.Config{Environment: "dev"})
+	ct, err := s.Seal("my-secret-totp-base32-value")
 	if err != nil {
 		t.Fatalf("seal: %v", err)
 	}
 	if ct == "my-secret-totp-base32-value" {
 		t.Fatal("ciphertext must not equal plaintext")
 	}
-	pt, err := Open(ct)
+	pt, err := s.Unseal(ct)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -20,11 +25,13 @@ func TestSealOpenRoundTrip(t *testing.T) {
 }
 
 func TestSealOpenEmpty(t *testing.T) {
-	ct, err := Seal("")
+	s, _ := NewSealer(&config.Config{Environment: "dev"})
+
+	ct, err := s.Seal("")
 	if err != nil || ct != "" {
 		t.Fatalf("seal empty: ct=%q err=%v", ct, err)
 	}
-	pt, err := Open("")
+	pt, err := s.Unseal("")
 	if err != nil || pt != "" {
 		t.Fatalf("open empty: pt=%q err=%v", pt, err)
 	}
@@ -32,11 +39,13 @@ func TestSealOpenEmpty(t *testing.T) {
 
 func TestSealUsesEnvKey(t *testing.T) {
 	t.Setenv("SECRET_ENC_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	ct, err := Seal("plaintext")
+	s, _ := NewSealer(&config.Config{Environment: "dev"})
+
+	ct, err := s.Seal("plaintext")
 	if err != nil {
 		t.Fatalf("seal with env key: %v", err)
 	}
-	pt, err := Open(ct)
+	pt, err := s.Unseal(ct)
 	if err != nil {
 		t.Fatalf("open with env key: %v", err)
 	}

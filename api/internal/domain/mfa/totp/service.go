@@ -20,8 +20,8 @@ type Service struct {
 	repo Repository
 }
 
-func NewService(db *dynamodb.Client, tablePrefix string) *Service {
-	return &Service{repo: NewRepository(db, tablePrefix)}
+func NewService(db *dynamodb.Client, sealer *crypto.Sealer, tablePrefix string) *Service {
+	return &Service{repo: NewRepository(db, sealer, tablePrefix)}
 }
 
 // Generate creates an unverified TOTP secret and returns the provisioning URI for QR code display.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 )
 
@@ -22,7 +23,8 @@ func (m *mockRepository) Create(ctx context.Context, s *TOTPSecret) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c := *s
-	enc, err := crypto.Seal(s.Secret)
+	se, _ := crypto.NewSealer(&config.Config{Environment: "dev"})
+	enc, err := se.Seal(s.Secret)
 	if err != nil {
 		return err
 	}
@@ -34,12 +36,13 @@ func (m *mockRepository) Create(ctx context.Context, s *TOTPSecret) error {
 func (m *mockRepository) Get(ctx context.Context, userID string) (*TOTPSecret, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	se, _ := crypto.NewSealer(&config.Config{Environment: "dev"})
 	s, ok := m.data[userID]
 	if !ok {
 		return nil, ErrNotFound
 	}
 	plain := s.EncryptedSecret
-	if p, err := crypto.Open(s.EncryptedSecret); err == nil {
+	if p, err := se.Unseal(s.EncryptedSecret); err == nil {
 		plain = p
 	}
 	out := *s
