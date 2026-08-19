@@ -6,7 +6,7 @@ import {Construct} from 'constructs';
 import {buildCloudWatchAgentConfig, Ec2ScriptRunner, HaproxyEc2Service} from '@aoctech/cdk';
 import {Environment} from './types';
 
-interface ComputeStackProps extends cdk.StackProps {
+interface ApiStackProps extends cdk.StackProps {
   environment: Environment;
   vpcId: string;
   instanceProfileName: string;
@@ -25,10 +25,10 @@ const HTTP_STATUS_METRIC_PATTERNS: ReadonlyArray<[string, string]> = [
   ['HTTP5XX', '{ $.status >= 500 }'],
 ];
 
-export class ComputeStack extends cdk.Stack {
+export class ApiStack extends cdk.Stack {
   public readonly asgName: string;
 
-  constructor(scope: Construct, id: string, props: ComputeStackProps) {
+  constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
     const {
@@ -151,7 +151,7 @@ export class ComputeStack extends cdk.Stack {
       logRemovalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       asgName: this.asgName,
       minCapacity: 1,
-      maxCapacity: isProd ? 3 : 1,
+      maxCapacity: 1,
       // Nightly stop/start with the shared defaults: down 22:00, back 10:00
       // America/Sao_Paulo (01:00 and 13:00 UTC). Applies to production too — the
       // service is unavailable in that window, and inbound webhooks fail.

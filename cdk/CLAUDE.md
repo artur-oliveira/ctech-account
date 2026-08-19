@@ -19,7 +19,7 @@ ASG, and KYC review is a CLI (`api/cmd/kyc`), not an HTTP route. See `README.md`
 
 > **Stale-doc correction:** older text here said "single-table design /
 > `ctech-account-{environment}`" and referenced `/rsa-private-key` + "Lambda + SQS".
-> All three are wrong — verify against `lib/dynamodb-stack.ts`, `lib/compute-stack.ts`,
+> All three are wrong — verify against `lib/dynamodb-stack.ts`, `lib/api-stack.ts`,
 > and `bin/ctech-account.ts`.
 
 ---
@@ -33,7 +33,7 @@ cdk/
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
 │   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
+│   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies

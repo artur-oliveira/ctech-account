@@ -26,7 +26,7 @@ All stacks are instantiated in `bin/ctech-account.ts`. `Environment` ∈
 | `DynamoDBStack` | `lib/dynamodb-stack.ts` | 8 DynamoDB tables + GSIs (OnDemand) |
 | `KYCStack` | `lib/kyc-stack.ts` | 1 private S3 bucket for KYC identity documents |
 | `IAMStack` | `lib/iam-stack.ts` | EC2 instance profile + least-privilege inline policies |
-| `ComputeStack` | `lib/compute-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
+| `ApiStack` | `lib/api-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
 | `FrontendStack` | `lib/frontend-stack.ts` | S3 (static export) + CloudFront + URL-rewrite function |
 
 **`lib/s3-stack.ts` (`S3Stack`) is NOT instantiated** in `bin/ctech-account.ts`. The
@@ -40,7 +40,7 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 
 ---
 
-## 2. Compute — EC2 ASG + HAProxy route (`lib/compute-stack.ts`)
+## 2. Compute — EC2 ASG + HAProxy route (`lib/api-stack.ts`)
 
 - **No ALB listener, listener rule, or target group is created or imported.** HAProxy
   discovers the healthy ASG instances from its bootstrap route

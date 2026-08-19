@@ -25,7 +25,7 @@ cdk/
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
 │   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
-│   ├── compute-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
+│   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies

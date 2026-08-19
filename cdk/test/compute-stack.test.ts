@@ -1,13 +1,13 @@
 import * as cdk from 'aws-cdk-lib'
 import { Template } from 'aws-cdk-lib/assertions'
-import { ComputeStack } from '../lib/compute-stack'
+import { ApiStack } from '../lib/api-stack'
 
 /** EC2's hard cap on user data, which a deploy discovers and not a review. */
 const USER_DATA_LIMIT_BYTES = 16384
 
 function userDataText(): string {
   const app = new cdk.App()
-  const stack = new ComputeStack(app, 'TestComputeStack', {
+  const stack = new ApiStack(app, 'TestComputeStack', {
     env: { account: '868899309401', region: 'us-east-1' },
     environment: 'prod',
     vpcId: 'vpc-0adfd86727d17445b',

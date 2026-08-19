@@ -2,7 +2,7 @@
 import * as cdk from 'aws-cdk-lib';
 
 import {DynamoDBStack} from '../lib/dynamodb-stack';
-import {ComputeStack} from '../lib/compute-stack';
+import {ApiStack} from '../lib/api-stack';
 import {FrontendStack} from '../lib/frontend-stack';
 import {IAMStack} from '../lib/iam-stack';
 import {KYCStack} from '../lib/kyc-stack';
@@ -101,7 +101,7 @@ iamStack.addStackDependency(kycStack);
 // =====================
 // Compute (EC2 + ASG, routed by ctech-lbalancer HAProxy)
 // =====================
-const computeStack = new ComputeStack(app, id('Compute'), {
+const apiStack = new ApiStack(app, id('Api'), {
   env,
   environment: ENVIRONMENT,
   vpcId: CTECH_VPC_ID,
@@ -112,7 +112,7 @@ const computeStack = new ComputeStack(app, id('Compute'), {
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
-computeStack.addStackDependency(iamStack);
+apiStack.addStackDependency(iamStack);
 
 // =====================
 // Frontend (S3 + CloudFront)
