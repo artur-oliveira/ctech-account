@@ -94,6 +94,13 @@ export class IAMStack extends cdk.Stack {
       resources: ['*'],
     }));
 
+    // The shared bootstrap scripts published by ctech-cdk's Ec2ScriptsStack.
+    appRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ReadSharedEc2BootstrapScripts',
+      actions: ['s3:GetObject'],
+      resources: [`arn:aws:s3:::${environment}-ctech-ec2-scripts/*`],
+    }));
+
     this.instanceProfileName = `${environment}-ctech-account-instance-profile`;
 
     new iam.CfnInstanceProfile(this, 'InstanceProfile', {

@@ -3,15 +3,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import {Construct} from 'constructs';
-import {
-  addCloudflareOriginCaCommands,
-  addCloudWatchAgentDualStackOverride,
-  addDualStackSsmAgentCommands,
-  addRealipRefreshCommands,
-  addSwapCommands,
-  buildCloudWatchAgentConfig,
-  HaproxyEc2Service,
-} from '@aoctech/cdk';
+import {buildCloudWatchAgentConfig, Ec2ScriptRunner, HaproxyEc2Service} from '@aoctech/cdk';
 import {Environment} from './types';
 
 interface ComputeStackProps extends cdk.StackProps {
@@ -68,132 +60,67 @@ export class ComputeStack extends cdk.Stack {
     const logGroupApp = `/${svcName}/${environment}/app`;
     const logGroupNginx = `/${svcName}/${environment}/nginx`;
 
+    // ── User Data ─────────────────────────────────────────────────────────────
+    // Every shared bootstrap step lives in ctech-cdk's assets/ec2 and is fetched
+    // from S3 at boot; the S3 key prefix is their content hash, read from SSM at
+    // deploy time, so editing a shared script versions this launch template.
+    const scripts = new Ec2ScriptRunner(this, 'Scripts', {environment});
     const userData = ec2.UserData.forLinux();
+    scripts.install(userData);
+
+    // setup-base.sh also creates /var/lib/ctech-account, where the MaxMind
+    // GeoLite2 database is downloaded.
+    scripts.run(userData, 'setup-base.sh', svcName, 'nginx');
+    scripts.run(userData, 'setup-swap.sh', '256');
+    scripts.run(userData, 'setup-dualstack.sh');
+    scripts.run(userData, 'setup-cloudflare-ca.sh');
 
     userData.addCommands(
-      'dnf install -y nginx amazon-cloudwatch-agent amazon-ssm-agent cronie unzip jq',
-      'useradd --system --no-create-home --shell /sbin/nologin webapp',
-      'mkdir -p /opt/app/releases /var/log/app /etc/nginx/conf.d /var/lib/ctech-account',
-      'chown -R webapp:webapp /opt/app /var/log/app /var/lib/ctech-account',
-      // AL2023 does not enable crond by default (unlike AL2) — without it
-      // /etc/cron.daily/logrotate never fires and rotated logs never reach S3.
-      'systemctl enable crond',
-      'systemctl start crond',
+      `cat > /etc/app-static.env << 'ENV'`,
+      `ENVIRONMENT=${environment}`,
+      `TABLE_PREFIX=${environment}`,
+      `AWS_REGION=${this.region}`,
+      `AWS_USE_DUALSTACK_ENDPOINT=true`,
+      `PORT=8000`,
+      `KYC_DOCUMENTS_BUCKET=${kycDocumentsBucketName}`,
+      `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
+      `TRUSTED_PROXIES=127.0.0.1`,
+      `ENV`,
     );
 
-    addSwapCommands(userData);
-    addDualStackSsmAgentCommands(userData);
-    addCloudflareOriginCaCommands(userData);
-
-    userData.addCommands(
-      // nginx: listens :8080, proxies to Go binary on :8000
-      `cat > /etc/nginx/nginx.conf << 'NGINX'`,
-      `user nginx;`,
-      `pid /run/nginx.pid;`,
-      `worker_processes auto;`,
-      `worker_rlimit_nofile 65535;`,
-      `error_log /var/log/nginx/error.log warn;`,
-      ``,
-      `events {`,
-      `    worker_connections 8192;`,
-      `    use epoll;`,
-      `    multi_accept on;`,
-      `}`,
-      ``,
-      `http {`,
-      `    include /etc/nginx/mime.types;`,
-      `    default_type application/octet-stream;`,
-      ``,
-      `    # Written by /opt/app/update-realip.sh: set_real_ip_from for HAProxy and for`,
-      `    # CloudFront's origin-facing ranges, so $remote_addr below is the real viewer`,
-      `    # IP and not the proxy's. The glob keeps nginx bootable if the file is absent.`,
-      `    include /etc/nginx/conf.d/realip*.conf;`,
-      ``,
-      `    log_format json_log escape=json '{"remote_addr":"$remote_addr","status":$status,"request":"$request","body_bytes_sent":$body_bytes_sent,"request_time":$request_time}';`,
-      ``,
-      `    sendfile on;`,
-      `    tcp_nopush on;`,
-      `    tcp_nodelay on;`,
-      `    keepalive_timeout 30;`,
-      `    keepalive_requests 10000;`,
-      `    reset_timedout_connection on;`,
-      `    open_file_cache max=1000 inactive=20s;`,
-      `    open_file_cache_valid 30s;`,
-      `    open_file_cache_min_uses 2;`,
-      `    open_file_cache_errors on;`,
-      ``,
-      `    # $binary_remote_addr is the viewer's IP, not HAProxy's, only because the`,
-      `    # realip module rewrote it (see the include above). Without that the whole`,
-      `    # req_by_ip zone collapses onto HAProxy's private IP and the rate becomes a`,
-      `    # shared ceiling for every client at once — on the login and token routes.`,
-      `    limit_req_zone  $binary_remote_addr zone=req_by_ip:10m  rate=20r/s;`,
-      `    limit_conn_zone $binary_remote_addr zone=conn_by_ip:10m;`,
-      `    limit_req_status  429;`,
-      `    limit_conn_status 429;`,
-      ``,
-      `    client_max_body_size 5m;`,
-      `    gzip on;`,
-      `    gzip_types application/json application/javascript text/plain text/css;`,
-      `    server_tokens off;`,
-      `    add_header X-Content-Type-Options nosniff always;`,
-      `    add_header X-Frame-Options DENY always;`,
-      ``,
-      `    upstream app {`,
-      `        server 127.0.0.1:8000;`,
-      `        keepalive 256;`,
-      `        keepalive_requests 10000;`,
-      `        keepalive_timeout 60s;`,
-      `    }`,
-      ``,
-      `    server {`,
-      `        listen 8080 default_server reuseport;`,
-      `        server_name _;`,
-      `        access_log /var/log/nginx/access.log json_log;`,
-      ``,
-      `        location = /v1.0/health-check {`,
-      `            proxy_pass http://app;`,
-      `            proxy_http_version 1.1;`,
-      `            proxy_set_header Connection "";`,
-      `            proxy_set_header Host $host;`,
-      `            proxy_connect_timeout 5s;`,
-      `            proxy_read_timeout 5s;`,
-      `            access_log off;`,
-      `        }`,
-      ``,
-      `        location / {`,
-      `            limit_req  zone=req_by_ip  burst=200 nodelay;`,
-      `            limit_conn conn_by_ip 100;`,
-      ``,
-      `            proxy_pass http://app;`,
-      `            proxy_http_version 1.1;`,
-      `            proxy_set_header Connection "";`,
-      `            proxy_set_header Host $host;`,
-      `            proxy_set_header X-Real-IP $remote_addr;`,
-      // Overwrite rather than append: $proxy_add_x_forwarded_for would carry through
-      // whatever X-Forwarded-For the client sent, and the Go app trusts the leftmost
-      // entry. $remote_addr is the realip-resolved viewer IP, which a client cannot forge.
-      `            proxy_set_header X-Forwarded-For $remote_addr;`,
-      `            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;`,
-      `            proxy_connect_timeout 10s;`,
-      `            proxy_read_timeout 30s;`,
-      `            proxy_send_timeout 30s;`,
-      `        }`,
-      `    }`,
-      `}`,
-      `NGINX`,
+    // Secrets are read by name at service start, never embedded: the launch
+    // template is readable by anyone holding ec2:DescribeLaunchTemplateVersions.
+    scripts.run(userData, 'setup-ssm-env.sh',
+      `SECRET_ENC_KEY=/ctech-account/${environment}/secret-encryption-key`,
+      `BASE_URL=/ctech-account/${environment}/base-url`,
+      `ALLOWED_ORIGINS=/ctech-account/${environment}/allowed-origins`,
+      `APP_URL=/ctech-account/${environment}/app-url`,
+      `WEBAUTHN_RPID=/ctech-account/${environment}/webauthn-rpid`,
+      `GOOGLE_CLIENT_ID=/ctech-account/${environment}/google-client-id`,
+      `GOOGLE_CLIENT_SECRET=/ctech-account/${environment}/google-client-secret`,
+      `COOKIE_DOMAIN=/ctech-account/${environment}/cookie-domain`,
+      `FROM_EMAIL=/ctech-account/${environment}/from-email`,
+      `MAXMIND_ACCOUNT_ID=/ctech-account/${environment}/maxmind-account-id`,
+      `MAXMIND_LICENSE_KEY=/ctech-account/${environment}/maxmind-license-key`,
+      ...(valkeyUrlSsmPath ? [`VALKEY_URL=${valkeyUrlSsmPath}`] : []),
     );
 
-    addRealipRefreshCommands(userData, vpc.vpcCidrBlock);
+    scripts.run(userData, 'setup-realip.sh', vpc.vpcCidrBlock);
+    // 20 r/s and a 5 MB body: ctech-account's login and token routes are the
+    // account-takeover surface, and its uploads are KYC documents.
+    scripts.run(userData, 'setup-nginx.sh', '8080', '8000', '/v1.0/health-check', '20', '5m');
+    scripts.run(userData, 'setup-app-service.sh', 'CTech Account API', 'bootstrap',
+      'network.target nginx.service');
+    scripts.run(userData, 'setup-deploy.sh', deploymentsBucketName, 'bootstrap',
+      'http://127.0.0.1:8080/v1.0/health-check');
+    scripts.run(userData, 'setup-logs.sh', logsBucketName, svcName, svcName,
+      '/var/log/app', '/var/log/nginx');
 
     userData.addCommands(
-      'systemctl enable nginx',
-      'systemctl start nginx',
-    );
-
-    addCloudWatchAgentDualStackOverride(userData);
-
-    userData.addCommands(
-      `cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWA'`,
+      // Generated rather than shipped: the log group names and metric namespace
+      // are CloudFormation values. {instance_id} is resolved by the CW agent at
+      // runtime, not by bash.
+      `cat > /tmp/cwagent.json << 'CWA'`,
       buildCloudWatchAgentConfig({
         metricNamespace: `CtechAccount/${environment}/Host`,
         appProcessPattern: '/opt/app/current/(app|bootstrap)',
@@ -204,158 +131,9 @@ export class ComputeStack extends cdk.Stack {
         ],
       }),
       `CWA`,
-      `/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s`,
-
-      // Static env file
-      `cat > /etc/app-static.env << 'ENV'`,
-      `ENVIRONMENT=${environment}`,
-      `TABLE_PREFIX=${environment}`,
-      `AWS_REGION=${this.region}`,
-      `AWS_USE_DUALSTACK_ENDPOINT=true`,
-      `PORT=8000`,
-      `KYC_DOCUMENTS_BUCKET=${kycDocumentsBucketName}`,
-      `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
-      `ENV`,
-
-      // start.sh: fetches secrets from SSM then execs the Go binary
-      `cat > /opt/app/start.sh << 'START'`,
-      `#!/bin/bash`,
-      // APP_VERSION is shipped inside the release artifact (release.env) by CI/CD.
-      // Format: YYMMDDHHMM:<7-char commit>. Surfaced as releaseId on the health check.
-      `if [ -f /opt/app/current/release.env ]; then set -a; . /opt/app/current/release.env; set +a; fi`,
-      `TRUSTED_PROXIES=127.0.0.1`,
-      `SECRET_ENC_KEY=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/secret-encryption-key" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `BASE_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/base-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
-      `ALLOWED_ORIGINS=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/allowed-origins" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
-      `APP_URL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/app-url" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null)`,
-      // Optional shared-domain override. When absent, the API safely derives
-      // the WebAuthn RP ID from APP_URL's hostname.
-      `WEBAUTHN_RPID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/webauthn-rpid" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-id" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/google-client-secret" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `COOKIE_DOMAIN=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/cookie-domain" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `FROM_EMAIL=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/from-email" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `MAXMIND_ACCOUNT_ID=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/maxmind-account-id" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      `MAXMIND_LICENSE_KEY=$(aws ssm get-parameter --name "/ctech-account/$ENVIRONMENT/maxmind-license-key" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-      ...(valkeyUrlSsmPath ? [
-        `VALKEY_URL=$(aws ssm get-parameter --name "${valkeyUrlSsmPath}" --with-decryption --query Parameter.Value --output text --region us-east-1 2>/dev/null || echo "")`,
-        `export VALKEY_URL`,
-      ] : []),
-      `export TRUSTED_PROXIES`,
-      `export BASE_URL`,
-      `export ALLOWED_ORIGINS`,
-      `export APP_URL`,
-      `export WEBAUTHN_RPID`,
-      `export SECRET_ENC_KEY`,
-      `export GOOGLE_CLIENT_ID`,
-      `export GOOGLE_CLIENT_SECRET`,
-      `export COOKIE_DOMAIN`,
-      `export FROM_EMAIL`,
-      `export MAXMIND_ACCOUNT_ID`,
-      `export MAXMIND_LICENSE_KEY`,
-      `exec /opt/app/current/bootstrap >> /var/log/app/app.log 2>&1`,
-      `START`,
-      `chmod +x /opt/app/start.sh`,
-
-      // systemd app.service
-      `cat > /etc/systemd/system/app.service << 'SVC'`,
-      `[Unit]`,
-      `Description=ctech-account`,
-      `After=network.target nginx.service`,
-      `StartLimitIntervalSec=300`,
-      `StartLimitBurst=5`,
-      ``,
-      `[Service]`,
-      `User=webapp`,
-      `Group=webapp`,
-      `WorkingDirectory=/opt/app/current`,
-      `Environment=HOME=/opt/app`,
-      `EnvironmentFile=/etc/app-static.env`,
-      `ExecStartPre=/bin/test -x /opt/app/current/bootstrap`,
-      `ExecStart=/opt/app/start.sh`,
-      `Restart=on-failure`,
-      `RestartSec=30`,
-      ``,
-      `[Install]`,
-      `WantedBy=multi-user.target`,
-      `SVC`,
-      `systemctl daemon-reload`,
-      `systemctl enable app`,
-
-      // deploy.sh: called by SSM RunCommand from GitHub Actions
-      `cat > /opt/app/deploy.sh << 'DEPLOY'`,
-      `#!/bin/bash`,
-      `set -euo pipefail`,
-      `S3_KEY="$1"`,
-      `RELEASE_DIR="/opt/app/releases/$(date +%Y%m%d_%H%M%S)"`,
-      `mkdir -p "$RELEASE_DIR"`,
-      `echo "Downloading release: $S3_KEY"`,
-      `aws s3 cp "s3://__BUCKET__/$S3_KEY" /tmp/release.zip`,
-      `unzip -o /tmp/release.zip -d "$RELEASE_DIR"`,
-      `chmod +x "$RELEASE_DIR/bootstrap"`,
-      `chown -R webapp:webapp "$RELEASE_DIR"`,
-      `ln -sfT "$RELEASE_DIR" /opt/app/current`,
-      `systemctl restart app 2>/dev/null || systemctl start app`,
-      `for i in {1..60}; do`,
-      `  if curl -sf http://127.0.0.1:8080/v1.0/health-check >/dev/null; then`,
-      `    echo "Health check passed"`,
-      `    break`,
-      `  fi`,
-      `  if systemctl is-failed --quiet app; then`,
-      `    echo "Application failed to start"`,
-      `    journalctl -u app --no-pager -n 100 || true`,
-      `    exit 1`,
-      `  fi`,
-      `  sleep 2`,
-      `done`,
-      `curl -sf http://127.0.0.1:8080/v1.0/health-check >/dev/null || { echo "Timed out"; exit 1; }`,
-      `ls -dt /opt/app/releases/*/ 2>/dev/null | tail -n +2 | xargs rm -rf 2>/dev/null || true`,
-      `echo "Deployment successful"`,
-      `DEPLOY`,
-      `sed -i 's|__BUCKET__|${deploymentsBucketName}|g' /opt/app/deploy.sh`,
-      `chmod +x /opt/app/deploy.sh`,
-
-      // upload-logs.sh
-      `cat > /opt/app/upload-logs.sh << 'UPLOAD'`,
-      `#!/bin/bash`,
-      `TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")`,
-      `INSTANCE_ID=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/instance-id" || echo "unknown")`,
-      `DATE=$(date +%Y%m%d)`,
-      `BUCKET="__LOG_BUCKET__"`,
-      `ARCHIVE="/tmp/\${DATE}-\${INSTANCE_ID}.tar.gz"`,
-      `ROTATED=$(find /var/log/app /var/log/nginx -name "*-\${DATE}.gz" 2>/dev/null)`,
-      `[ -z "$ROTATED" ] && exit 0`,
-      `tar czf "$ARCHIVE" $ROTATED 2>/dev/null || exit 0`,
-      `aws s3 cp "$ARCHIVE" "s3://\${BUCKET}/ctech-account/\${DATE}-\${INSTANCE_ID}.tar.gz" --region us-east-1 || exit 0`,
-      `find /var/log/app /var/log/nginx -name "*-\${DATE}.gz" -delete`,
-      `rm -f "$ARCHIVE"`,
-      `UPLOAD`,
-      `sed -i 's|__LOG_BUCKET__|${logsBucketName}|g' /opt/app/upload-logs.sh`,
-      `chmod +x /opt/app/upload-logs.sh`,
-
-      // logrotate
-      `cat > /etc/logrotate.d/ctech-account << 'LOGROTATE'`,
-      `/var/log/app/app.log`,
-      `/var/log/nginx/access.log`,
-      `/var/log/nginx/error.log {`,
-      `    daily`,
-      `    compress`,
-      `    copytruncate`,
-      `    missingok`,
-      `    notifempty`,
-      `    dateext`,
-      `    dateformat -%Y%m%d`,
-      `    rotate 1`,
-      `    sharedscripts`,
-      `    postrotate`,
-      `        /opt/app/upload-logs.sh`,
-      `    endscript`,
-      `}`,
-      `LOGROTATE`,
-
-      // Bootstrap: deploy if artifact exists
-      `aws s3api head-object --bucket "${deploymentsBucketName}" --key "ctech-account/current.zip" 2>/dev/null && /opt/app/deploy.sh ctech-account/current.zip || echo "No bootstrap artifact, waiting for first deploy"`,
     );
+    scripts.run(userData, 'setup-cloudwatch-agent.sh', '/tmp/cwagent.json');
+    scripts.run(userData, 'bootstrap-deploy.sh', deploymentsBucketName, 'ctech-account/current.zip');
 
     // ctech-lbalancer still owns the bootstrap route and private CNAME; this
     // service construct owns compute, logs and edge-SG ingress only.
