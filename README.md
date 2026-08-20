@@ -596,11 +596,15 @@ This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group registered wi
 the CTech HAProxy edge load balancer, CloudFront, IAM roles, and SSM read permissions.
 There is no Lambda or API Gateway.
 
-`ENABLE_SSM_AGENT=false npx cdk deploy` disables the SSM agent on the API instances.
-It is on by default: the agent is the only way onto a box (no public IPv4, no SSH) and
-CI deploys through SSM RunCommand — but it holds ~70 MiB of RSS, which is material on a
-t4g.nano. Same knob as `ctech-lbalancer` and `ctech-billing`. Changing it replaces the
-instances (user data change).
+The SSM agent is **disabled by default** on the API instances: deploys replace them
+through an ASG instance refresh rather than running anything over RunCommand, and the
+agent holds ~70 MiB of RSS, which is material on a t4g.nano. `ENABLE_SSM_AGENT=true npx
+cdk deploy` puts it back when you need a Session Manager shell (the boxes have no public
+IPv4 and no SSH). Changing it replaces the instances (user data change).
+
+The ASG is scheduled: **up at 11:55, down at 13:15 America/Sao_Paulo**. Outside that
+window the API is unreachable and inbound webhooks fail — deliberate for a development
+environment.
 
 ### 4 — Seed the bootstrap scope catalog
 

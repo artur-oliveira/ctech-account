@@ -69,21 +69,15 @@ export class OidcStack extends cdk.Stack {
       resources: ['arn:aws:ssm:*:*:parameter/ctech/*'],
     }));
 
-    // ASG — describe instances for rolling deploy
+    // ASG — deploy by replacing the instances. The SSM agent is disabled on
+    // them, so an instance refresh is the deploy mechanism, not a fallback.
     deployRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         'autoscaling:DescribeAutoScalingGroups',
+        'autoscaling:StartInstanceRefresh',
+        'autoscaling:DescribeInstanceRefreshes',
+        'autoscaling:CancelInstanceRefresh',
         'ec2:DescribeInstances',
-      ],
-      resources: ['*'],
-    }));
-
-    // SSM — send command to instances
-    deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        'ssm:SendCommand',
-        'ssm:GetCommandInvocation',
-        'ssm:ListCommandInvocations',
       ],
       resources: ['*'],
     }));

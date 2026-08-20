@@ -183,7 +183,8 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 - **GitHub OIDC provider** is owned by `py-dfe-cdk` and imported by ARN
   (`oidc-stack.ts:17`). Trust matches both legacy and immutable-ID `sub` formats.
 - `ctech-account-github-deploy-role`: S3 (artifacts + frontend), SSM `GetParameter`
-  on `/ctech/*`, ASG/EC2 describe, SSM `SendCommand` (rolling deploy via RunCommand),
+  on `/ctech/*`, ASG/EC2 describe, `autoscaling:StartInstanceRefresh` +
+  `DescribeInstanceRefreshes` + `CancelInstanceRefresh` (the deploy mechanism),
   `cloudfront:CreateInvalidation`, KeyValueStore update, and `cloudformation:*` +
   `sts:AssumeRole` (CDK deploy).
 - `ctech-account-gha-infra`: **`AdministratorAccess`** — used only by
@@ -205,9 +206,12 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
   (`bin/ctech-account.ts:17`).
 - Order matters: deploy `DynamoDB` + `KYC` first, then `IAM`, then `Compute`
   (depends on IAM), then `Frontend`. `OidcStack` is global (deploy once).
-- EC2 user-data pulls the first release from `ctech-account/current.zip` in the
-  deployments bucket; subsequent deploys run `deploy.sh` via SSM RunCommand from
-  GitHub Actions.
+- EC2 user-data pulls the release from `ctech-account/current.zip` in the deployments
+  bucket. A deploy overwrites that object and starts an **ASG instance refresh**, so every
+  instance re-bootstraps it; nothing is executed on the box remotely (the SSM agent is off).
+  `MinHealthyPercentage: 0` means the service is down while the refresh runs.
+- The ASG only runs between **11:55** and **13:15** America/Sao_Paulo. A deploy outside that
+  window exits early and the next scheduled instance picks the artifact up at boot.
 - **There are no `cdk` snapshot/jest tests in this repo** (the `test: jest` script
   exists but `test/` is absent) — `cdk synth` is the only automated gate.
 

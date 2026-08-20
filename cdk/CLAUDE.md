@@ -126,10 +126,18 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 - **No custom CloudWatch metrics.** The CloudWatch agent config is logs-only and there are
   no `logs.MetricFilter`s — EC2 already publishes CPUUtilization/CPUCreditBalance for free.
   Don't reintroduce `buildCloudWatchAgentConfig`'s `metricNamespace` here.
-- **SSM agent is a knob**, not a given: `ENABLE_SSM_AGENT` (env) → `ApiStack.enableSsmAgent`,
-  default `true`. Off costs Session Manager access and SSM RunCommand deploys; it buys back
-  ~70 MiB of RSS on a t4g.nano. Same knob as `ctech-lbalancer` / `ctech-billing`. The role
+- **Deploys replace instances.** `.github/workflows/api.yml` uploads the artifact and calls
+  `autoscaling start-instance-refresh` with `MinHealthyPercentage: 0` — no replacement is
+  launched before the old instance goes away, so the service is **down** for the length of the
+  refresh. `SkipMatching` must stay `false`: a deploy does not change the launch template.
+- **SSM agent is off by default**: `ENABLE_SSM_AGENT` (env) → `ApiStack.enableSsmAgent`,
+  default `false`. Nothing needs RunCommand now that deploys are instance refreshes, and the
+  agent costs ~70 MiB of RSS on a t4g.nano. Set it to `true` for a debugging shell. The role
   keeps `AmazonSSMManagedInstanceCore` either way (IAMStack does not see the flag).
+- **Daytime-only schedule.** Scheduled actions bring the ASG up at **11:55** and take it
+  down at **13:15** America/Sao_Paulo. Outside that window the service is off: nothing is
+  reachable and inbound webhooks fail. A deploy that lands outside it exits early — the
+  next scheduled instance boots the artifact from S3.
 
 ### CloudFront (frontend-stack)
 
