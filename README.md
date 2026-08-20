@@ -596,6 +596,12 @@ This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group registered wi
 the CTech HAProxy edge load balancer, CloudFront, IAM roles, and SSM read permissions.
 There is no Lambda or API Gateway.
 
+`ENABLE_SSM_AGENT=false npx cdk deploy` disables the SSM agent on the API instances.
+It is on by default: the agent is the only way onto a box (no public IPv4, no SSH) and
+CI deploys through SSM RunCommand — but it holds ~70 MiB of RSS, which is material on a
+t4g.nano. Same knob as `ctech-lbalancer` and `ctech-billing`. Changing it replaces the
+instances (user data change).
+
 ### 4 — Seed the bootstrap scope catalog
 
 `GET /v1.0/scopes` and all scope validation read the `{env}_ctech_scopes` table —
@@ -659,7 +665,11 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 - Rotate the signing key annually: `go run ./cmd/rotatekeys -env <env>` writes a new `jwk/active` and demotes the old to
   `jwk/previous` — no redeploy needed.
 - Enable DynamoDB Point-in-Time Recovery on all eight tables.
-- Set a CloudWatch alarm on the EC2 and HAProxy error rate > 1%.
+- Set a CloudWatch alarm on the HAProxy error rate > 1%. The service publishes **no custom
+  CloudWatch metrics** — no host/process series from the CloudWatch agent (logs only) and no
+  metric filters on the nginx log group. EC2 already publishes CPUUtilization and
+  CPUCreditBalance for free; alarm on HAProxy, or on a Logs Insights query over
+  `/ctech-account/{env}/nginx`.
 
 ---
 

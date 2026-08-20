@@ -29,6 +29,10 @@ const CTECH_DEPLOYMENTS_BUCKET = process.env.CTECH_DEPLOYMENTS_BUCKET || `${ENVI
 const CTECH_LOGS_BUCKET = process.env.CTECH_LOGS_BUCKET || `${ENVIRONMENT}-ctech-application-logs`;
 // KYC identity documents — owned by this repo (unlike the shared buckets above).
 const KYC_DOCUMENTS_BUCKET = `${ENVIRONMENT}-ctech-account-kyc-documents`;
+// Session Manager on the API instances. Default on, because it is the only way
+// onto them — no public IPv4, no SSH — and CI deploys through SSM RunCommand.
+// Set ENABLE_SSM_AGENT=false to reclaim the agent's ~70 MiB on a t4g.nano.
+const ENABLE_SSM_AGENT = (process.env.ENABLE_SSM_AGENT || 'true') === 'true';
 
 const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 
@@ -110,6 +114,7 @@ const apiStack = new ApiStack(app, id('Api'), {
   logsBucketName: CTECH_LOGS_BUCKET,
   kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
+  enableSsmAgent: ENABLE_SSM_AGENT,
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 apiStack.addStackDependency(iamStack);

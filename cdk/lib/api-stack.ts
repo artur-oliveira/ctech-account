@@ -3,7 +3,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import {Construct} from 'constructs';
-import {buildCloudWatchAgentConfig, Ec2ScriptRunner, HaproxyEc2Service} from '@aoctech/cdk';
+import {Ec2ScriptRunner, HaproxyEc2Service} from '@aoctech/cdk';
 import {Environment} from './types';
 
 interface ApiStackProps extends cdk.StackProps {
@@ -16,14 +16,11 @@ interface ApiStackProps extends cdk.StackProps {
   // document verification path and only offers PIX-match.
   kycDocumentsBucketName: string;
   valkeyUrlSsmPath?: string;
+  // Session Manager. Same knob as ctech-lbalancer and ctech-billing: the agent
+  // costs ~70 MiB of RSS on a t4g.nano, so it is a switch rather than a given.
+  // Off means no shell onto the box and no SSM RunCommand target.
+  enableSsmAgent?: boolean;
 }
-
-const HTTP_STATUS_METRIC_PATTERNS: ReadonlyArray<[string, string]> = [
-  ['HTTP2XX', '{ ($.status >= 200) && ($.status < 300) }'],
-  ['HTTP3XX', '{ ($.status >= 300) && ($.status < 400) }'],
-  ['HTTP4XX', '{ ($.status >= 400) && ($.status < 500) }'],
-  ['HTTP5XX', '{ $.status >= 500 }'],
-];
 
 export class ApiStack extends cdk.Stack {
   public readonly asgName: string;
@@ -39,6 +36,7 @@ export class ApiStack extends cdk.Stack {
       logsBucketName,
       kycDocumentsBucketName,
       valkeyUrlSsmPath,
+      enableSsmAgent = true,
     } = props;
 
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {vpcId});
@@ -74,6 +72,12 @@ export class ApiStack extends cdk.Stack {
     scripts.run(userData, 'setup-swap.sh', '256');
     scripts.run(userData, 'setup-dualstack.sh');
     scripts.run(userData, 'setup-cloudflare-ca.sh');
+
+    // setup-base.sh installs the SSM agent and setup-dualstack.sh starts it, so
+    // this is what stops it again.
+    if (!enableSsmAgent) {
+      userData.addCommands('systemctl disable --now amazon-ssm-agent 2>/dev/null || true');
+    }
 
     userData.addCommands(
       `cat > /etc/app-static.env << 'ENV'`,
@@ -116,19 +120,25 @@ export class ApiStack extends cdk.Stack {
     scripts.run(userData, 'setup-logs.sh', logsBucketName, svcName, svcName,
       '/var/log/app', '/var/log/nginx');
 
+    // Logs only. No `metrics` block: EC2 already publishes CPUUtilization and
+    // CPUCreditBalance for free, and every custom series this service used to
+    // publish was either that again or a number nobody alarmed on.
+    // {instance_id} is resolved by the CW agent at runtime, not by bash.
     userData.addCommands(
-      // Generated rather than shipped: the log group names and metric namespace
-      // are CloudFormation values. {instance_id} is resolved by the CW agent at
-      // runtime, not by bash.
       `cat > /tmp/cwagent.json << 'CWA'`,
-      buildCloudWatchAgentConfig({
-        metricNamespace: `CtechAccount/${environment}/Host`,
-        appProcessPattern: '/opt/app/current/(app|bootstrap)',
-        logFiles: [
-          {filePath: '/var/log/app/app.log', logGroupName: logGroupApp, logStreamName: '{instance_id}'},
-          {filePath: '/var/log/nginx/access.log', logGroupName: logGroupNginx, logStreamName: '{instance_id}/access'},
-          {filePath: '/var/log/nginx/error.log', logGroupName: logGroupNginx, logStreamName: '{instance_id}/error'},
-        ],
+      JSON.stringify({
+        agent: {metrics_collection_interval: 60},
+        logs: {
+          logs_collected: {
+            files: {
+              collect_list: [
+                {file_path: '/var/log/app/app.log', log_group_name: logGroupApp, log_stream_name: '{instance_id}'},
+                {file_path: '/var/log/nginx/access.log', log_group_name: logGroupNginx, log_stream_name: '{instance_id}/access'},
+                {file_path: '/var/log/nginx/error.log', log_group_name: logGroupNginx, log_stream_name: '{instance_id}/error'},
+              ],
+            },
+          },
+        },
       }),
       `CWA`,
     );
@@ -157,16 +167,6 @@ export class ApiStack extends cdk.Stack {
       // service is unavailable in that window, and inbound webhooks fail.
       schedule: {},
     });
-    for (const [name, pattern] of HTTP_STATUS_METRIC_PATTERNS) {
-      new logs.MetricFilter(this, `ApiService${name}Filter`, {
-        logGroup: service.nginxLogGroup!,
-        metricNamespace: `CtechAccount/${environment}`,
-        metricName: name,
-        filterPattern: logs.FilterPattern.literal(pattern),
-        metricValue: '1',
-        defaultValue: 0,
-      });
-    }
     new cdk.CfnOutput(this, 'AsgName', {value: service.autoScalingGroup.autoScalingGroupName, exportName: `${id}-asg-name`});
     new cdk.CfnOutput(this, 'AppLogGroupName', {
       value: service.appLogGroup.logGroupName,

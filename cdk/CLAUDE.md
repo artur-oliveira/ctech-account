@@ -123,6 +123,13 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
   checks and requests replacement through its `autoHeal` route policy.
 - Go binary deployed as `ctech-account` (systemd service, auto-bootstrap from S3).
 - `AutoRollback: true` on instance refresh.
+- **No custom CloudWatch metrics.** The CloudWatch agent config is logs-only and there are
+  no `logs.MetricFilter`s — EC2 already publishes CPUUtilization/CPUCreditBalance for free.
+  Don't reintroduce `buildCloudWatchAgentConfig`'s `metricNamespace` here.
+- **SSM agent is a knob**, not a given: `ENABLE_SSM_AGENT` (env) → `ApiStack.enableSsmAgent`,
+  default `true`. Off costs Session Manager access and SSM RunCommand deploys; it buys back
+  ~70 MiB of RSS on a t4g.nano. Same knob as `ctech-lbalancer` / `ctech-billing`. The role
+  keeps `AmazonSSMManagedInstanceCore` either way (IAMStack does not see the flag).
 
 ### CloudFront (frontend-stack)
 
