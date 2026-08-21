@@ -3,7 +3,6 @@ import * as cdk from 'aws-cdk-lib';
 
 import {DynamoDBStack} from '../lib/dynamodb-stack';
 import {ApiStack} from '../lib/api-stack';
-import {FrontendStack} from '../lib/frontend-stack';
 import {IAMStack} from '../lib/iam-stack';
 import {KYCStack} from '../lib/kyc-stack';
 import {OidcStack} from '../lib/oidc-stack';
@@ -16,8 +15,6 @@ const app = new cdk.App();
 // =====================
 const AWS_ACCOUNT = '868899309401';
 const AWS_REGION = 'us-east-1';
-// Wildcard ACM cert — same as py-dfe (covers *.aoctech.app)
-const CERT_ARN = 'arn:aws:acm:us-east-1:868899309401:certificate/29678869-bfc3-4688-b81b-55aa5b1d7443';
 
 const ENVIRONMENT = (process.env.ENVIRONMENT || 'dev') as Environment;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'artur-oliveira/ctech-account';
@@ -119,24 +116,3 @@ const apiStack = new ApiStack(app, id('Api'), {
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 apiStack.addStackDependency(iamStack);
-
-// =====================
-// Frontend (S3 + CloudFront)
-// accounts.aoctech.app/             → UI (S3)
-// accounts.aoctech.app/v1.0/*       → API (HAProxy) — browsers, same-origin, no CORS
-// accounts.aoctech.app/.well-known/ → API (HAProxy) — OIDC discovery at the issuer host
-// accounts-api.aoctech.app          → API (HAProxy) direct — service-to-service + public API
-// =====================
-new FrontendStack(app, id('Frontend'), {
-  env,
-  environment: ENVIRONMENT,
-  certificateArn: CERT_ARN,
-  domainName: domainForEnv(ENVIRONMENT, 'accounts'), // accounts.aoctech.app → CloudFront → S3
-  apiDomainName: domainForEnv(ENVIRONMENT, 'accounts-api'),
-  extraConnectSrc: [
-    'viacep.com.br',
-    `${KYC_DOCUMENTS_BUCKET}.s3.${AWS_REGION}.amazonaws.com`,
-    `${KYC_DOCUMENTS_BUCKET}.s3.dualstack.${AWS_REGION}.amazonaws.com`,
-  ],
-  description: `ctech-account Frontend (S3 + CloudFront) - ${ENVIRONMENT}`,
-});

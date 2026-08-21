@@ -53,16 +53,6 @@ export class OidcStack extends cdk.Stack {
       resources: ['arn:aws:s3:::*-ctech-deployments/ctech-account/*'],
     }));
 
-    // S3 — sync frontend assets to S3 static hosting bucket
-    deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['s3:ListBucket'],
-      resources: ['arn:aws:s3:::*-ctech-account-frontend'],
-    }));
-    deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
-      resources: ['arn:aws:s3:::*-ctech-account-frontend/*'],
-    }));
-
     // SSM — read VPC ID and shared edge-SG ID at synth time
     deployRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
@@ -80,23 +70,6 @@ export class OidcStack extends cdk.Stack {
         'ec2:DescribeInstances',
       ],
       resources: ['*'],
-    }));
-
-    // CloudFront — invalidate distribution
-    deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['cloudfront:CreateInvalidation'],
-      resources: ['*'],
-    }));
-
-    // Route manifest for the URL-rewrite CloudFront Function. Published after
-    // the S3 sync so the key set matches the objects in the bucket.
-    deployRole.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        'cloudfront-keyvaluestore:DescribeKeyValueStore',
-        'cloudfront-keyvaluestore:ListKeys',
-        'cloudfront-keyvaluestore:UpdateKeys',
-      ],
-      resources: [`arn:aws:cloudfront::${this.account}:key-value-store/*`],
     }));
 
     // CDK deploy permissions
