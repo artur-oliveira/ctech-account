@@ -10,10 +10,17 @@ Anchored to the code as of 2026-07-20.
   `lib/queries.ts` (reads) and `lib/mutations.ts` (writes), both called via
   TanStack Query from `lib/axios.ts`'s shared `api` instance. No raw `fetch`/`axios`
   outside those two files (per `ui/CLAUDE.md`).
-- `next.config.ts`: in dev, `rewrites()` proxies `/v1.0/*` → `DEV_API_ORIGIN`
-  (default `http://localhost:8001`); in prod, CloudFront forwards `/v1.0/*` and
-  `/.well-known/*` to the ALB. So browser calls stay **same-origin** — CORS
-  never applies and the auth cookies stay first-party.
+- `next.config.ts`: in dev, `rewrites()` proxies `/v1.0/*` and `/.well-known/*`
+  → `DEV_API_ORIGIN` (default `http://localhost:8001`). Deployed builds do not:
+  the export is served by **Cloudflare Workers Static Assets** and the browser
+  calls `NEXT_PUBLIC_API_URL` (`https://accounts-api.aoctech.app`) directly, so
+  **CORS applies**. The auth cookies survive it — `ctech_rt`/`ctech_auth` are
+  `SameSite=Lax` and the two hosts share `aoctech.app`, so the call is
+  cross-origin but same-site; `withCredentials: true` in `lib/axios.ts` and
+  `AllowCredentials` on the API are both load-bearing.
+- **`/.well-known/*` is no longer served on the app host.** OIDC discovery is at
+  `https://accounts-api.aoctech.app/.well-known/openid-configuration`. The SPA
+  never read it; only external OIDC clients notice.
 - Mock mode (`NEXT_PUBLIC_MOCK_API=true`): a custom axios adapter in `lib/mock.ts`
   answers every call; `startOAuthFlow` short-circuits to a fake token.
 

@@ -1,8 +1,13 @@
 # ctech-account UI
 
 Next.js 16.3.1 + React 19.2.8 static-export SPA for the CTech identity provider at
-`accounts.aoctech.app`. It is deployed to S3/CloudFront; there is no Next.js
-server or Vercel runtime in production.
+`accounts.aoctech.app`. It is deployed to **Cloudflare Workers Static Assets**;
+there is no Next.js server or Vercel runtime in production.
+
+The browser calls the API **cross-origin** at `NEXT_PUBLIC_API_URL`
+(`https://accounts-api.aoctech.app`) — nothing proxies `/v1.0/*` at the edge, so
+CORS applies. `/.well-known/*` is served by the API host only. See
+[`CLAUDE.md`](CLAUDE.md) for why the auth cookies still work.
 
 ## Development and quality gates
 

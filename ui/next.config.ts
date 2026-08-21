@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Where `next dev` forwards the API to. Mirrors what CloudFront does in front of
-// the ALB in deployed environments, so the browser is same-origin in dev too and
-// CORS never applies — which also keeps the auth cookies first-party.
+// Where `next dev` forwards the API to. Deployed environments do NOT do this any
+// more — the export is served by Cloudflare and the browser calls the API host
+// directly, with CORS. The dev rewrite stays only so local work needs no CORS
+// configuration; it is the one place where dev and prod differ on purpose.
 const DEV_API_ORIGIN = process.env.DEV_API_ORIGIN || 'http://localhost:8001';
 
 // rewrites() is unsupported by `output: 'export'` and only ever runs under

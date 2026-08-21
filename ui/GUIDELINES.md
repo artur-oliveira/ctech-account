@@ -37,9 +37,13 @@ That rules out Server Components with data, Server Actions, Route Handlers, and
 - Auth: `store/auth.ts` (Zustand) holds the access token in memory only. The Go API sets the httpOnly
   refresh cookie directly (Next.js never sets or reads it) and a non-secret `ctech_auth` hint cookie
   (`lib/auth-hint.ts`) the SPA reads to decide whether a silent refresh is worth attempting.
-- Same-origin in both environments: CloudFront forwards `/v1.0/*` and `/.well-known/*` to the ALB in
-  production; `next dev`'s `rewrites()` does the same against `DEV_API_ORIGIN` locally. Both keep the
-  browser's calls same-origin, so CORS never applies and cookies stay first-party.
+- Cross-origin in deployed environments, same-origin only in dev: the export is served by Cloudflare
+  Workers Static Assets and the browser calls `NEXT_PUBLIC_API_URL` directly, so **CORS applies**;
+  `next dev`'s `rewrites()` proxies `/v1.0/*` and `/.well-known/*` to `DEV_API_ORIGIN` locally so
+  local work needs no CORS setup. The refresh cookie still reaches the API because
+  `accounts.aoctech.app` and `accounts-api.aoctech.app` are cross-origin but **same-site**
+  (`aoctech.app`), so `SameSite=Lax` is sent — provided `withCredentials: true` stays on the axios
+  instance and `AllowCredentials` stays on the API. Never remove either.
 - Route protection: a `useEffect` in `account/layout.tsx` reads `store/auth.ts` and redirects
   unauthenticated `/account/*` visits to `/login`.
 

@@ -27,7 +27,7 @@ All stacks are instantiated in `bin/ctech-account.ts`. `Environment` ∈
 | `KYCStack` | `lib/kyc-stack.ts` | 1 private S3 bucket for KYC identity documents |
 | `IAMStack` | `lib/iam-stack.ts` | EC2 instance profile + least-privilege inline policies |
 | `ApiStack` | `lib/api-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
-| `FrontendStack` | `lib/frontend-stack.ts` | S3 (static export) + CloudFront + URL-rewrite function |
+| `FrontendStack` | `lib/frontend-stack.ts` | S3 (static export) + CloudFront + URL-rewrite function — **retired**, see § 6 |
 
 **`lib/s3-stack.ts` (`S3Stack`) is NOT instantiated** in `bin/ctech-account.ts`. The
 deployment/logs buckets are instead the shared `ctech-cdk` buckets passed in as env
@@ -152,7 +152,15 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 
 ---
 
-## 6. Frontend — S3 + CloudFront (`lib/frontend-stack.ts`)
+## 6. Frontend — retired (`lib/frontend-stack.ts`)
+
+> **Nothing routes through this stack.** `accounts.aoctech.app` is served by **Cloudflare Workers
+> Static Assets**, deployed by `.github/workflows/frontend.yml` calling `ctech-cdk`'s reusable
+> `frontend-cloudflare.yml`. The browser calls `accounts-api.aoctech.app` directly and CORS applies;
+> `/.well-known/*` is reachable on the API host only. The stack is still deployed because the
+> teardown has not run — that is Phase 4 of
+> `ctech-cdk/docs/plans/2026-08-20-frontend-cloudflare-migration.md`. What follows describes what it
+> used to do.
 
 - `createNextjsStaticFrontend` from `@aoctech/cdk` creates the private S3 bucket,
   OAC, route KVS, rewrite function, security headers and distribution. Static
@@ -245,7 +253,7 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
 |----------|--------|--------------|
 | EC2 ASG (1–3 × t4g.micro) | always-on, prod max 3 | ~$6–$20 |
 | HAProxy edge | shared EC2 + request traffic | owned by `ctech-lbalancer` |
-| CloudFront (PriceClass_100, S3 + API passthrough) | requests + egress | ~$1–$20 (low traffic) |
+| ~~CloudFront (PriceClass_100, S3 + API passthrough)~~ | retired — the frontend is on Cloudflare | $0 after teardown |
 | S3 (frontend + deployments + logs + KYC docs) | storage + GETs | ~$1–$10 |
 | DynamoDB OnDemand (8 tables, warm cap 1000 RU/WU each) | request units | ~$5–$40 at low volume |
 | Data transfer / NAT (no NAT GW — dual-stack) | egress | ~$1–$10 |

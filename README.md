@@ -3,8 +3,9 @@
 Centralized OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 
 Built with **Go 1.26** and **Fiber v3**. Runs on an EC2 Auto Scaling Group routed by
-the CTech HAProxy edge load balancer, with CloudFront for the frontend. There is no
-Lambda or API Gateway.
+the CTech HAProxy edge load balancer; the frontend is a static export on **Cloudflare
+Workers Static Assets**, which calls the API cross-origin. There is no Lambda or API
+Gateway.
 
 ---
 
@@ -593,8 +594,9 @@ npx cdk deploy --all
 ```
 
 This creates: the eight DynamoDB tables, an EC2 Auto Scaling Group registered with
-the CTech HAProxy edge load balancer, CloudFront, IAM roles, and SSM read permissions.
-There is no Lambda or API Gateway.
+the CTech HAProxy edge load balancer, IAM roles, and SSM read permissions. There is no
+Lambda or API Gateway. The frontend is not in CDK — it is deployed to Cloudflare by
+`.github/workflows/frontend.yml`.
 
 The SSM agent is **disabled by default** on the API instances: deploys replace them
 through an ASG instance refresh rather than running anything over RunCommand, and the
@@ -622,16 +624,23 @@ Its callback is `${APP_URL}/login/callback`; no manual DynamoDB client item or
 self-referential confidential publisher is required. Existing SPA refresh
 grants receive the new explicit `account:*` permissions on their next rotation.
 
-### 5 — Configure the SPA environment (EC2 Auto Scaling Group / CloudFront)
+### 5 — Configure the SPA environment (Cloudflare Workers Static Assets)
 
 ```bash
-# In production CloudFront forwards /v1.0/* and /.well-known/* to HAProxy, so the SPA calls the API same-origin:
-NEXT_PUBLIC_API_URL=https://accounts.aoctech.app
+# Nothing proxies /v1.0/* at the edge: the SPA calls the API host directly and CORS applies.
+NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app
 OAUTH_CLIENT_ID=accounts-ui
 ```
 
-Set these as build environment variables for the static-export SPA (or your container/deploy pipeline) — there is no
+These live in `.github/workflows/frontend.yml`'s `build-env-*`, which the reusable workflow in
+`ctech-cdk` bakes into the export and derives the CSP's `connect-src` from. Every external origin the
+SPA talks to must appear there as a literal, or the generated `connect-src` blocks it. There is no
 Vercel or ECS runtime.
+
+Because the call is now cross-origin, `APP_URL` below is not only WebAuthn's RPID source — it is also
+prepended to the API's CORS allowlist (`api/cmd/api/main.go:278`). If it does not match the SPA's real
+origin, every API call fails preflight. `/.well-known/*` is served on the API host only; external OIDC
+clients must discover at `https://accounts-api.aoctech.app/.well-known/openid-configuration`.
 
 Separately, on the **API's** own deployment config, set `APP_URL=https://accounts.aoctech.app` (the SPA's real origin)
 alongside `BASE_URL=https://accountsapi.aoctech.app` (the API's own origin) — see the Configuration table above.

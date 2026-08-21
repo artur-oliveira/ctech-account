@@ -13,11 +13,24 @@ Next.js 16 + React 19 + ShadCN 4 + Tailwind v4 — accounts.aoctech.app frontend
 with data, no Server Actions, and no Route Handlers. Every page is a Client Component. All API calls
 go directly from the browser to the Go API through the shared `api` axios instance in `lib/axios.ts`.
 
-In production, CloudFront forwards `/v1.0/*` and `/.well-known/*` to the ALB so the browser's calls
-stay same-origin (no CORS, cookies stay first-party). In dev, `next dev`'s `rewrites()` in
-`next.config.ts` does the same thing against `DEV_API_ORIGIN` (default `http://localhost:8001`).
-`rewrites()` and `output: 'export'` are mutually exclusive, which is why they're gated on
-`NODE_ENV === 'production'` in `next.config.ts`.
+Deployed to **Cloudflare Workers Static Assets**, not S3+CloudFront. Nothing proxies the API at
+the edge any more: the browser calls `NEXT_PUBLIC_API_URL` (`https://accounts-api.aoctech.app` in
+production) directly and **CORS applies**. The API allows it because `APP_URL` — the SPA's own
+origin — is prepended to the CORS allowlist (`api/cmd/api/main.go:278`) and `AllowCredentials` is
+on. The auth cookies still travel: `ctech_rt` and `ctech_auth` are `SameSite=Lax`
+(`api/internal/handler/helpers.go:106`), and `accounts.aoctech.app` and `accounts-api.aoctech.app`
+share the registrable domain `aoctech.app`, so the request is cross-origin but **same-site** — Lax
+is sent, given `withCredentials: true` (`lib/axios.ts:16`). Dropping either that flag or the
+API's `AllowCredentials` silently breaks every refresh.
+
+`/.well-known/*` is no longer reachable on the app host. OIDC discovery lives on the API host
+(`https://accounts-api.aoctech.app/.well-known/openid-configuration`); the SPA never fetched it, so
+only external OIDC clients are affected — an accepted limit of the migration.
+
+In dev, `next dev`'s `rewrites()` in `next.config.ts` still proxies `/v1.0/*` and `/.well-known/*`
+to `DEV_API_ORIGIN` (default `http://localhost:8001`), so local work needs no CORS configuration.
+That is the one place dev and prod differ on purpose. `rewrites()` and `output: 'export'` are
+mutually exclusive, which is why they're gated on `NODE_ENV === 'production'` in `next.config.ts`.
 
 Handles login, registration, MFA, passkeys, account management (sessions, API keys, OAuth clients,
 connected apps, KYC/identity), and the OAuth 2.0 + PKCE authorization-code dance — all client-side.
