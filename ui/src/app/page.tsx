@@ -46,6 +46,9 @@ export default function Home() {
       <footer className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-6 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>© {new Date().getFullYear()} A O CARVALHO TECH</p>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
+          <Link href="/support" className="hover:text-foreground">
+            {t('home.footer.support')}
+          </Link>
           <Link href="/terms" className="hover:text-foreground">
             {t('home.footer.terms')}
           </Link>

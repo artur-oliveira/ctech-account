@@ -15,6 +15,7 @@
     "connectedApps": "Apps conectados",
     "activity": "Atividade",
     "identity": "Identidade",
+    "support": "Suporte",
     "menu": "Menu"
   },
   "common": {
@@ -592,7 +593,109 @@
     "description": "Entre uma vez e acesse a Wallet, o DF-e e os próximos produtos CTech com segurança de nível empresarial.",
     "footer": {
       "terms": "Termos de Uso",
+      "support": "Ajuda",
       "privacy": "Privacidade"
+    }
+  },
+  "support": {
+    "title": "Fale com o suporte",
+    "subtitle": "Descreva o problema e nossa equipe responderá por este portal.",
+    "categoryLabel": "Assunto",
+    "subcategoryLabel": "Subassunto",
+    "subcategoryPlaceholder": "Selecione o subassunto",
+    "otherSubjectLabel": "Qual é o assunto?",
+    "emailLabel": "E-mail",
+    "priorityLabel": "Prioridade",
+    "priority": {
+      "low": "Baixa",
+      "medium": "Média",
+      "high": "Alta",
+      "urgent": "Urgente",
+      "critical": "Crítica"
+    },
+    "bodyLabel": "Mensagem",
+    "submit": "Enviar ticket",
+    "submitting": "Enviando…",
+    "captchaRequired": "Conclua a verificação de segurança.",
+    "subcategoryRequired": "Selecione o subassunto.",
+    "captchaError": "A verificação não pôde ser carregada.",
+    "genericError": "Não foi possível enviar o ticket. Tente novamente.",
+    "categories": {
+      "account": "Conta e login",
+      "kyc": "KYC e verificação",
+      "wallet": "Wallet",
+      "dfe": "DF-e",
+      "billing": "Billing",
+      "poker": "Poker",
+      "other": "Outro"
+    },
+    "subcategories": {
+      "login_issue": "Não consigo fazer login",
+      "password_reset": "Esqueci minha senha",
+      "email_verification": "Verificação de e-mail",
+      "mfa_passkeys": "Autenticação em duas etapas ou passkeys",
+      "profile_data": "Alterar dados cadastrais",
+      "documents_rejected": "Documentos reprovados",
+      "review_delay": "Verificação demorando",
+      "change_data": "Alterar CPF ou dados enviados",
+      "deposit": "Problema com depósito",
+      "withdrawal": "Problema com saque",
+      "balance": "Saldo incorreto",
+      "issue_note": "Erro ao emitir nota",
+      "cancel_note": "Cancelamento de nota",
+      "other_dfe": "Outro assunto de DF-e",
+      "wrong_charge": "Cobrança indevida",
+      "invoice": "Nota fiscal ou recibo",
+      "cancel_plan": "Cancelamento de plano",
+      "table_issue": "Problema em mesa ou torneio",
+      "chips_balance": "Fichas ou saldo",
+      "player_conduct": "Conduta de outro jogador"
+    },
+    "ticket": {
+      "loading": "Carregando ticket…",
+      "notFound": "Não foi possível carregar este ticket.",
+      "invalid": "Ticket inválido.",
+      "authorUser": "Você",
+      "authorAgent": "Suporte",
+      "authorSystem": "Sistema",
+      "replyPlaceholder": "Escreva uma resposta",
+      "reply": "Responder",
+      "replying": "Enviando…",
+      "status": {
+        "open": "Aberto",
+        "answered": "Respondido",
+        "closed": "Encerrado"
+      },
+      "nps": {
+        "title": "Como foi seu atendimento?",
+        "subtitle": "Seu ticket foi encerrado. Uma avaliação rápida nos ajuda a melhorar.",
+        "messagePlaceholder": "Conte o que aconteceu",
+        "messageRequired": "Conte o que aconteceu (mínimo 15 caracteres).",
+        "submit": "Enviar avaliação",
+        "submitting": "Enviando…",
+        "thanks": "Obrigado pela avaliação!"
+      }
+    },
+    "mine": {
+      "title": "Meus tickets",
+      "subtitle": "Acompanhe suas solicitações de suporte.",
+      "newTicket": "Novo ticket",
+      "empty": "Nenhum ticket ainda.",
+      "emptyCta": "Falar com o suporte",
+      "loadMore": "Carregar mais",
+      "loading": "Carregando…",
+      "priority": "Prioridade"
+    },
+    "admin": {
+      "title": "Fila de suporte",
+      "subtitle": "Tickets abertos aguardando atendimento.",
+      "empty": "Nenhum ticket nessa fila.",
+      "statusFilter": "Status",
+      "reply": "Responder",
+      "replyPlaceholder": "Escreva uma resposta para o cliente",
+      "replying": "Enviando…",
+      "statusLabel": "Status",
+      "back": "Voltar para a fila"
     }
   }
 }

@@ -15,6 +15,8 @@ import type {
   PresignedUpload,
   ScopeService,
   Session,
+  SupportMessage,
+  SupportTicket,
   User,
 } from './types'
 
@@ -74,6 +76,24 @@ function mockTotpEnabled(): boolean {
   return window.localStorage.getItem('mock_totp_enabled') === 'true'
 }
 
+// mock_support_role -> '' | 'agent' | 'manager' | 'admin', flips the
+// /admin/support gate on. Default '' exercises the "regular user redirected
+// away" scenario without extra setup.
+function mockSupportRole(): '' | 'agent' | 'manager' | 'admin' {
+  if (typeof window === 'undefined' || !USE_MOCK) return ''
+  const raw = window.localStorage.getItem('mock_support_role')
+  return raw === 'agent' || raw === 'manager' || raw === 'admin' ? raw : ''
+}
+
+function mockSupportMessage(overrides: Partial<SupportMessage>): SupportMessage {
+  return {
+    author_type: 'user',
+    body: '',
+    created_at: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
 function mockSession(overrides: Partial<Session>): Session {
   return {
     session_id: mockId('sess'),
@@ -101,6 +121,7 @@ const state = {
     email_verified: true,
     has_password: true,
     google_linked: false,
+    support_role: mockSupportRole(),
     created_at: new Date('2026-01-01').toISOString(),
     terms_pending: { tos: false, privacy: false },
   } as User,
@@ -163,6 +184,45 @@ const state = {
       { scope: 'kyc', description: 'Read your verified identity level', description_pt: 'Ler seu nível de identidade verificada' },
     ] },
   ] as ScopeService[],
+  // Seeded to exercise every ticket-thread scenario: open, answered, closed
+  // without an NPS score yet, closed with one already submitted, and one
+  // anonymous submission (no user_id) that only the admin queue — not "my
+  // tickets" — should surface.
+  supportTickets: [
+    { id: 'TICKET_supp_open', ticket_number: 101, user_id: 'mock_user', subject_category: 'account', subject_other: 'Conta e login — Não consigo fazer login', priority: 'high', status: 'open', created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), last_message_at: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    { id: 'TICKET_supp_answered', ticket_number: 102, user_id: 'mock_user', subject_category: 'wallet', subject_other: 'Wallet — Problema com depósito', priority: 'medium', status: 'answered', created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: 'TICKET_supp_closed_no_nps', ticket_number: 103, user_id: 'mock_user', subject_category: 'kyc', subject_other: 'KYC e verificação — Documentos reprovados', priority: 'low', status: 'closed', created_at: new Date(Date.now() - 6 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 5 * 86_400_000).toISOString() },
+    { id: 'TICKET_supp_closed_with_nps', ticket_number: 104, user_id: 'mock_user', subject_category: 'billing', subject_other: 'Billing — Cobrança indevida', priority: 'urgent', status: 'closed', created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), nps_score: 5 },
+    { id: 'TICKET_supp_anon', ticket_number: 105, subject_category: 'other', subject_other: 'Problema não listado no catálogo', priority: 'critical', status: 'open', created_at: new Date(Date.now() - 30 * 60_000).toISOString(), last_message_at: new Date(Date.now() - 30 * 60_000).toISOString() },
+  ] as SupportTicket[],
+  supportMessages: {
+    TICKET_supp_open: [
+      mockSupportMessage({ author_type: 'system', body: 'Ticket criado.', created_at: new Date(Date.now() - 2 * 3_600_000).toISOString() }),
+      mockSupportMessage({ author_type: 'user', body: 'Não consigo fazer login desde ontem à noite, a senha não é aceita.', created_at: new Date(Date.now() - 2 * 3_600_000 + 1000).toISOString() }),
+    ],
+    TICKET_supp_answered: [
+      mockSupportMessage({ author_type: 'system', body: 'Ticket criado.', created_at: new Date(Date.now() - 2 * 86_400_000).toISOString() }),
+      mockSupportMessage({ author_type: 'user', body: 'Fiz um depósito e o saldo não atualizou.', created_at: new Date(Date.now() - 2 * 86_400_000 + 1000).toISOString() }),
+      mockSupportMessage({ author_type: 'agent', body: 'Olá! Verificamos e o depósito foi processado, deve refletir em até 1 hora. Qualquer coisa nos avise.', created_at: new Date(Date.now() - 3_600_000).toISOString() }),
+    ],
+    TICKET_supp_closed_no_nps: [
+      mockSupportMessage({ author_type: 'system', body: 'Ticket criado.', created_at: new Date(Date.now() - 6 * 86_400_000).toISOString() }),
+      mockSupportMessage({ author_type: 'user', body: 'Meus documentos de KYC foram reprovados sem explicação clara.', created_at: new Date(Date.now() - 6 * 86_400_000 + 1000).toISOString() }),
+      mockSupportMessage({ author_type: 'agent', body: 'A foto do documento estava ilegível. Por favor reenvie pelo fluxo de KYC.', created_at: new Date(Date.now() - 5 * 86_400_000 - 1000).toISOString() }),
+      mockSupportMessage({ author_type: 'system', body: 'Status alterado para "closed".', created_at: new Date(Date.now() - 5 * 86_400_000).toISOString() }),
+    ],
+    TICKET_supp_closed_with_nps: [
+      mockSupportMessage({ author_type: 'system', body: 'Ticket criado.', created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() }),
+      mockSupportMessage({ author_type: 'user', body: 'Fui cobrado duas vezes no mesmo mês.', created_at: new Date(Date.now() - 10 * 86_400_000 + 1000).toISOString() }),
+      mockSupportMessage({ author_type: 'agent', body: 'Identificamos a duplicidade e o estorno já foi processado.', created_at: new Date(Date.now() - 9 * 86_400_000 - 1000).toISOString() }),
+      mockSupportMessage({ author_type: 'system', body: 'Status alterado para "closed".', created_at: new Date(Date.now() - 9 * 86_400_000).toISOString() }),
+      mockSupportMessage({ author_type: 'system', body: 'Avaliação NPS registrada.', created_at: new Date(Date.now() - 9 * 86_400_000 + 500).toISOString() }),
+    ],
+    TICKET_supp_anon: [
+      mockSupportMessage({ author_type: 'system', body: 'Ticket criado.', created_at: new Date(Date.now() - 30 * 60_000).toISOString() }),
+      mockSupportMessage({ author_type: 'user', body: 'Não encontrei uma categoria para o meu problema na lista.', created_at: new Date(Date.now() - 30 * 60_000 + 1000).toISOString() }),
+    ],
+  } as Record<string, SupportMessage[]>,
 }
 
 function ok<T>(data: T, config: InternalAxiosRequestConfig): AxiosResponse<T> {
@@ -231,7 +291,96 @@ const routes: Route[] = [
   },
   { method: 'get', pattern: /^\/v1\.0\/account\/activity/, handle: () => ({ events: state.activity, next_cursor: '' }) },
   { method: 'get', pattern: /^\/v1\.0\/account\/kyc$/, handle: () => state.kyc },
+  { method: 'get', pattern: /^\/v1\.0\/account\/support\/tickets$/, handle: () => ({ tickets: state.supportTickets.filter((t) => t.user_id === state.user.user_id), next_cursor: '' }) },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/admin\/support\/tickets$/,
+    handle: (_m, _b, config) => {
+      const status = new URL(config.url ?? '', 'http://mock').searchParams.get('status') || 'open'
+      return { tickets: state.supportTickets.filter((t) => t.status === status), next_cursor: '' }
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)$/,
+    handle: (m, _b, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      return { ticket, messages: state.supportMessages[ticket.id] ?? [] }
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/support\/tickets\/([^/]+)$/,
+    handle: (m, _b, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      return { ticket, messages: state.supportMessages[ticket.id] ?? [] }
+    },
+  },
 
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/support\/tickets$/,
+    handle: (_m, body, config) => {
+      const isAuthenticated = Boolean(config.headers?.Authorization)
+      const id = mockId('TICKET')
+      const ticket: SupportTicket = {
+        id,
+        ticket_number: state.supportTickets.length + 101,
+        user_id: isAuthenticated ? state.user.user_id : undefined,
+        subject_category: String(body.subject_category ?? 'other'),
+        subject_other: body.subject_other ? String(body.subject_other) : undefined,
+        priority: (body.priority as SupportTicket['priority']) ?? 'low',
+        status: 'open',
+        created_at: new Date().toISOString(),
+        last_message_at: new Date().toISOString(),
+      }
+      state.supportTickets.unshift(ticket)
+      state.supportMessages[id] = [
+        mockSupportMessage({ author_type: 'system', body: 'Ticket criado.' }),
+        mockSupportMessage({ author_type: 'user', body: String(body.body ?? '') }),
+      ]
+      const anonymousToken = ticket.user_id ? undefined : mockId('anontoken')
+      return { ticket_id: id.replace('TICKET_', ''), ticket_number: ticket.ticket_number, anonymous_token: anonymousToken }
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/support\/tickets\/([^/]+)\/reply$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      const now = new Date().toISOString()
+      state.supportMessages[ticket.id] = [...(state.supportMessages[ticket.id] ?? []), mockSupportMessage({ author_type: 'user', body: String(body.body ?? ''), created_at: now })]
+      ticket.last_message_at = now
+      if (ticket.status === 'closed') ticket.status = 'open'
+      return {}
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/support\/tickets\/([^/]+)\/nps$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      ticket.nps_score = Number(body.score ?? 0)
+      return {}
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)\/reply$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      const now = new Date().toISOString()
+      state.supportMessages[ticket.id] = [...(state.supportMessages[ticket.id] ?? []), mockSupportMessage({ author_type: 'agent', body: String(body.body ?? ''), created_at: now })]
+      ticket.status = 'answered'
+      ticket.last_message_at = now
+      return { message: state.supportMessages[ticket.id].at(-1), ticket }
+    },
+  },
   { method: 'post', pattern: /^\/v1\.0\/auth\/login$/, handle: () => ({ requires_mfa: false }) },
   { method: 'post', pattern: /^\/v1\.0\/auth\/mfa\/challenge$/, handle: () => ({}) },
   { method: 'post', pattern: /^\/v1\.0\/auth\/accept-terms$/, handle: () => ({ redirect: '/account' }) },
@@ -367,6 +516,16 @@ const routes: Route[] = [
     },
   },
 
+  {
+    method: 'put',
+    pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)\/status$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
+      ticket.status = String(body.status ?? ticket.status) as SupportTicket['status']
+      return {}
+    },
+  },
   { method: 'put', pattern: /^\/__mock_upload__/, handle: () => ({}) },
   {
     method: 'put',

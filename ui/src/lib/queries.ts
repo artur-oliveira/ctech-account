@@ -1,5 +1,5 @@
 import { api, isAxiosError } from './axios'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportMessage, SupportTicket } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -64,4 +64,24 @@ export async function fetchActivity(cursor: string): Promise<ActivityPage> {
 export async function fetchKYC(): Promise<KYCStatus> {
   const { data } = await api.get<KYCStatus>('/v1.0/account/kyc')
   return data
+}
+
+export async function fetchSupportTicket(id: string, token = ''): Promise<{ ticket: SupportTicket; messages: SupportMessage[] }> {
+  const { data } = await api.get(`/v1.0/support/tickets/${encodeURIComponent(id)}${token ? `?token=${encodeURIComponent(token)}` : ''}`)
+  return { ticket: data.ticket, messages: data.messages ?? [] }
+}
+
+export async function fetchMySupportTickets(cursor = ''): Promise<{ tickets: SupportTicket[]; next_cursor: string }> {
+  const { data } = await api.get(`/v1.0/account/support/tickets${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`)
+  return { tickets: data.tickets ?? [], next_cursor: data.next_cursor ?? '' }
+}
+
+export async function fetchAdminSupportTickets(status = 'open'): Promise<{ tickets: SupportTicket[]; next_cursor: string }> {
+  const { data } = await api.get(`/v1.0/admin/support/tickets?status=${encodeURIComponent(status)}`)
+  return { tickets: data.tickets ?? [], next_cursor: data.next_cursor ?? '' }
+}
+
+export async function fetchAdminSupportTicket(id: string): Promise<{ ticket: SupportTicket; messages: SupportMessage[] }> {
+  const { data } = await api.get(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}`)
+  return { ticket: data.ticket, messages: data.messages ?? [] }
 }

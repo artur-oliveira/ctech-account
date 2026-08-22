@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Activity,
   IdCard,
+  LifeBuoy,
 } from 'lucide-react'
 
 export function AccountNav() {
@@ -36,6 +37,7 @@ export function AccountNav() {
     { href: '/account/identity', label: t('nav.identity'), icon: IdCard },
     { href: '/account/sessions', label: t('nav.sessions'), icon: MonitorSmartphone },
     { href: '/account/activity', label: t('nav.activity'), icon: Activity },
+    { href: '/account/support', label: t('nav.support'), icon: LifeBuoy },
     { href: '/account/api-keys', label: t('nav.apiKeys'), icon: Key },
     { href: '/account/oauth-clients', label: t('nav.oauthClients'), icon: AppWindow },
     { href: '/account/connected-apps', label: t('nav.connectedApps'), icon: Blocks },

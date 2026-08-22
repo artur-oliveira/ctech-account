@@ -16,9 +16,13 @@ export type User = {
   has_password: boolean
   /** Whether a Google identity is bound — drives the Link/Unlink Google UI. The raw sub is never exposed. */
   google_linked: boolean
+  support_role: '' | 'agent' | 'manager' | 'admin'
   created_at: string
   terms_pending: TermsPending
 }
+
+export type SupportTicket = { id: string; ticket_number: number; user_id?: string; subject_category: string; subject_other?: string; priority: 'low'|'medium'|'high'|'urgent'|'critical'; status: 'open'|'answered'|'closed'; created_at: string; last_message_at: string; nps_score?: number }
+export type SupportMessage = { author_type: 'user'|'agent'|'system'; body: string; created_at: string }
 
 export type Session = {
   session_id: string

@@ -188,6 +188,16 @@ export async function resendVerificationAPI(email: string) {
   await api.post('/v1.0/auth/resend-verification', { email })
 }
 
+export async function createSupportTicketAPI(body: { subject_category: string; subject_other?: string; priority?: string; body: string; email?: string; turnstile_token: string }) {
+  const { data } = await api.post<{ ticket_id: string; ticket_number: number; anonymous_token?: string }>('/v1.0/support/tickets', body)
+  return data
+}
+
+export async function replySupportTicketAPI(id: string, body: string, token = '') { await api.post(`/v1.0/support/tickets/${encodeURIComponent(id)}/reply${token ? `?token=${encodeURIComponent(token)}` : ''}`, { body }) }
+export async function submitSupportTicketNPSAPI(id: string, score: number, message: string, token = '') { await api.post(`/v1.0/support/tickets/${encodeURIComponent(id)}/nps${token ? `?token=${encodeURIComponent(token)}` : ''}`, { score, message }) }
+export async function replyAdminSupportTicketAPI(id: string, body: string) { await api.post(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/reply`, { body }) }
+export async function setAdminSupportTicketStatusAPI(id: string, status: string) { await api.put(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/status`, { status }) }
+
 export async function beginPasskeyAuthAPI() {
   const { data } = await api.post<{ session_token: string; options: string }>(
     '/v1.0/auth/passkeys/authenticate/begin',

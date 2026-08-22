@@ -15,6 +15,7 @@
     "connectedApps": "Connected apps",
     "activity": "Activity",
     "identity": "Identity",
+    "support": "Support",
     "menu": "Menu"
   },
   "common": {
@@ -440,7 +441,12 @@
     "loadMore": "Load more",
     "loading": "Loading…",
     "filterLabel": "Filter activity",
-    "filters": { "all": "All activity", "signIn": "Sign-ins and verification", "security": "Security changes", "developer": "Developer and app access" },
+    "filters": {
+      "all": "All activity",
+      "signIn": "Sign-ins and verification",
+      "security": "Security changes",
+      "developer": "Developer and app access"
+    },
     "events": {
       "login.success": "Signed in",
       "login.failed": "Failed sign-in attempt",
@@ -587,7 +593,109 @@
     "description": "Sign in once and access Wallet, DF-e, and upcoming CTech products with enterprise-grade security.",
     "footer": {
       "terms": "Terms of Use",
+      "support": "Support",
       "privacy": "Privacy"
+    }
+  },
+  "support": {
+    "title": "Contact support",
+    "subtitle": "Describe the problem and our team will reply through this portal.",
+    "categoryLabel": "Subject",
+    "subcategoryLabel": "Subcategory",
+    "subcategoryPlaceholder": "Select a subcategory",
+    "otherSubjectLabel": "What's this about?",
+    "emailLabel": "Email",
+    "priorityLabel": "Priority",
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent",
+      "critical": "Critical"
+    },
+    "bodyLabel": "Message",
+    "submit": "Send ticket",
+    "submitting": "Sending…",
+    "captchaRequired": "Complete the security check.",
+    "subcategoryRequired": "Select a subcategory.",
+    "captchaError": "The security check couldn't load.",
+    "genericError": "Couldn't send the ticket. Please try again.",
+    "categories": {
+      "account": "Account and login",
+      "kyc": "KYC and verification",
+      "wallet": "Wallet",
+      "dfe": "DF-e",
+      "billing": "Billing",
+      "poker": "Poker",
+      "other": "Other"
+    },
+    "subcategories": {
+      "login_issue": "I can't sign in",
+      "password_reset": "I forgot my password",
+      "email_verification": "Email verification",
+      "mfa_passkeys": "Two-factor authentication or passkeys",
+      "profile_data": "Update my account details",
+      "documents_rejected": "Documents were rejected",
+      "review_delay": "Verification is taking too long",
+      "change_data": "Change my CPF or submitted details",
+      "deposit": "Problem with a deposit",
+      "withdrawal": "Problem with a withdrawal",
+      "balance": "Incorrect balance",
+      "issue_note": "Error issuing an invoice",
+      "cancel_note": "Cancel an invoice",
+      "other_dfe": "Another DF-e subject",
+      "wrong_charge": "Incorrect charge",
+      "invoice": "Invoice or receipt",
+      "cancel_plan": "Cancel my plan",
+      "table_issue": "Problem at a table or tournament",
+      "chips_balance": "Chips or balance",
+      "player_conduct": "Another player's conduct"
+    },
+    "ticket": {
+      "loading": "Loading ticket…",
+      "notFound": "This ticket couldn't be loaded.",
+      "invalid": "Invalid ticket.",
+      "authorUser": "You",
+      "authorAgent": "Support",
+      "authorSystem": "System",
+      "replyPlaceholder": "Write a reply",
+      "reply": "Reply",
+      "replying": "Sending…",
+      "status": {
+        "open": "Open",
+        "answered": "Answered",
+        "closed": "Closed"
+      },
+      "nps": {
+        "title": "How was your support experience?",
+        "subtitle": "Your ticket is closed. A quick rating helps us improve.",
+        "messagePlaceholder": "Tell us what happened",
+        "messageRequired": "Please tell us what happened (minimum 15 characters).",
+        "submit": "Send feedback",
+        "submitting": "Sending…",
+        "thanks": "Thanks for your feedback!"
+      }
+    },
+    "mine": {
+      "title": "My tickets",
+      "subtitle": "Track your support requests.",
+      "newTicket": "New ticket",
+      "empty": "No tickets yet.",
+      "emptyCta": "Contact support",
+      "loadMore": "Load more",
+      "loading": "Loading…",
+      "priority": "Priority"
+    },
+    "admin": {
+      "title": "Support queue",
+      "subtitle": "Open tickets awaiting a reply.",
+      "empty": "No tickets in this queue.",
+      "statusFilter": "Status",
+      "reply": "Reply",
+      "replyPlaceholder": "Write a reply to the customer",
+      "replying": "Sending…",
+      "statusLabel": "Status",
+      "back": "Back to queue"
     }
   }
 }
