@@ -18,9 +18,13 @@ var (
 
 // Freetext bounds, per docs/specs/2026-08-22-support-tickets-design.md §3.5.
 var (
-	bodyRule         = validate.FreetextRule{Min: 15, Max: 4000}
+	bodyRule = validate.FreetextRule{Min: 15, Max: 4000, AllowNewlines: true}
+	// subjectOtherRule stays single-line: it ends up in an e-mail Subject
+	// header (ticketSubjectLine in the handler package) as well as list/UI
+	// labels, so a newline here would let a submitter inject extra raw MIME
+	// headers into the outbound SES message.
 	subjectOtherRule = validate.FreetextRule{Min: 3, Max: 120}
-	npsMessageRule   = validate.FreetextRule{Min: 15, Max: 1000}
+	npsMessageRule   = validate.FreetextRule{Min: 15, Max: 1000, AllowNewlines: true}
 )
 
 type Service struct {

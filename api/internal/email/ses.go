@@ -3,8 +3,10 @@ package email
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -76,6 +78,16 @@ func (c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, dev
 // References) — the existing send() helper uses Simple content and can't
 // express threading. Returns the assigned Message-ID (no angle brackets).
 func (c *Client) sendRaw(ctx context.Context, to, subject, htmlBody, inReplyTo, references string) (string, error) {
+	// Defense in depth: every header value must be a single line. Callers
+	// are expected to have already rejected newlines further upstream (e.g.
+	// validate.Freetext for user-submitted subject text), but a header
+	// value that reaches this far with a \r or \n would let its source
+	// inject arbitrary additional headers into the raw MIME message.
+	for _, header := range []string{to, subject, inReplyTo, references} {
+		if strings.ContainsAny(header, "\r\n") {
+			return "", errors.New("email: header value must not contain line breaks")
+		}
+	}
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", c.from)
 	fmt.Fprintf(&buf, "To: %s\r\n", to)

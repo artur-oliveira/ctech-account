@@ -11,6 +11,12 @@ import (
 type FreetextRule struct {
 	Min int
 	Max int
+	// AllowNewlines permits \n/\r in the value — set for genuine multi-line
+	// fields (a message body). Leave false for anything that ends up on a
+	// single logical line — most importantly a raw MIME header (an e-mail
+	// Subject built from user input) — where a newline lets the caller
+	// inject additional headers (CRLF/header injection).
+	AllowNewlines bool
 }
 
 // minLetterRatio is the floor for (letters / non-whitespace runes) after
@@ -28,6 +34,9 @@ const maxRepeat = 4
 // length). Returns the trimmed string on success.
 func Freetext(s string, rule FreetextRule) (string, error) {
 	trimmed := strings.TrimSpace(s)
+	if !rule.AllowNewlines && strings.ContainsAny(trimmed, "\r\n") {
+		return "", fmt.Errorf("must not contain line breaks")
+	}
 	runeLen := len([]rune(trimmed))
 	if runeLen < rule.Min {
 		return "", fmt.Errorf("must be at least %d characters long", rule.Min)

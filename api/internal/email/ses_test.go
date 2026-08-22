@@ -37,6 +37,22 @@ func newTestClientWithCapture(t *testing.T) (*Client, *fakeSES) {
 	return cli, fake
 }
 
+func TestSendRaw_RejectsHeaderInjectionInSubject(t *testing.T) {
+	cli, _ := newTestClientWithCapture(t)
+	_, err := cli.sendRaw(context.Background(), "user@example.com", "Conta e login\r\nBcc: attacker@evil.com", "<p>body</p>", "", "")
+	if err == nil {
+		t.Fatal("expected error for CRLF in subject")
+	}
+}
+
+func TestSendRaw_RejectsHeaderInjectionInThreadingHeaders(t *testing.T) {
+	cli, _ := newTestClientWithCapture(t)
+	_, err := cli.sendRaw(context.Background(), "user@example.com", "Conta e login", "<p>body</p>", "<root@ses>\r\nBcc: attacker@evil.com", "")
+	if err == nil {
+		t.Fatal("expected error for CRLF in In-Reply-To")
+	}
+}
+
 func TestSendTicketConfirmationEmail_ContainsPortalLink(t *testing.T) {
 	cli, sent := newTestClientWithCapture(t)
 	_, err := cli.SendTicketConfirmationEmail(context.Background(), "user@example.com", 42, "Conta / Login", "https://accounts.aoctech.app/support/ticket/abc?token=xyz")

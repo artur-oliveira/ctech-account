@@ -17,6 +17,9 @@ func TestFreetext(t *testing.T) {
 		{"repeated punctuation run", "..........", FreetextRule{Min: 3, Max: 100}, "", true},
 		{"no letters at all", "1234567890123456", FreetextRule{Min: 3, Max: 100}, "", true},
 		{"real sentence passes", "O botão de login não funciona no Safari", FreetextRule{Min: 15, Max: 4000}, "O botão de login não funciona no Safari", false},
+		{"rejects newline by default", "Conta e login\nBcc: attacker@evil.com", FreetextRule{Min: 3, Max: 200}, "", true},
+		{"rejects carriage return by default", "Conta e login\r\nBcc: attacker@evil.com", FreetextRule{Min: 3, Max: 200}, "", true},
+		{"allows newline when opted in", "Linha um\nLinha dois texto suficiente", FreetextRule{Min: 15, Max: 200, AllowNewlines: true}, "Linha um\nLinha dois texto suficiente", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

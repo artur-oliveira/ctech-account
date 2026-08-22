@@ -157,6 +157,18 @@ func TestCreateTicket_OtherCategoryRequiresSubjectOther(t *testing.T) {
 	}
 }
 
+func TestCreateTicket_RejectsNewlineInSubjectOther(t *testing.T) {
+	svc := NewService(newMemRepo())
+	_, err := svc.CreateTicket(context.Background(), CreateTicketInput{
+		UserID: "user-1", SubjectCategory: CategoryAccount, Priority: PriorityLow,
+		SubjectOther: "Conta e login\r\nBcc: attacker@evil.com",
+		Body:         "Não consigo acessar minha conta desde ontem à noite.",
+	})
+	if err == nil {
+		t.Fatal("expected error for CRLF in subject_other (header injection into the confirmation e-mail Subject)")
+	}
+}
+
 func TestReplyAsAgent_SetsAnsweredAndThreadsMessageID(t *testing.T) {
 	repo := newMemRepo()
 	svc := NewService(repo)
