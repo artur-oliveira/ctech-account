@@ -38,9 +38,5 @@ jobs:
       csp-overrides: |
         img-src 'self' data: blob:
         media-src 'self' blob:
-        # Keep the reusable workflow's script-src intact: it carries the
-        # hashes/nonces required by Next's bootstrap. script-src-elem is the
-        # narrowly scoped allowance for Turnstile's external api.js and the
-        # Cloudflare Web Analytics beacon injected by the hosting platform.
-        script-src-elem 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com
+        script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com
         frame-src 'self' https://challenges.cloudflare.com
