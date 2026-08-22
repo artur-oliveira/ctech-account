@@ -1,12 +1,13 @@
 package middleware
 
 import (
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const rateLimitKeyPrefix = "rl:"
@@ -70,7 +71,11 @@ type RateLimitConfig struct {
 // the request — Retry-After is advisory, not part of the enforcement path.
 func retryAfter(c fiber.Ctx, cache *cache.Client, key string) time.Duration {
 	ttl, err := cache.TTL(c.Context(), key)
-	if err != nil || ttl <= 0 {
+	if err != nil {
+		observability.Warn(c.Context(), "rate limit: failed to read retry TTL", err)
+		return 0
+	}
+	if ttl <= 0 {
 		return 0
 	}
 	return ((ttl + time.Second - 1) / time.Second) * time.Second
@@ -82,12 +87,10 @@ func retryAfter(c fiber.Ctx, cache *cache.Client, key string) time.Duration {
 // 2026-07-20 prod incident where /account/* 503'd with no logged reason.
 func denyUnavailable(c fiber.Ctx, prefix, op string, cause error) error {
 	path := c.Path()
-	if cause != nil {
-		log.Printf("ratelimit[%s]: %s failed for %s: %v", prefix, op, path, cause)
-	} else {
-		log.Printf("ratelimit[%s]: %s failed for %s (cache disabled)", prefix, op, path)
+	if cause == nil {
+		cause = fmt.Errorf("rate limit cache is disabled")
 	}
-	return apierror.ServiceUnavailable(rateLimitUnavailableMsg, path).Send(c)
+	return apierror.ServiceUnavailable(rateLimitUnavailableMsg, path).WithCause(fmt.Errorf("ratelimit[%s] %s: %w", prefix, op, cause)).Send(c)
 }
 
 // RateLimit returns a Fiber middleware enforcing the given RateLimitConfig.
@@ -117,6 +120,9 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			if err != nil && cfg.FailClosed {
 				return denyUnavailable(c, cfg.Prefix, "count", err)
 			}
+			if err != nil {
+				observability.Warn(c.Context(), "rate limit: counter read failed open", err, "prefix", cfg.Prefix)
+			}
 			if err == nil && n >= cfg.Max {
 				return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
 			}
@@ -124,7 +130,9 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			err = c.Next()
 			skip, _ := c.Locals(localsSkipRateLimitCount).(bool)
 			if c.Response().StatusCode() >= fiber.StatusBadRequest && !skip {
-				_, _ = cfg.Cache.Incr(c.Context(), key, cfg.Window)
+				if _, incrErr := cfg.Cache.Incr(c.Context(), key, cfg.Window); incrErr != nil {
+					observability.Error(c.Context(), "rate limit: failed to count rejected request", incrErr, "prefix", cfg.Prefix)
+				}
 			}
 			return err
 		}
@@ -136,6 +144,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			if cfg.FailClosed {
 				return denyUnavailable(c, cfg.Prefix, "incr", err)
 			}
+			observability.Warn(c.Context(), "rate limit: request counter failed open", err, "prefix", cfg.Prefix)
 			return c.Next()
 		}
 		if n > cfg.Max {

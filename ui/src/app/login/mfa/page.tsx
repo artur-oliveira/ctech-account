@@ -16,6 +16,7 @@ import {mfaChallengeAPI} from '@/lib/mutations'
 import {sanitizeContinue} from '@/lib/safe-redirect'
 import {isTOTPMFAMethod, MFA_INVALID_TOKEN_PROBLEM, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useSessionItem} from '@/hooks/use-session-item'
+import {reportClientError} from '@/lib/client-logging'
 
 const MFA_CODE_LENGTH = 6
 
@@ -65,6 +66,7 @@ function MFAForm() {
       sessionStorage.removeItem(MFA_METHODS_KEY)
       await startOAuthFlow(continueURL)
     } catch (err) {
+      reportClientError('mfa-login', err)
       if (isAxiosError(err)) {
         const problemType = err.response?.data?.type
         // mfa_token is dead (expired, or invalidated after too many wrong

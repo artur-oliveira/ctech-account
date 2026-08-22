@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/cache"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 var startTime = time.Now()
@@ -48,8 +49,8 @@ func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Cl
 
 		dynamo := checkDynamoDB(ctx, db, pingTable, now)
 		valkey := checkValkey(ctx, valkeyClient, now, valkeyRequired)
-		cpu := checkCPU(now)
-		mem := checkMemory(now)
+		cpu := checkCPU(ctx, now)
+		mem := checkMemory(ctx, now)
 		uptime := healthEntry{
 			ComponentName:   "server",
 			MeasurementName: "uptime",
@@ -106,6 +107,7 @@ func checkDynamoDB(ctx context.Context, db *dynamodb.Client, table, nowStr strin
 	st := "pass"
 	if err != nil {
 		st = "fail"
+		observability.Error(ctx, "health check: DynamoDB probe failed", err)
 	}
 	return healthEntry{"dynamodb", "responseTime", "datastore:database", ms, "ms", st, nowStr}
 }
@@ -129,12 +131,13 @@ func checkValkey(ctx context.Context, cl *cache.Client, nowStr string, required 
 	st := "pass"
 	if err != nil {
 		st = "fail"
+		observability.Error(ctx, "health check: Valkey probe failed", err)
 	}
 	return healthEntry{"valkey", "responseTime", "datastore:cache", ms, "ms", st, nowStr}
 }
 
-func checkCPU(nowStr string) healthEntry {
-	pct := cpuPercent()
+func checkCPU(ctx context.Context, nowStr string) healthEntry {
+	pct := cpuPercent(ctx)
 	st := "pass"
 	if pct < 0 || pct > 90 {
 		st = "warn"
@@ -142,8 +145,8 @@ func checkCPU(nowStr string) healthEntry {
 	return healthEntry{"cpu", "utilization", "system", pct, "percent", st, nowStr}
 }
 
-func checkMemory(nowStr string) healthEntry {
-	pct := memoryPercent()
+func checkMemory(ctx context.Context, nowStr string) healthEntry {
+	pct := memoryPercent(ctx)
 	st := "pass"
 	if pct < 0 || pct > 90 {
 		st = "warn"
@@ -151,14 +154,22 @@ func checkMemory(nowStr string) healthEntry {
 	return healthEntry{"memory", "utilization", "system", pct, "percent", st, nowStr}
 }
 
-func cpuSample() (idle, total int64, ok bool) {
+func cpuSample(ctx context.Context) (idle, total int64, ok bool) {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
+		observability.Warn(ctx, "health check: failed to open /proc/stat", err)
 		return 0, 0, false
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			observability.Warn(ctx, "health check: failed to close /proc/stat", closeErr)
+		}
+	}()
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
+		if scanErr := scanner.Err(); scanErr != nil {
+			observability.Warn(ctx, "health check: failed to read /proc/stat", scanErr)
+		}
 		return 0, 0, false
 	}
 	fields := strings.Fields(scanner.Text())
@@ -169,6 +180,7 @@ func cpuSample() (idle, total int64, ok bool) {
 	for _, s := range fields[1:] {
 		v, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
+			observability.Warn(ctx, "health check: failed to parse /proc/stat", err, "value", s)
 			break
 		}
 		vals = append(vals, v)
@@ -190,16 +202,16 @@ func cpuSample() (idle, total int64, ok bool) {
 // cpuPercent reads /proc/stat twice ~150ms apart and divides the delta. A
 // single sample (as before) is the since-boot average, which misleads
 // autoscaling (BUG-040).
-func cpuPercent() float64 {
+func cpuPercent(ctx context.Context) float64 {
 	if runtime.GOOS != "linux" {
 		return -1
 	}
-	idle1, total1, ok1 := cpuSample()
+	idle1, total1, ok1 := cpuSample(ctx)
 	if !ok1 {
 		return -1
 	}
 	time.Sleep(150 * time.Millisecond)
-	idle2, total2, ok2 := cpuSample()
+	idle2, total2, ok2 := cpuSample(ctx)
 	if !ok2 {
 		return -1
 	}
@@ -211,15 +223,20 @@ func cpuPercent() float64 {
 	return roundOne(100.0 * float64(totalDelta-idleDelta) / float64(totalDelta))
 }
 
-func memoryPercent() float64 {
+func memoryPercent(ctx context.Context) float64 {
 	if runtime.GOOS != "linux" {
 		return -1
 	}
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
+		observability.Warn(ctx, "health check: failed to open /proc/meminfo", err)
 		return -1
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			observability.Warn(ctx, "health check: failed to close /proc/meminfo", closeErr)
+		}
+	}()
 	info := map[string]int64{}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -236,7 +253,12 @@ func memoryPercent() float64 {
 		v, err := strconv.ParseInt(valStr[0], 10, 64)
 		if err == nil {
 			info[key] = v
+		} else {
+			observability.Warn(ctx, "health check: failed to parse /proc/meminfo", err, "key", key)
 		}
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		observability.Warn(ctx, "health check: failed while scanning /proc/meminfo", scanErr)
 	}
 	total, ok1 := info["MemTotal"]
 	available, ok2 := info["MemAvailable"]

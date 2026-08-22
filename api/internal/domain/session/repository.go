@@ -175,7 +175,10 @@ func (r *dynamoRepository) GetConsumedByHash(ctx context.Context, tokenHash stri
 
 func (r *dynamoRepository) UpdateRefreshTokenHash(ctx context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
 	sk := BuildRefreshSK(sessionID, clientID)
-	oldAV, _ := attributevalue.Marshal(oldHash)
+	oldAV, err := attributevalue.Marshal(oldHash)
+	if err != nil {
+		return fmt.Errorf("marshaling previous refresh token hash: %w", err)
+	}
 	updates := map[string]any{
 		"refresh_token_hash": newHash,
 		"last_used_at":       time.Now().UTC().Format(time.RFC3339),

@@ -9,6 +9,7 @@ import (
 
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 // ErrInvalidCredentials is returned when login credentials are incorrect or the account is disabled.
@@ -54,8 +55,12 @@ func (s *Service) Register(ctx context.Context, email, password, firstName, last
 	if existing != nil {
 		// Email taken: hash a random string so this branch costs as much as the
 		// success branch. Closing the enumeration timing oracle.
-		if dummy, _, derr := crypto.GenerateOpaqueToken(); derr == nil {
-			_, _ = crypto.HashPassword(dummy)
+		dummy, _, derr := crypto.GenerateOpaqueToken()
+		if derr != nil {
+			return nil, fmt.Errorf("generating dummy password: %w", derr)
+		}
+		if _, hashErr := crypto.HashPassword(dummy); hashErr != nil {
+			return nil, fmt.Errorf("hashing dummy password: %w", hashErr)
 		}
 		return nil, ErrEmailConflict
 	}
@@ -87,7 +92,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, err
 		if errors.Is(err, ErrNotFound) {
 			// Burn the same Argon2 work as a real verification so response time
 			// doesn't reveal whether the email exists.
-			crypto.VerifyDummyPassword(password)
+			if dummyErr := crypto.VerifyDummyPassword(password); dummyErr != nil {
+				return nil, fmt.Errorf("verifying dummy password: %w", dummyErr)
+			}
 			return nil, ErrInvalidCredentials
 		}
 		return nil, fmt.Errorf("fetching user: %w", err)
@@ -95,7 +102,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, err
 
 	// Passwordless account (created via Google): no password login is possible.
 	if u.PasswordHash == "" {
-		crypto.VerifyDummyPassword(password)
+		if dummyErr := crypto.VerifyDummyPassword(password); dummyErr != nil {
+			return nil, fmt.Errorf("verifying dummy password: %w", dummyErr)
+		}
 		return nil, ErrInvalidCredentials
 	}
 
@@ -222,7 +231,9 @@ func (s *Service) FindOrCreateByGoogle(ctx context.Context, googleSub, email, fi
 		// linking). Safe to log in even though it also has a password.
 		if u.GoogleSub == googleSub {
 			if avatarURL != "" && u.AvatarURL != avatarURL {
-				_ = s.repo.Update(ctx, u.ID(), map[string]any{"avatar_url": avatarURL})
+				if updateErr := s.repo.Update(ctx, u.ID(), map[string]any{"avatar_url": avatarURL}); updateErr != nil {
+					observability.Warn(ctx, "google login: failed to update avatar", updateErr, "user_id", u.ID())
+				}
 				u.AvatarURL = avatarURL
 			}
 			return u, false, nil
@@ -247,7 +258,9 @@ func (s *Service) FindOrCreateByGoogle(ctx context.Context, googleSub, email, fi
 		}
 		// Existing user — update avatar if changed.
 		if avatarURL != "" && u.AvatarURL != avatarURL {
-			_ = s.repo.Update(ctx, u.ID(), map[string]any{"avatar_url": avatarURL})
+			if updateErr := s.repo.Update(ctx, u.ID(), map[string]any{"avatar_url": avatarURL}); updateErr != nil {
+				observability.Warn(ctx, "google login: failed to update avatar", updateErr, "user_id", u.ID())
+			}
 			u.AvatarURL = avatarURL
 		}
 		return u, false, nil

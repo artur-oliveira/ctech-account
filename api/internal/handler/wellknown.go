@@ -31,7 +31,7 @@ func (h *WellKnownHandler) Register(app *fiber.App) {
 func (h *WellKnownHandler) ProtectedResource(c fiber.Ctx) error {
 	supported, err := scopes.AccountPublicScopes()
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{
 		"resource":              h.resource,

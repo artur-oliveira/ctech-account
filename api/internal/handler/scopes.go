@@ -23,7 +23,7 @@ func (h *ScopesHandler) Register(v1 fiber.Router) {
 func (h *ScopesHandler) list(c fiber.Ctx) error {
 	services, err := h.catalogSvc.Catalog(c.Context())
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	public := make([]scopes.PublicServiceScopes, 0, len(services))
 	for _, s := range scopes.FilterPublic(services) {

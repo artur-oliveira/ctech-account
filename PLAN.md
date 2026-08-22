@@ -153,6 +153,8 @@ for the full spec and implementation plan.
 - [x] `internal/handler/support.go`, `support_admin.go` — public/account/admin routes
 - [x] `internal/handler/profile.go` — expose `support_role` on `GET /account/profile`
 - [x] `cmd/api/main.go` — wire repository/service/handlers, mount `/v1.0/support`, `/v1.0/account/support`, `/v1.0/admin`
+- [x] Production error-observability audit — structured backend logging with request correlation,
+      explicit logs for support-email/background failures, and sanitized frontend diagnostics
 
 ### Frontend (accounts.aoctech.app)
 

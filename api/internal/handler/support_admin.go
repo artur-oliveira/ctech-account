@@ -7,6 +7,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 type SupportAdminHandler struct {
@@ -29,7 +30,7 @@ func (h *SupportAdminHandler) list(c fiber.Ctx) error {
 	status := c.Query("status", support.StatusOpen)
 	t, n, e := h.svc.ListByStatus(c.Context(), status, c.Query("cursor"), 50)
 	if e != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(e).Send(c)
 	}
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
@@ -59,14 +60,22 @@ func (h *SupportAdminHandler) reply(c fiber.Ctx) error {
 		return supportProblem(c, e)
 	}
 	if h.email != nil {
-		if to := resolveTicketEmail(c.Context(), h.users, t); to != "" {
+		to, resolveErr := resolveTicketEmail(c.Context(), h.users, t)
+		if resolveErr != nil {
+			observability.Error(c.Context(), "support: failed to resolve ticket recipient", resolveErr,
+				"ticket_id", t.ID(), "ticket_number", t.TicketNumber)
+		} else if to != "" {
 			references := t.RootSESMessageID
 			if t.LastSESMessageID != "" && t.LastSESMessageID != t.RootSESMessageID {
 				references = t.RootSESMessageID + " " + t.LastSESMessageID
 			}
 			mid, sendErr := h.email.SendTicketReplyEmail(c.Context(), to, t.TicketNumber, ticketSubjectLine(t), m.Body, t.LastSESMessageID, references, ticketLink(h.appURL, t))
-			if sendErr == nil {
-				_ = h.svc.RecordEmailMessageID(c.Context(), t.ID(), mid, false)
+			if sendErr != nil {
+				observability.Error(c.Context(), "support: failed to send agent reply email", sendErr,
+					"ticket_id", t.ID(), "ticket_number", t.TicketNumber)
+			} else if err := h.svc.RecordEmailMessageID(c.Context(), t.ID(), mid, false); err != nil {
+				observability.Error(c.Context(), "support: failed to persist reply email message id", err,
+					"ticket_id", t.ID(), "ticket_number", t.TicketNumber)
 			}
 		}
 	}
@@ -89,20 +98,31 @@ func (h *SupportAdminHandler) status(c fiber.Ctx) error {
 	if r.Status == support.StatusClosed {
 		if t, _, e := h.svc.GetTicketAdmin(c.Context(), c.Params("id")); e == nil {
 			beforeClose = t
+		} else {
+			observability.Error(c.Context(), "support: failed to load ticket before closing", e,
+				"ticket_id", c.Params("id"))
 		}
 	}
 	if e := h.svc.SetStatus(c.Context(), c.Params("id"), r.Status); e != nil {
 		return supportProblem(c, e)
 	}
 	if beforeClose != nil && beforeClose.NPSRequestedAt == "" && h.email != nil {
-		if to := resolveTicketEmail(c.Context(), h.users, beforeClose); to != "" {
+		to, resolveErr := resolveTicketEmail(c.Context(), h.users, beforeClose)
+		if resolveErr != nil {
+			observability.Error(c.Context(), "support: failed to resolve NPS recipient", resolveErr,
+				"ticket_id", beforeClose.ID(), "ticket_number", beforeClose.TicketNumber)
+		} else if to != "" {
 			npsLink := h.appURL + "/support/ticket?id=" + beforeClose.ID()
 			if beforeClose.IsAnonymous() {
 				npsLink += "&token=" + beforeClose.AnonymousToken
 			}
 			_, sendErr := h.email.SendTicketNPSEmail(c.Context(), to, beforeClose.TicketNumber, npsLink, beforeClose.LastSESMessageID, beforeClose.RootSESMessageID)
-			if sendErr == nil {
-				_ = h.svc.MarkNPSRequested(c.Context(), beforeClose.ID())
+			if sendErr != nil {
+				observability.Error(c.Context(), "support: failed to send NPS email", sendErr,
+					"ticket_id", beforeClose.ID(), "ticket_number", beforeClose.TicketNumber)
+			} else if err := h.svc.MarkNPSRequested(c.Context(), beforeClose.ID()); err != nil {
+				observability.Error(c.Context(), "support: failed to persist NPS request marker", err,
+					"ticket_id", beforeClose.ID(), "ticket_number", beforeClose.TicketNumber)
 			}
 		}
 	}

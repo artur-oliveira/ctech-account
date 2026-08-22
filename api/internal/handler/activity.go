@@ -48,7 +48,7 @@ func (h *ActivityHandler) list(c fiber.Ctx) error {
 
 	events, next, err := h.auditSvc.ListByUser(c.Context(), userID, c.Query("cursor"), limit)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(events))

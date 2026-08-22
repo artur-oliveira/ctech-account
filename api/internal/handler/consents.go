@@ -7,6 +7,7 @@ import (
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -32,7 +33,7 @@ func (h *ConsentsHandler) list(c fiber.Ctx) error {
 
 	grants, err := h.consentSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(grants))
@@ -40,6 +41,9 @@ func (h *ConsentsHandler) list(c fiber.Ctx) error {
 		clientName := g.ClientID()
 		if cl, cErr := h.clientRepo.GetByID(c.Context(), g.ClientID()); cErr == nil {
 			clientName = cl.Name
+		} else {
+			observability.Warn(c.Context(), "consents: failed to resolve OAuth client name", cErr,
+				"client_id", g.ClientID())
 		}
 		result = append(result, fiber.Map{
 			"client_id":   g.ClientID(),
@@ -57,7 +61,7 @@ func (h *ConsentsHandler) revoke(c fiber.Ctx) error {
 	clientID := c.Params("clientID")
 
 	if err := h.consentSvc.Revoke(c.Context(), userID, clientID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventConsentRevoked, map[string]string{"client_id": clientID})
 	return c.Status(fiber.StatusNoContent).Send(nil)

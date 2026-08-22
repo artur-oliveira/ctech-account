@@ -4,6 +4,7 @@ import {useStepUpStore} from '@/store/step-up'
 import {oauthClient, hasAuthHint, clearAuthHint} from '@/lib/oauth-client'
 import {USE_MOCK, mockAdapter} from '@/lib/mock'
 import {API_URL, CLIENT_ID} from '@/lib/env'
+import {reportAPIError} from '@/lib/client-logging'
 
 export {API_URL, CLIENT_ID}
 
@@ -58,6 +59,7 @@ api.interceptors.response.use(
       clearAuthHint()
       // A failed refresh must restart the document with all in-memory auth state cleared.
       if (typeof window !== 'undefined') window.location.href = '/login'
+      reportAPIError(error)
       return Promise.reject(error)
     }
 
@@ -84,6 +86,7 @@ api.interceptors.response.use(
       return api(original)
     }
 
+    reportAPIError(error)
     return Promise.reject(error)
   },
 )

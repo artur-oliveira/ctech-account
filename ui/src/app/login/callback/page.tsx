@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth'
 import { API_URL } from '@/lib/env'
 import { oauthClient } from '@/lib/oauth-client'
 import { sanitizeContinue } from '@/lib/safe-redirect'
+import { reportClientError } from '@/lib/client-logging'
 
 function CallbackHandler() {
   const { t } = useTranslation()
@@ -40,6 +41,7 @@ function CallbackHandler() {
           router.replace(continueURL)
         }
       } catch (err) {
+        reportClientError('oauth-callback', err)
         setError(err instanceof Error && err.message === 'OAuth state mismatch'
           ? t('callback.invalidState')
           : t('callback.tokenError'))

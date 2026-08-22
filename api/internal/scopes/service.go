@@ -2,10 +2,12 @@ package scopes
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/cache"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 // CatalogCacheKey caches the loaded catalog in Valkey. After adding a scope to
@@ -39,6 +41,8 @@ func (s *CatalogService) Catalog(ctx context.Context) ([]ServiceScopes, error) {
 		var cached []ServiceScopes
 		if err := s.cache.Get(ctx, CatalogCacheKey, &cached); err == nil && len(cached) > 0 {
 			return cached, nil
+		} else if err != nil && !errors.Is(err, cache.ErrNotFound) {
+			observability.Warn(ctx, "scope catalog: cache read failed; falling back to DynamoDB", err)
 		}
 	}
 
@@ -57,7 +61,9 @@ func (s *CatalogService) Catalog(ctx context.Context) ([]ServiceScopes, error) {
 		services = mergeResourceServers(services, resources)
 	}
 	if s.cache != nil && s.cache.Enabled() && len(services) > 0 {
-		_ = s.cache.Set(ctx, CatalogCacheKey, services, catalogCacheTTL)
+		if err := s.cache.Set(ctx, CatalogCacheKey, services, catalogCacheTTL); err != nil {
+			observability.Warn(ctx, "scope catalog: failed to populate cache", err)
+		}
 	}
 	return services, nil
 }
@@ -69,7 +75,9 @@ func (s *CatalogService) PutService(ctx context.Context, svc ServiceScopes) erro
 		return err
 	}
 	if s.cache != nil && s.cache.Enabled() {
-		_ = s.cache.Delete(ctx, CatalogCacheKey)
+		if err := s.cache.Delete(ctx, CatalogCacheKey); err != nil {
+			observability.Warn(ctx, "scope catalog: failed to invalidate cache", err)
+		}
 	}
 	return nil
 }

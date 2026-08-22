@@ -3,11 +3,13 @@ package apierror
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const baseURI = "https://accounts.aoctech.app/problems/"
@@ -33,6 +35,10 @@ type Problem struct {
 	// RequiredScope identifies the exact permission needed by a protected
 	// resource endpoint (see InsufficientScope).
 	RequiredScope string `json:"required_scope,omitempty"`
+
+	// cause preserves the internal error for logs without exposing it in the
+	// RFC 7807 response. Public Detail must remain safe for clients.
+	cause error
 }
 
 func (p *Problem) Error() string { return p.Detail }
@@ -44,14 +50,46 @@ func (p *Problem) Error() string { return p.Detail }
 func (p *Problem) Send(c fiber.Ctx) error {
 	b, err := json.Marshal(p)
 	if err != nil {
+		observability.Error(c.Context(), "failed to marshal problem response", err,
+			"status", p.Status, "problem_type", p.Type, "method", c.Method(), "path", c.Path())
 		return err
 	}
+	logProblem(c, p)
 	c.Status(p.Status)
 	c.Set(fiber.HeaderContentType, ContentType)
 	if p.RetryAfterSeconds > 0 {
 		c.Set(fiber.HeaderRetryAfter, strconv.FormatInt(p.RetryAfterSeconds, 10))
 	}
 	return c.Send(b)
+}
+
+// WithCause associates an internal failure with a safe public problem. The
+// cause is logged by Send and is deliberately excluded from JSON.
+func (p *Problem) WithCause(err error) *Problem {
+	p.cause = err
+	return p
+}
+
+func logProblem(c fiber.Ctx, p *Problem) {
+	attrs := []any{
+		"status", p.Status,
+		"problem_type", p.Type,
+		"method", c.Method(),
+		"path", c.Path(),
+	}
+	if requestID := observability.RequestID(c.Context()); requestID != "" {
+		attrs = append(attrs, "request_id", requestID)
+	}
+	if p.cause != nil {
+		attrs = append(attrs, "error", p.cause)
+	} else if p.Detail != "" {
+		attrs = append(attrs, "detail", p.Detail)
+	}
+	if p.Status >= http.StatusInternalServerError {
+		slog.ErrorContext(c.Context(), "http request failed", attrs...)
+		return
+	}
+	slog.WarnContext(c.Context(), "http request rejected", attrs...)
 }
 
 // WithOAuth adds RFC 6749 extension fields for token-endpoint compatibility.

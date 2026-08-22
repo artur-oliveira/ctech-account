@@ -53,7 +53,7 @@ func (h *MFAHandler) totpStatus(c fiber.Ctx) error {
 		if errors.Is(err, totp.ErrNotFound) {
 			return c.JSON(fiber.Map{"enabled": false})
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{"enabled": secret.IsSetup()})
 }
@@ -66,18 +66,21 @@ func (h *MFAHandler) totpSetup(c fiber.Ctx) error {
 	if err == nil && existing.IsSetup() {
 		return apierror.Conflict("TOTP is already active for this account.", c.Path()).Send(c)
 	}
+	if err != nil && !errors.Is(err, totp.ErrNotFound) {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
 			return apierror.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	_, provisioningURI, err := h.totpSvc.Generate(c.Context(), userID, u.Email, h.cfg.TOTPIssuer)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -107,7 +110,7 @@ func (h *MFAHandler) totpConfirm(c fiber.Ctx) error {
 		case errors.Is(err, totp.ErrInvalidCode):
 			return apierror.Unauthorized("The TOTP code is invalid or has expired.", c.Path()).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -122,7 +125,7 @@ func (h *MFAHandler) totpRemove(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
 	if err := h.totpSvc.Remove(c.Context(), userID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventTOTPDisabled, nil)
@@ -138,7 +141,7 @@ func (h *MFAHandler) totpRegenerateBackupCodes(c fiber.Ctx) error {
 		if errors.Is(err, totp.ErrNotFound) {
 			return apierror.NotFound("TOTP configuration", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventBackupCodesRegen, nil)

@@ -9,6 +9,7 @@ import { stepUpTOTPAPI, beginStepUpPasskeyAPI, completeStepUpPasskeyAPI } from '
 import { buildAssertionCredential } from '@/lib/webauthn'
 import { useStepUpStore } from '@/store/step-up'
 import { useAuthStore } from '@/store/auth'
+import { reportClientError } from '@/lib/client-logging'
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,7 @@ export function StepUpDialog() {
       await stepUpTOTPAPI(value)
       await finish()
     } catch (err) {
+      reportClientError('step-up-totp', err)
       handleFailure(err)
     } finally {
       setBusy(false)
@@ -94,6 +96,7 @@ export function StepUpDialog() {
       await completeStepUpPasskeyAPI(session_token, credential)
       await finish()
     } catch (err) {
+      reportClientError('step-up-passkey', err)
       handleFailure(err)
     } finally {
       setBusy(false)

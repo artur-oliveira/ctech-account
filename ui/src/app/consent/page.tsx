@@ -12,6 +12,7 @@ import { isAxiosError } from '@/lib/axios'
 import { describeScope } from '@/lib/scope-description'
 import { DEFAULT_REDIRECT } from '@/lib/safe-redirect'
 import { ShieldCheck, ShieldQuestion, Check } from 'lucide-react'
+import { reportClientError } from '@/lib/client-logging'
 
 const IDENTITY_SCOPES = new Set(['openid', 'profile', 'email', 'kyc'])
 
@@ -41,6 +42,7 @@ function ConsentForm() {
       const { redirect_to } = await consentDecisionAPI(req, approved)
       window.location.href = redirect_to
     } catch (err) {
+      reportClientError('oauth-consent', err)
       if (isAxiosError(err)) {
         setError(err.response?.data?.detail ?? t('consent.error'))
       } else {

@@ -11,6 +11,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const sessionTTL = 5 * time.Minute
@@ -187,7 +188,9 @@ func (s *Service) FinishAuthentication(ctx context.Context, sessionToken string,
 
 	// Persist updated sign count + last used.
 	now := time.Now().UTC().Format(time.RFC3339)
-	_ = s.repo.UpdateLastUsed(ctx, resolvedUserID, BuildSK(waCred.ID), now)
+	if err := s.repo.UpdateLastUsed(ctx, resolvedUserID, BuildSK(waCred.ID), now); err != nil {
+		observability.Warn(ctx, "passkey: failed to update last-used timestamp", err, "user_id", resolvedUserID)
+	}
 
 	return resolvedUserID, waCred, nil
 }
@@ -262,7 +265,9 @@ func (s *Service) FinishUserAuthentication(ctx context.Context, userID, sessionT
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	_ = s.repo.UpdateLastUsed(ctx, userID, BuildSK(waCred.ID), now)
+	if err := s.repo.UpdateLastUsed(ctx, userID, BuildSK(waCred.ID), now); err != nil {
+		observability.Warn(ctx, "passkey: failed to update last-used timestamp", err, "user_id", userID)
+	}
 
 	return nil
 }

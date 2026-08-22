@@ -625,4 +625,3 @@ func TestFindOrCreateByGoogle_NoDuplicateUser(t *testing.T) {
 		t.Fatalf("expected exactly one user for %s, got: %v", email, err)
 	}
 }
-

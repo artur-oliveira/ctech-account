@@ -28,7 +28,7 @@ func RequireSupportRole(userSvc *user.Service, minRole string) fiber.Handler {
 			if errors.Is(err, user.ErrNotFound) {
 				return apierror.Forbidden("Support role required.", c.Path()).Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 		if supportRoleRank[u.SupportRole] < minRank {
 			return apierror.Forbidden("Support role required.", c.Path()).Send(c)

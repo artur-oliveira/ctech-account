@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"slices"
@@ -41,6 +42,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/observability"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
@@ -49,6 +51,8 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("loading config: %v", err)
@@ -267,15 +271,18 @@ func main() {
 				return problem.Send(c)
 			}
 			if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
-				return apierror.NewFromFiber(fiberErr, c.Path()).Send(c)
+				return apierror.NewFromFiber(fiberErr, c.Path()).WithCause(fiberErr).Send(c)
 			}
-			log.Printf("internal server error request_id=%s path=%s: %v", requestid.FromContext(c), c.Path(), err)
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 		},
 	})
 
-	app.Use(recover.New())
 	app.Use(requestid.New())
+	app.Use(func(c fiber.Ctx) error {
+		c.SetContext(observability.WithRequestID(c.Context(), requestid.FromContext(c)))
+		return c.Next()
+	})
+	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
 		Format: `{"time":"${time}","method":"${method}","path":"${path}","status":${status},"latency":"${latency}","request_id":"${requestid}"}` + "\n",
 	}))
@@ -301,6 +308,7 @@ func main() {
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
+		ExposeHeaders:    []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           3600,
 	}))

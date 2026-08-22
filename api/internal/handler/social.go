@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const googleStateTTL = 10 * time.Minute
@@ -47,10 +49,10 @@ func (h *SocialHandler) Register(v1 fiber.Router) {
 
 func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 	if h.cfg.GoogleClientID == "" {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("Google client ID is not configured")).Send(c)
 	}
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).Send(c)
+		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
 	}
 
 	continueURL := c.Query("continue", h.cfg.AppURL)
@@ -60,9 +62,11 @@ func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 
 	rawState, stateHash, err := crypto.GenerateMFAToken()
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
-	_ = h.cache.Set(c.Context(), "gs:"+stateHash, continueURL, googleStateTTL)
+	if err := h.cache.Set(c.Context(), "gs:"+stateHash, continueURL, googleStateTTL); err != nil {
+		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
+	}
 
 	redirectURI := h.cfg.BaseURL + "/v1.0/auth/google/callback"
 	params := url.Values{
@@ -89,19 +93,21 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 	}
 
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).Send(c)
+		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
 	}
 
 	stateHash := crypto.HashToken(rawState)
 	var continueURL string
 	if err := h.cache.Get(c.Context(), "gs:"+stateHash, &continueURL); err != nil {
-		return apierror.InvalidToken("OAuth state is invalid or has expired.", c.Path()).Send(c)
+		return apierror.InvalidToken("OAuth state is invalid or has expired.", c.Path()).WithCause(err).Send(c)
 	}
-	_ = h.cache.Delete(c.Context(), "gs:"+stateHash)
+	if err := h.cache.Delete(c.Context(), "gs:"+stateHash); err != nil {
+		observability.Warn(c.Context(), "google login: failed to delete consumed OAuth state", err)
+	}
 
-	googleProfile, err := h.exchangeGoogleCode(code)
+	googleProfile, err := h.exchangeGoogleCode(c.Context(), code)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !googleProfile.EmailVerified {
@@ -130,7 +136,9 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 				if errors.Is(lErr, user.ErrGoogleEmailConflict) {
 					return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=google_link_conflict")
 				}
-				return apierror.ServerError(c.Path()).Send(c)
+				return apierror.ServerError(c.Path()).WithCause(lErr).Send(c)
+			} else {
+				observability.Warn(c.Context(), "google linking: existing session cookie was invalid", vErr)
 			}
 			recordAudit(c, h.audit, sess.UserID(), audit.EventSocialLinked, nil)
 			return c.Redirect().Status(fiber.StatusFound).To(continueURL)
@@ -152,7 +160,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrGoogleEmailConflict) {
 			return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=google_account_exists")
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// A brand-new Google account never saw the register form's checkbox — gate
@@ -182,7 +190,7 @@ func (h *SocialHandler) redirectToAcceptTerms(c fiber.Ctx, userID, continueURL s
 	// A brand-new account has accepted nothing, so both documents are pending.
 	location, err := mintAcceptTermsURL(c, h.cache, h.cfg.AppURL, payload, legal.PendingFor("", ""))
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.Redirect().Status(fiber.StatusFound).To(location)
@@ -205,19 +213,19 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 	}
 
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("terms acceptance cache is unavailable")).Send(c)
 	}
 
 	hashHex := crypto.HashToken(req.Token)
 	var payload termsTokenPayload
 	// GetDel consumes the token atomically (single use, replay-safe).
 	if err := h.cache.GetDel(c.Context(), termsTokenCachePrefix+hashHex, &payload); err != nil {
-		return apierror.InvalidToken("Terms acceptance token is invalid or has expired.", c.Path()).Send(c)
+		return apierror.InvalidToken("Terms acceptance token is invalid or has expired.", c.Path()).WithCause(err).Send(c)
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	method := acceptMethodGoogle
@@ -233,18 +241,21 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 	if !payload.Reaccept {
 		loc := geo.Lookup(payload.IP)
 		seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), payload.DeviceName, loc.Country)
+		if seenErr != nil {
+			observability.Warn(c.Context(), "google login: failed to evaluate whether device is new", seenErr, "user_id", u.ID())
+		}
 		newDevice := seenErr == nil && !seen
 
 		sess, rawToken, sErr := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRGoogle},
 			session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 		if sErr != nil {
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(sErr).Send(c)
 		}
 
 		meta := map[string]string{"method": acceptMethodGoogle, "session_id": sess.ID()}
 		if newDevice {
 			meta["new_device"] = "true"
-			sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
+			sendNewDeviceEmailAsync(c.Context(), h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
 		}
 		recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
@@ -288,7 +299,7 @@ type googleUserInfo struct {
 	Picture       string `json:"picture"`
 }
 
-func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error) {
+func (h *SocialHandler) exchangeGoogleCode(ctx context.Context, code string) (*googleUserInfo, error) {
 	redirectURI := h.cfg.BaseURL + "/v1.0/auth/google/callback"
 
 	tokenBody := url.Values{
@@ -299,14 +310,18 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 		"grant_type":    {"authorization_code"},
 	}
 
-	resp, err := googleHTTPClient.PostForm("https://oauth2.googleapis.com/token", tokenBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://oauth2.googleapis.com/token", strings.NewReader(tokenBody.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("building token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := googleHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
+		if closeErr := Body.Close(); closeErr != nil {
+			observability.Warn(ctx, "google login: failed to close token response body", closeErr)
 		}
 	}(resp.Body)
 
@@ -314,21 +329,26 @@ func (h *SocialHandler) exchangeGoogleCode(code string) (*googleUserInfo, error)
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading token response: %w", err)
+	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil || tokenResp.AccessToken == "" {
 		return nil, fmt.Errorf("token parse error: %s", tokenResp.Error)
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	if err != nil {
+		return nil, fmt.Errorf("building userinfo request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
 	uiResp, err := googleHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("userinfo fetch: %w", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
+		if closeErr := Body.Close(); closeErr != nil {
+			observability.Warn(ctx, "google login: failed to close userinfo response body", closeErr)
 		}
 	}(uiResp.Body)
 
@@ -347,18 +367,21 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 	ip := clientIP(c)
 	loc := geo.Lookup(ip)
 	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), deviceName, loc.Country)
+	if seenErr != nil {
+		observability.Warn(c.Context(), "google login: failed to evaluate whether device is new", seenErr, "user_id", u.ID())
+	}
 	newDevice := seenErr == nil && !seen
 
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRGoogle},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"method": "google", "session_id": sess.ID()}
 	if newDevice {
 		meta["new_device"] = "true"
-		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
+		sendNewDeviceEmailAsync(c.Context(), h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
 	}
 	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 

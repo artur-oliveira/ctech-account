@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 // Repository is the persistence contract for TOTP secrets. Services depend on
@@ -77,6 +78,8 @@ func (r *dynamoRepository) Get(ctx context.Context, userID string) (*TOTPSecret,
 	if plain, derr := r.sealer.Unseal(t.EncryptedSecret); derr == nil {
 		t.Secret = plain
 	} else {
+		observability.Warn(ctx, "totp: encrypted secret could not be opened; using legacy plaintext compatibility", derr,
+			"user_id", userID)
 		t.Secret = t.EncryptedSecret
 	}
 	return &t, nil

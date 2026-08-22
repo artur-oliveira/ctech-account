@@ -95,9 +95,9 @@ type Config struct {
 	AccessTokenTTL time.Duration
 
 	// Account lockout settings
-	AccountLockoutThreshold       int    // ACCOUNT_LOCKOUT_THRESHOLD env var
-	AccountLockoutDurationMinutes int    // ACCOUNT_LOCKOUT_DURATION_MINUTES env var
-	AccountLockoutAuditEnabled    bool   // ACCOUNT_LOCKOUT_AUDIT_ENABLED env var
+	AccountLockoutThreshold       int  // ACCOUNT_LOCKOUT_THRESHOLD env var
+	AccountLockoutDurationMinutes int  // ACCOUNT_LOCKOUT_DURATION_MINUTES env var
+	AccountLockoutAuditEnabled    bool // ACCOUNT_LOCKOUT_AUDIT_ENABLED env var
 }
 
 func Load() (*Config, error) {
@@ -133,6 +133,10 @@ func Load() (*Config, error) {
 	if raw := os.Getenv("ACCESS_TOKEN_TTL"); raw != "" {
 		if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
 			accessTokenTTL = time.Duration(secs) * time.Second
+		} else if err != nil {
+			log.Printf("config: invalid ACCESS_TOKEN_TTL, using default: %v", err)
+		} else {
+			log.Printf("config: ACCESS_TOKEN_TTL must be positive, using default")
 		}
 	}
 
@@ -155,6 +159,8 @@ func Load() (*Config, error) {
 	if rpid == "" {
 		if parsed, err := url.Parse(appURL); err == nil {
 			rpid = parsed.Hostname()
+		} else {
+			log.Printf("config: failed to parse APP_URL for WebAuthn RP ID: %v", err)
 		}
 	}
 
@@ -199,10 +205,27 @@ func Load() (*Config, error) {
 		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
 		AccessTokenTTL:     accessTokenTTL,
 		// Account lockout settings
-		AccountLockoutThreshold:       func() int { v, _ := strconv.Atoi(os.Getenv("ACCOUNT_LOCKOUT_THRESHOLD")); if v == 0 { return 5 }; return v }(),
-		AccountLockoutDurationMinutes: func() int { v, _ := strconv.Atoi(os.Getenv("ACCOUNT_LOCKOUT_DURATION_MINUTES")); if v == 0 { return 15 }; return v }(),
+		AccountLockoutThreshold:       positiveIntEnv("ACCOUNT_LOCKOUT_THRESHOLD", 5),
+		AccountLockoutDurationMinutes: positiveIntEnv("ACCOUNT_LOCKOUT_DURATION_MINUTES", 15),
 		AccountLockoutAuditEnabled:    os.Getenv("ACCOUNT_LOCKOUT_AUDIT_ENABLED") == "true",
 	}, nil
+}
+
+func positiveIntEnv(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Printf("config: invalid %s, using default: %v", name, err)
+		return fallback
+	}
+	if value <= 0 {
+		log.Printf("config: %s must be positive, using default", name)
+		return fallback
+	}
+	return value
 }
 
 // loadSigningKey parses the dev-mode signing key from RSA_PRIVATE_KEY

@@ -127,6 +127,11 @@ func Rotate(ctx context.Context, store *Store, now time.Time, alg string) (*Key,
 func InitFromLegacy(ctx context.Context, store *Store, client SSMAPI, now time.Time) error {
 	if _, err := store.getKey(ctx, store.activePath()); err == nil {
 		return fmt.Errorf("%s already exists — refusing to overwrite", store.activePath())
+	} else {
+		var notFound *types.ParameterNotFound
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("checking existing active key: %w", err)
+		}
 	}
 
 	legacyPath := fmt.Sprintf(legacyParamFmt, store.env)

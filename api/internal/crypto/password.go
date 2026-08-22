@@ -37,8 +37,9 @@ func mustHash(s string) string {
 
 // VerifyDummyPassword burns the same CPU as VerifyPassword against a real hash.
 // Always returns false. Call it on the "user not found" path.
-func VerifyDummyPassword(password string) {
-	_, _ = VerifyPassword(password, dummyHash)
+func VerifyDummyPassword(password string) error {
+	_, err := VerifyPassword(password, dummyHash)
+	return err
 }
 
 func HashPassword(password string) (string, error) {

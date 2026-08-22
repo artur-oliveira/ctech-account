@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const (
@@ -53,6 +55,8 @@ func New(secret, appURL string) *Service {
 	hostname := ""
 	if parsed, err := url.Parse(appURL); err == nil {
 		hostname = parsed.Hostname()
+	} else {
+		slog.Warn("turnstile: invalid application URL", "error", err)
 	}
 	return &Service{
 		secret:   strings.TrimSpace(secret),
@@ -97,14 +101,22 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 	if err != nil {
 		return fmt.Errorf("turnstile: call siteverify: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			observability.Warn(ctx, "turnstile: failed to close siteverify response", closeErr)
+		}
+	}()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return fmt.Errorf("turnstile: read siteverify response: %w", err)
 	}
 	var result verifyResponse
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || json.Unmarshal(raw, &result) != nil || !result.Success ||
+	decodeErr := json.Unmarshal(raw, &result)
+	if decodeErr != nil {
+		observability.Warn(ctx, "turnstile: failed to decode siteverify response", decodeErr, "status", resp.StatusCode)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || decodeErr != nil || !result.Success ||
 		(expectedAction != "" && result.Action != expectedAction) ||
 		(s.hostname != "" && result.Hostname != s.hostname) {
 		return ErrVerificationFailed

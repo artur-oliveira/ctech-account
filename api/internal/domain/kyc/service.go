@@ -3,13 +3,13 @@ package kyc
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const birthDateLayout = "2006-01-02"
@@ -201,7 +201,10 @@ func (s *Service) ConfirmDocument(ctx context.Context, userID, documentID, docTy
 	if err := s.repo.AddDocument(ctx, userID, doc); err != nil {
 		return err
 	}
-	_ = s.repo.DeletePendingDocument(ctx, documentID)
+	if err := s.repo.DeletePendingDocument(ctx, documentID); err != nil {
+		observability.Warn(ctx, "kyc: failed to delete confirmed pending document", err,
+			"user_id", userID, "document_id", documentID)
+	}
 	return nil
 }
 
@@ -267,11 +270,11 @@ func (s *Service) SubmitEnhanced(ctx context.Context, userID, ip string) error {
 func (s *Service) evaluateRisk(ctx context.Context, userID, ip string) {
 	a, err := s.risk.Evaluate(ctx, userID, ip)
 	if err != nil {
-		log.Printf("kyc: risk evaluation failed for user %s: %v", userID, err)
+		observability.Error(ctx, "kyc: risk evaluation failed", err, "user_id", userID)
 		return
 	}
 	if err := s.repo.SaveRiskAssessment(ctx, userID, a); err != nil {
-		log.Printf("kyc: saving risk assessment failed for user %s: %v", userID, err)
+		observability.Error(ctx, "kyc: failed to save risk assessment", err, "user_id", userID)
 	}
 }
 
@@ -295,7 +298,7 @@ func (s *Service) Review(ctx context.Context, userID, decision, reason string) e
 		if err := s.repo.MarkRejected(ctx, userID, strings.TrimSpace(reason)); err != nil {
 			return err
 		}
-		s.purgeRejectedObjects(docs)
+		s.purgeRejectedObjects(ctx, docs)
 		return nil
 	default:
 		return ErrInvalidDecision
@@ -403,15 +406,16 @@ type objectDeleter interface {
 
 // purgeRejectedObjects best-effort deletes the rejected documents' S3 objects
 // in the background (SEC-038) — failures are logged, never returned.
-func (s *Service) purgeRejectedObjects(docs []Document) {
+func (s *Service) purgeRejectedObjects(ctx context.Context, docs []Document) {
 	deleter, ok := s.presigner.(objectDeleter)
 	if !ok {
 		return
 	}
 	for _, d := range docs {
+		asyncCtx := context.WithoutCancel(ctx)
 		go func(key string) {
-			if err := deleter.DeleteObject(context.Background(), key); err != nil {
-				log.Printf("kyc: failed to delete rejected document object %s: %v", key, err)
+			if err := deleter.DeleteObject(asyncCtx, key); err != nil {
+				observability.Error(asyncCtx, "kyc: failed to delete rejected document object", err, "object_key", key)
 			}
 		}(d.Key)
 	}

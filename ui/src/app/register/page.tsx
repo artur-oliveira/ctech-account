@@ -14,6 +14,7 @@ import {useRedirectIfAuthenticated} from '@/hooks/use-redirect-if-authenticated'
 import {GoogleSignInButton} from '@/components/google-sign-in-button'
 import {DEFAULT_REDIRECT} from '@/lib/safe-redirect'
 import {Separator} from '@/components/ui/separator'
+import {reportClientError} from '@/lib/client-logging'
 
 export default function RegisterPage() {
   const {t} = useTranslation()
@@ -55,6 +56,7 @@ export default function RegisterPage() {
       // so the only correct next screen is "check your email".
       router.push('/register/verify')
     } catch (err) {
+      reportClientError('registration', err)
       if (isAxiosError(err)) {
         setError(err.response?.data?.detail ?? t('errors.registrationFailed'))
       } else {

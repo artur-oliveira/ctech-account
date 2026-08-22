@@ -1,5 +1,6 @@
 import { VIACEP_API_BASE_URL } from '@/lib/constants'
 import type { KYCAddress, ViaCEPResponse } from '@/lib/types'
+import { reportClientError } from '@/lib/client-logging'
 
 type ViaCEPAddress = Pick<KYCAddress, 'street' | 'district' | 'city' | 'state'>
 
@@ -36,6 +37,7 @@ export async function lookupViaCEP(zipCode: string, signal: AbortSignal): Promis
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
+    reportClientError('viacep', error)
     return { status: 'unavailable' }
   }
 }

@@ -77,7 +77,10 @@ func (s *RegistryService) BootstrapAccount(ctx context.Context, audience, source
 			return nil, false, getErr
 		}
 		hash, hashErr := ManifestHash(manifest)
-		if hashErr == nil && latest.ManifestHash == hash {
+		if hashErr != nil {
+			return nil, false, fmt.Errorf("hashing account resource manifest after revision conflict: %w", hashErr)
+		}
+		if latest.ManifestHash == hash {
 			return latest, false, nil
 		}
 	}

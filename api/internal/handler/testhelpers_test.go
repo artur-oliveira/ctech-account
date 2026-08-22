@@ -48,7 +48,7 @@ import (
 type noopTOTPService struct{}
 
 func (n *noopTOTPService) Get(_ context.Context, _ string) (*totp.TOTPSecret, error) {
-	return nil, errors.New("totp not configured")
+	return nil, totp.ErrNotFound
 }
 func (n *noopTOTPService) Validate(_ context.Context, _, _ string) (bool, error) {
 	return false, errors.New("totp not configured")

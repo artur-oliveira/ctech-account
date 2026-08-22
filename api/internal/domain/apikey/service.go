@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 type Service struct {
@@ -91,8 +92,12 @@ func (s *Service) Authenticate(ctx context.Context, rawKey string) (*APIKey, err
 		return nil, errors.New("api key expired")
 	}
 
+	asyncCtx := context.WithoutCancel(ctx)
 	go func() {
-		_ = s.repo.UpdateLastUsed(context.Background(), k.UserID(), k.ID())
+		if err := s.repo.UpdateLastUsed(asyncCtx, k.UserID(), k.ID()); err != nil {
+			observability.Warn(asyncCtx, "api key: failed to update last-used timestamp", err,
+				"user_id", k.UserID(), "api_key_id", k.ID())
+		}
 	}()
 
 	return k, nil

@@ -10,6 +10,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -82,6 +83,8 @@ func Startup(ctx context.Context, cfg Config) {
 		}
 		geo.SetReader(r)
 		return
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.WarnContext(ctx, "geoupdater: failed to inspect existing database", "path", cfg.DBPath, "error", err)
 	}
 	if err := update(ctx, cfg); err != nil {
 		slog.Warn("geoupdater: initial download failed, geo lookups disabled", "error", err)
@@ -139,9 +142,8 @@ func update(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("downloading database: %w", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
+		if closeErr := Body.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "geoupdater: failed to close download response", "error", closeErr)
 		}
 	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -153,20 +155,26 @@ func update(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("creating database directory: %w", err)
 	}
 
-	tmpPath, err := extractMMDB(resp.Body, destDir)
+	tmpPath, err := extractMMDB(ctx, resp.Body, destDir)
 	if err != nil {
 		return fmt.Errorf("extracting database: %w", err)
 	}
 
 	r, err := geoip2.Open(tmpPath)
 	if err != nil {
-		_ = os.Remove(tmpPath)
+		if removeErr := os.Remove(tmpPath); removeErr != nil {
+			slog.WarnContext(ctx, "geoupdater: failed to remove invalid temporary database", "error", removeErr, "path", tmpPath)
+		}
 		return fmt.Errorf("validating downloaded database: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, cfg.DBPath); err != nil {
-		_ = r.Close()
-		_ = os.Remove(tmpPath)
+		if closeErr := r.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "geoupdater: failed to close rejected database reader", "error", closeErr)
+		}
+		if removeErr := os.Remove(tmpPath); removeErr != nil {
+			slog.WarnContext(ctx, "geoupdater: failed to remove temporary database", "error", removeErr, "path", tmpPath)
+		}
 		return fmt.Errorf("installing downloaded database: %w", err)
 	}
 
@@ -178,15 +186,14 @@ func update(ctx context.Context, cfg Config) error {
 // name ends in ".mmdb" to a temp file in destDir (same filesystem as the
 // eventual DBPath, so the caller's os.Rename is atomic). Returns the temp
 // file's path.
-func extractMMDB(body io.Reader, destDir string) (string, error) {
+func extractMMDB(ctx context.Context, body io.Reader, destDir string) (string, error) {
 	gz, err := gzip.NewReader(body)
 	if err != nil {
 		return "", fmt.Errorf("opening gzip stream: %w", err)
 	}
 	defer func(gz *gzip.Reader) {
-		err := gz.Close()
-		if err != nil {
-
+		if closeErr := gz.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "geoupdater: failed to close gzip reader", "error", closeErr)
 		}
 	}(gz)
 
@@ -207,16 +214,19 @@ func extractMMDB(body io.Reader, destDir string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("creating temp file: %w", err)
 		}
-		if _, err := io.Copy(tmp, tr); err != nil {
-			err := tmp.Close()
-			if err != nil {
-				return "", err
+		if _, copyErr := io.Copy(tmp, tr); copyErr != nil {
+			if closeErr := tmp.Close(); closeErr != nil {
+				slog.WarnContext(ctx, "geoupdater: failed to close incomplete temporary file", "error", closeErr, "path", tmp.Name())
 			}
-			_ = os.Remove(tmp.Name())
-			return "", fmt.Errorf("writing temp file: %w", err)
+			if removeErr := os.Remove(tmp.Name()); removeErr != nil {
+				slog.WarnContext(ctx, "geoupdater: failed to remove incomplete temporary file", "error", removeErr, "path", tmp.Name())
+			}
+			return "", fmt.Errorf("writing temp file: %w", copyErr)
 		}
 		if err := tmp.Close(); err != nil {
-			_ = os.Remove(tmp.Name())
+			if removeErr := os.Remove(tmp.Name()); removeErr != nil {
+				slog.WarnContext(ctx, "geoupdater: failed to remove unclosed temporary file", "error", removeErr, "path", tmp.Name())
+			}
 			return "", fmt.Errorf("closing temp file: %w", err)
 		}
 		return tmp.Name(), nil

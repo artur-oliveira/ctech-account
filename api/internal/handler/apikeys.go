@@ -32,7 +32,7 @@ func (h *APIKeysHandler) list(c fiber.Ctx) error {
 
 	keys, err := h.apiKeySvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(keys))
@@ -77,7 +77,7 @@ func (h *APIKeysHandler) create(c fiber.Ctx) error {
 	// Catalog lookup failures fail closed — no key is issued with unchecked scopes.
 	bad, err := h.catalogSvc.ValidateGrantable(c.Context(), req.Scopes)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if bad == "" {
 		for _, s := range req.Scopes {
@@ -99,7 +99,7 @@ func (h *APIKeysHandler) create(c fiber.Ctx) error {
 
 	k, rawKey, err := h.apiKeySvc.Create(c.Context(), userID, req.Name, req.Scopes, expiresIn)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventAPIKeyCreated, map[string]string{"key_id": k.ID()})
@@ -120,7 +120,7 @@ func (h *APIKeysHandler) revoke(c fiber.Ctx) error {
 	keyID := c.Params("id")
 
 	if err := h.apiKeySvc.Revoke(c.Context(), userID, keyID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventAPIKeyRevoked, map[string]string{"key_id": keyID})

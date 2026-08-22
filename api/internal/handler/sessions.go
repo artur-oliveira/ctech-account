@@ -30,7 +30,7 @@ func (h *SessionsHandler) list(c fiber.Ctx) error {
 
 	sessions, err := h.sessionSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(sessions))
@@ -62,7 +62,7 @@ func (h *SessionsHandler) revoke(c fiber.Ctx) error {
 	}
 
 	if err := h.sessionSvc.Revoke(c.Context(), userID, targetSessionID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSessionRevoked, map[string]string{"session_id": targetSessionID})
@@ -75,7 +75,7 @@ func (h *SessionsHandler) revokeAll(c fiber.Ctx) error {
 	currentSessionID := middleware.GetSessionID(c)
 
 	if err := h.sessionSvc.RevokeAll(c.Context(), userID, currentSessionID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSessionRevokedAll, nil)

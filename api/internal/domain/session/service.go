@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 var ErrTokenReuse = errors.New("refresh token reuse detected — session revoked")
@@ -107,7 +108,10 @@ func (s *Service) IssueClientToken(ctx context.Context, userID, sessionID, clien
 		return "", fmt.Errorf("fetching session: %w", err)
 	}
 	if sess.IsExpired() {
-		_ = s.repo.Delete(ctx, userID, sessionID)
+		if err := s.repo.Delete(ctx, userID, sessionID); err != nil {
+			observability.Warn(ctx, "session: failed to delete expired session", err,
+				"user_id", userID, "session_id", sessionID)
+		}
 		return "", ErrSessionExpired
 	}
 
@@ -149,7 +153,12 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 			// grant is compromised, so revoke the whole session (OAuth BCP
 			// §4.13.2) instead of letting the stolen chain keep working.
 			if c, cErr := s.repo.GetConsumedByHash(ctx, hash); cErr == nil && c != nil {
-				_ = s.Revoke(ctx, c.UserID, c.SessionID)
+				if revokeErr := s.Revoke(ctx, c.UserID, c.SessionID); revokeErr != nil {
+					observability.Error(ctx, "session: failed to revoke session after token reuse", revokeErr,
+						"user_id", c.UserID, "session_id", c.SessionID)
+				}
+			} else if cErr != nil && !errors.Is(cErr, ErrRefreshTokenNotFound) {
+				observability.Warn(ctx, "session: failed to check consumed-token marker", cErr)
 			}
 			return nil, "", nil, ErrTokenReuse
 		}
@@ -160,7 +169,10 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 		return nil, "", nil, ErrClientMismatch
 	}
 	if t.IsExpired() {
-		_ = s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID)
+		if err := s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID); err != nil {
+			observability.Warn(ctx, "session: failed to delete expired refresh token", err,
+				"user_id", t.UserID(), "session_id", t.SessionID, "client_id", t.ClientID)
+		}
 		return nil, "", nil, ErrSessionExpired
 	}
 
@@ -168,13 +180,19 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 	sess, err := s.repo.GetByID(ctx, t.UserID(), t.SessionID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			_ = s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID)
+			if deleteErr := s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID); deleteErr != nil {
+				observability.Warn(ctx, "session: failed to delete orphan refresh token", deleteErr,
+					"user_id", t.UserID(), "session_id", t.SessionID, "client_id", t.ClientID)
+			}
 			return nil, "", nil, ErrSessionExpired
 		}
 		return nil, "", nil, fmt.Errorf("fetching session: %w", err)
 	}
 	if sess.IsExpired() {
-		_ = s.repo.Delete(ctx, sess.UserID(), sess.ID())
+		if err := s.repo.Delete(ctx, sess.UserID(), sess.ID()); err != nil {
+			observability.Warn(ctx, "session: failed to delete expired parent session", err,
+				"user_id", sess.UserID(), "session_id", sess.ID())
+		}
 		return nil, "", nil, ErrSessionExpired
 	}
 
@@ -197,7 +215,10 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 		ExpiresAt:        now.Add(SessionTTL).Unix(),
 	}
 	// Put consumed token marker for the old token (best-effort)
-	_ = s.repo.PutConsumedToken(ctx, t.UserID(), t.SessionID, t.ClientID, oldHash, sess.ExpiresAt)
+	if err := s.repo.PutConsumedToken(ctx, t.UserID(), t.SessionID, t.ClientID, oldHash, sess.ExpiresAt); err != nil {
+		observability.Error(ctx, "session: failed to persist consumed-token marker", err,
+			"user_id", t.UserID(), "session_id", t.SessionID, "client_id", t.ClientID)
+	}
 	// Delete the old refresh token record
 	if err := s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID); err != nil {
 		return nil, "", nil, fmt.Errorf("deleting old refresh token: %w", err)
@@ -229,7 +250,10 @@ func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*Session,
 		return nil, fmt.Errorf("fetching session: %w", err)
 	}
 	if sess.IsExpired() {
-		_ = s.repo.Delete(ctx, sess.UserID(), sess.ID())
+		if err := s.repo.Delete(ctx, sess.UserID(), sess.ID()); err != nil {
+			observability.Warn(ctx, "session: failed to delete expired session", err,
+				"user_id", sess.UserID(), "session_id", sess.ID())
+		}
 		return nil, ErrSessionExpired
 	}
 	return sess, nil
@@ -259,9 +283,13 @@ func (s *Service) HasSeenDevice(ctx context.Context, userID, deviceName, country
 
 // Revoke deletes a session and every per-client refresh token issued under it.
 func (s *Service) Revoke(ctx context.Context, userID, sessionID string) error {
-	if tokens, err := s.repo.ListRefreshTokensBySession(ctx, userID, sessionID); err == nil {
-		for _, t := range tokens {
-			_ = s.repo.DeleteRefreshToken(ctx, userID, t.SessionID, t.ClientID)
+	tokens, err := s.repo.ListRefreshTokensBySession(ctx, userID, sessionID)
+	if err != nil {
+		return fmt.Errorf("listing session refresh tokens: %w", err)
+	}
+	for _, t := range tokens {
+		if err := s.repo.DeleteRefreshToken(ctx, userID, t.SessionID, t.ClientID); err != nil {
+			return fmt.Errorf("deleting client refresh token: %w", err)
 		}
 	}
 	return s.repo.Delete(ctx, userID, sessionID)

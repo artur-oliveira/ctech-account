@@ -88,7 +88,7 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 		if errors.Is(err, oauthclient.ErrNotFound) {
 			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !oauthClient.IsRedirectURIAllowed(redirectURI) {
@@ -286,7 +286,7 @@ func (h *AuthorizeHandler) ConsentDecision(c fiber.Ctx) error {
 		if errors.Is(err, oauthclient.ErrNotFound) {
 			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !oauthClient.IsRedirectURIAllowed(redirectURI) {
 		return apierror.InvalidRequest("The redirect_uri is not registered for this client.", c.Path()).Send(c)
@@ -306,7 +306,7 @@ func (h *AuthorizeHandler) ConsentDecision(c fiber.Ctx) error {
 		return apierror.InvalidRequest("No valid scopes requested for this client.", c.Path()).Send(c)
 	}
 	if err := h.consentSvc.Grant(c.Context(), sess.UserID(), clientID, allowedScopes); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, sess.UserID(), audit.EventConsentGranted, map[string]string{"client_id": clientID})
 

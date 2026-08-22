@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { uploadKYCDocumentAPI } from '@/lib/mutations'
 import { Camera, ShieldCheck, XCircle } from 'lucide-react'
+import { reportClientError } from '@/lib/client-logging'
 
 type CameraErrorReason = 'permission' | 'not-found' | 'in-use' | 'insecure' | 'unsupported' | null
 
@@ -71,7 +72,10 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
         if (videoRef.current) videoRef.current.srcObject = stream
         setCameraError(null)
       })
-      .catch((err) => setCameraError(classifyCameraError(err)))
+      .catch((err) => {
+        reportClientError('kyc-camera', err)
+        setCameraError(classifyCameraError(err))
+      })
 
     return () => {
       alive = false

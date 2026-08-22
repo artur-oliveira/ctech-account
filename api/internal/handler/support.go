@@ -10,6 +10,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
 )
 
@@ -50,7 +51,7 @@ func (h *SupportHandler) create(c fiber.Ctx) error {
 	}
 	if h.verifier != nil {
 		if err := h.verifier.Verify(c.Context(), req.TurnstileToken, clientIP(c), supportTicketTurnstileAction); err != nil {
-			return apierror.ValidationFailed("Turnstile verification failed.", c.Path()).Send(c)
+			return apierror.ValidationFailed("Turnstile verification failed.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 	id := middleware.GetUserID(c)
@@ -65,11 +66,19 @@ func (h *SupportHandler) create(c fiber.Ctx) error {
 	if id != "" && h.users != nil {
 		if u, e := h.users.GetByID(c.Context(), id); e == nil {
 			to = u.Email
+		} else {
+			observability.Error(c.Context(), "support: failed to resolve requester email", e,
+				"ticket_id", t.ID(), "user_id", id)
 		}
 	}
 	if h.email != nil && to != "" {
-		if mid, e := h.email.SendTicketConfirmationEmail(c.Context(), to, t.TicketNumber, ticketSubjectLine(t), ticketLink(h.appURL, t)); e == nil {
-			_ = h.svc.RecordEmailMessageID(c.Context(), t.ID(), mid, true)
+		mid, sendErr := h.email.SendTicketConfirmationEmail(c.Context(), to, t.TicketNumber, ticketSubjectLine(t), ticketLink(h.appURL, t))
+		if sendErr != nil {
+			observability.Error(c.Context(), "support: failed to send ticket confirmation email", sendErr,
+				"ticket_id", t.ID(), "ticket_number", t.TicketNumber)
+		} else if err := h.svc.RecordEmailMessageID(c.Context(), t.ID(), mid, true); err != nil {
+			observability.Error(c.Context(), "support: failed to persist confirmation email message id", err,
+				"ticket_id", t.ID(), "ticket_number", t.TicketNumber)
 		}
 	}
 	out := fiber.Map{"ticket_id": t.ID(), "ticket_number": t.TicketNumber}
@@ -119,7 +128,7 @@ func (h *SupportHandler) nps(c fiber.Ctx) error {
 func (h *SupportHandler) listMine(c fiber.Ctx) error {
 	t, n, e := h.svc.ListMine(c.Context(), middleware.GetUserID(c), c.Query("cursor"), 20)
 	if e != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(e).Send(c)
 	}
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
@@ -149,18 +158,18 @@ func ticketSubjectLine(t *support.Ticket) string {
 // resolveTicketEmail returns the address a ticket's notifications should go
 // to: the bound account's e-mail for an authenticated ticket, or the
 // anonymous submission address otherwise.
-func resolveTicketEmail(ctx context.Context, users *user.Service, t *support.Ticket) string {
+func resolveTicketEmail(ctx context.Context, users *user.Service, t *support.Ticket) (string, error) {
 	if t.UserID != "" {
 		if users == nil {
-			return ""
+			return "", errors.New("user service is unavailable")
 		}
 		u, err := users.GetByID(ctx, t.UserID)
 		if err != nil {
-			return ""
+			return "", err
 		}
-		return u.Email
+		return u.Email, nil
 	}
-	return t.AnonymousEmail
+	return t.AnonymousEmail, nil
 }
 
 func supportProblem(c fiber.Ctx, err error) error {
@@ -172,6 +181,6 @@ func supportProblem(c fiber.Ctx, err error) error {
 	case errors.Is(err, support.ErrInvalidInput), errors.Is(err, support.ErrInvalidNPS):
 		return apierror.ValidationFailed(err.Error(), c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }

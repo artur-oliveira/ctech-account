@@ -61,7 +61,7 @@ func (h *ScopeRegistryHandler) authorize(c fiber.Ctx, id string) (string, error)
 	}
 	client, err := h.clients.GetByID(c.Context(), clientID)
 	if err != nil || client.ManagedResourceID != id {
-		return "", apierror.Forbidden("Publisher is not bound to this resource server.", c.Path()).Send(c)
+		return "", apierror.Forbidden("Publisher is not bound to this resource server.", c.Path()).WithCause(err).Send(c)
 	}
 	return clientID, nil
 }
@@ -76,7 +76,7 @@ func (h *ScopeRegistryHandler) get(c fiber.Ctx) error {
 		if errors.Is(err, scopes.ErrResourceNotFound) {
 			return apierror.NotFound("Resource server", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	c.Set(headerETag, resourceETag(resource))
 	return c.JSON(resource)
@@ -97,7 +97,7 @@ func (h *ScopeRegistryHandler) put(c fiber.Ctx) error {
 		if errors.Is(err, scopes.ErrResourceNotFound) {
 			return apierror.NotFound("Resource server", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if c.Get(headerIfMatch) != resourceETag(current) {
 		return apierror.PreconditionFailed("If-Match does not identify the current resource manifest.", c.Path()).Send(c)
@@ -126,12 +126,12 @@ func (h *ScopeRegistryHandler) put(c fiber.Ctx) error {
 		case errors.Is(publishErr, scopes.ErrResourceNotFound):
 			return apierror.NotFound("Resource server", c.Path()).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(publishErr).Send(c)
 		}
 	}
 	_, clientChanged, reconcileErr := h.reconcile.EnsureFirstPartyPublicClientScopes(c.Context(), id, publicActiveScopes(manifest.Scopes))
 	if reconcileErr != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(reconcileErr).Send(c)
 	}
 	c.Set(headerETag, resourceETag(resource))
 	h.record(c, actor, audit.EventScopeManifestPublished, id, resource.ManifestHash)

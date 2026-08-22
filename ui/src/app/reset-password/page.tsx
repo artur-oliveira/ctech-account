@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { resetPasswordAPI } from '@/lib/mutations'
+import { reportClientError } from '@/lib/client-logging'
 
 function ResetPasswordForm() {
   const { t } = useTranslation()
@@ -42,6 +43,7 @@ function ResetPasswordForm() {
       await resetPasswordAPI(token, pw)
       router.push('/login?reset=1')
     } catch (err: unknown) {
+      reportClientError('reset-password', err)
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(detail ?? t('errors.network'))
       setLoading(false)

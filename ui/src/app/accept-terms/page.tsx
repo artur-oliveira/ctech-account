@@ -11,6 +11,7 @@ import { isAxiosError } from '@/lib/axios'
 import { acceptTermsAPI } from '@/lib/mutations'
 import { sanitizeContinue } from '@/lib/safe-redirect'
 import type { TermsPending } from '@/lib/types'
+import { reportClientError } from '@/lib/client-logging'
 
 /** Query flag marking a document as pending. Cosmetic — the server recomputes it. */
 const PENDING_FLAG = '1'
@@ -46,6 +47,7 @@ function AcceptTermsForm() {
       const { redirect } = await acceptTermsAPI(token, accepted)
       window.location.href = redirect
     } catch (err) {
+      reportClientError('accept-terms', err)
       if (isAxiosError(err)) {
         setError(err.response?.data?.detail ?? t('errors.network'))
       } else {

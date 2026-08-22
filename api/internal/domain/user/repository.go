@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 var ErrNotFound = errors.New("user not found")
@@ -104,11 +105,15 @@ func (r *dynamoRepository) Create(ctx context.Context, u *User) error {
 	if err != nil {
 		// Best-effort rollback: a failed marshal must not leave the marker
 		// permanently blocking this email.
-		_, _ = r.table.DeleteItem(ctx, markerPK)
+		if _, rollbackErr := r.table.DeleteItem(ctx, markerPK); rollbackErr != nil {
+			observability.Error(ctx, "user repository: failed to roll back email marker after marshal failure", rollbackErr)
+		}
 		return fmt.Errorf("marshaling user: %w", err)
 	}
 	if err := r.table.PutItem(ctx, item); err != nil {
-		_, _ = r.table.DeleteItem(ctx, markerPK)
+		if _, rollbackErr := r.table.DeleteItem(ctx, markerPK); rollbackErr != nil {
+			observability.Error(ctx, "user repository: failed to roll back email marker after user write failure", rollbackErr)
+		}
 		return fmt.Errorf("putting user: %w", err)
 	}
 	return nil

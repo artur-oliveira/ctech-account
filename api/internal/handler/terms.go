@@ -134,7 +134,7 @@ func (h *TermsHandler) accept(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrNotFound) {
 			return apierror.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if err := acceptPendingTerms(c, h.userSvc, h.audit, u, req.AcceptToS, req.AcceptPrivacy, acceptMethodInApp); err != nil {
@@ -143,7 +143,7 @@ func (h *TermsHandler) accept(c fiber.Ctx) error {
 
 	u, err = h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{"terms_pending": legal.PendingFor(u.TOSVersion, u.PrivacyVersion)})

@@ -212,7 +212,9 @@ func (c *Client) Count(ctx context.Context, key string) (int64, error) {
 			return 0, nil
 		}
 		var n int64
-		_ = json.Unmarshal(entry.data, &n)
+		if err := json.Unmarshal(entry.data, &n); err != nil {
+			return 0, fmt.Errorf("decoding in-memory counter: %w", err)
+		}
 		return n, nil
 	}
 
@@ -291,10 +293,15 @@ func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64
 		var n int64
 		fresh := !ok || c.Now().After(entry.expires)
 		if !fresh {
-			_ = json.Unmarshal(entry.data, &n)
+			if err := json.Unmarshal(entry.data, &n); err != nil {
+				return 0, fmt.Errorf("decoding in-memory counter: %w", err)
+			}
 		}
 		n++
-		data, _ := json.Marshal(n)
+		data, err := json.Marshal(n)
+		if err != nil {
+			return 0, fmt.Errorf("encoding in-memory counter: %w", err)
+		}
 		expires := entry.expires
 		if fresh {
 			expires = c.Now().Add(ttl) // reset window only on a new key (NX semantics)
@@ -336,7 +343,10 @@ func (c *Client) SetNX(ctx context.Context, key, value string, ttl time.Duration
 		if entry, ok := c.mem[key]; ok && c.Now().Before(entry.expires) {
 			return false, nil
 		}
-		data, _ := json.Marshal(value)
+		data, err := json.Marshal(value)
+		if err != nil {
+			return false, fmt.Errorf("marshaling in-memory lock value: %w", err)
+		}
 		c.mem[key] = memEntry{data: data, expires: c.Now().Add(ttl)}
 		return true, nil
 	}

@@ -240,5 +240,5 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 	case errors.Is(err, user.ErrNotFound):
 		return apierror.NotFound("User", c.Path()).Send(c)
 	}
-	return apierror.ServerError(c.Path()).Send(c)
+	return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 }

@@ -58,7 +58,7 @@ func sendClientError(c fiber.Ctx, err error) error {
 	case errors.As(err, &scopeErr):
 		return apierror.InvalidRequest(scopeErr.Error(), c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }
 
@@ -67,7 +67,7 @@ func (h *OAuthClientsHandler) list(c fiber.Ctx) error {
 
 	clients, err := h.clientSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(clients))

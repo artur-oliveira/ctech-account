@@ -2,8 +2,9 @@ package audit
 
 import (
 	"context"
-	"log/slog"
 	"time"
+
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 type Service struct {
@@ -44,7 +45,7 @@ func (s *Service) Record(ctx context.Context, e Entry) {
 		ExpiresAt: now.Add(EventTTL).Unix(),
 	}
 	if err := s.repo.Put(ctx, evt); err != nil {
-		slog.Error("audit: failed to record event", "type", e.Type, "error", err)
+		observability.Error(ctx, "audit: failed to record event", err, "type", e.Type)
 	}
 }
 

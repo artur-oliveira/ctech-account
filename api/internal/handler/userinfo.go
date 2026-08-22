@@ -27,7 +27,7 @@ func (h *UserInfoHandler) UserInfo(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrNotFound) {
 			return apierror.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	resp := fiber.Map{

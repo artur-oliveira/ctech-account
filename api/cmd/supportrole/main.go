@@ -42,7 +42,9 @@ func main() {
 func runSet(svc *userDomain.Service, args []string) {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	role := fs.String("role", "", "agent|manager|admin")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		log.Fatalf("parsing set arguments: %v", err)
+	}
 	if fs.NArg() != 1 {
 		log.Fatal("usage: supportrole set <user_id> -role agent|manager|admin")
 	}

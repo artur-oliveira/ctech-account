@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { verifyEmailAPI } from '@/lib/mutations'
+import { reportClientError } from '@/lib/client-logging'
 
 function VerifyEmailInner() {
   const { t } = useTranslation()
@@ -23,7 +24,10 @@ function VerifyEmailInner() {
     }
     void verifyEmailAPI(token)
       .then(() => setState('success'))
-      .catch(() => setState('error'))
+      .catch((error) => {
+        reportClientError('verify-email', error)
+        setState('error')
+      })
   }, [token])
 
   if (state === 'pending') {

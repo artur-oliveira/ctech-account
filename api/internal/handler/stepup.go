@@ -2,12 +2,14 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
+	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 )
@@ -67,14 +69,18 @@ func (h *StepUpHandler) challenge(c fiber.Ctx) error {
 		return err
 	}
 
-	if !h.userHasMFA(c, userID) {
+	hasMFA, err := h.userHasMFA(c, userID)
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	if !hasMFA {
 		return apierror.MFAEnrollmentRequired(c.Path()).Send(c)
 	}
 
 	ok, err := h.totpSvc.Validate(c.Context(), userID, req.Code)
 	if err != nil || !ok {
 		recordAudit(c, h.audit, userID, audit.EventStepUpFailed, map[string]string{"method": stepUpMethodTOTP})
-		return apierror.InvalidCredentials(c.Path()).Send(c)
+		return apierror.InvalidCredentials(c.Path()).WithCause(err).Send(c)
 	}
 
 	return h.finish(c, userID, sessionID, session.AMRTOTP, stepUpMethodTOTP)
@@ -89,11 +95,11 @@ func (h *StepUpHandler) passkeyBegin(c fiber.Ctx) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, passkey.ErrCacheRequired):
-			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).Send(c)
+			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrNoCredentials):
-			return apierror.MFAEnrollmentRequired(c.Path()).Send(c)
+			return apierror.MFAEnrollmentRequired(c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).Send(c)
+			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -121,11 +127,11 @@ func (h *StepUpHandler) passkeyComplete(c fiber.Ctx) error {
 		recordAudit(c, h.audit, userID, audit.EventStepUpFailed, map[string]string{"method": stepUpMethodPasskey})
 		switch {
 		case errors.Is(err, passkey.ErrSessionExpired):
-			return apierror.InvalidToken("Passkey session expired. Please try again.", c.Path()).Send(c)
+			return apierror.InvalidToken("Passkey session expired. Please try again.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrInvalidResponse):
-			return apierror.InvalidRequest("Invalid passkey response.", c.Path()).Send(c)
+			return apierror.InvalidRequest("Invalid passkey response.", c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).Send(c)
+			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -135,17 +141,22 @@ func (h *StepUpHandler) passkeyComplete(c fiber.Ctx) error {
 // finish stamps the MFA proof on the session and audits the challenge.
 func (h *StepUpHandler) finish(c fiber.Ctx, userID, sessionID, amrMethod, auditMethod string) error {
 	if err := h.sessionSvc.RecordMFA(c.Context(), userID, sessionID, amrMethod); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventStepUpSuccess, map[string]string{"method": auditMethod})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // userHasMFA reports whether the user has TOTP or at least one passkey enrolled.
-func (h *StepUpHandler) userHasMFA(c fiber.Ctx, userID string) bool {
+func (h *StepUpHandler) userHasMFA(c fiber.Ctx, userID string) (bool, error) {
 	if secret, err := h.totpSvc.Get(c.Context(), userID); err == nil && secret.IsSetup() {
-		return true
+		return true, nil
+	} else if err != nil && !errors.Is(err, totp.ErrNotFound) {
+		return false, fmt.Errorf("checking TOTP enrollment: %w", err)
 	}
 	has, err := h.passkeySvc.HasPasskeys(c.Context(), userID)
-	return err == nil && has
+	if err != nil {
+		return false, fmt.Errorf("checking passkey enrollment: %w", err)
+	}
+	return has, nil
 }

@@ -15,6 +15,7 @@ import { isAxiosError } from '@/lib/axios'
 import { CPF_DIGITS, KYC_ADDRESS_LIMITS, KYC_LEGAL_NAME_MAX_LENGTH, KYC_MIN_AGE_YEARS } from '@/lib/constants'
 import type { KYCAddress, KYCStatus } from '@/lib/types'
 import { lookupViaCEP } from '@/lib/viacep'
+import { reportClientError } from '@/lib/client-logging'
 
 function formatCPFInput(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, CPF_DIGITS)
@@ -167,6 +168,7 @@ export function KYCBasicForm({ status }: { status: KYCStatus }) {
       setFieldErrors((errors) => ({ ...errors, street: undefined, district: undefined, city: undefined, state: undefined }))
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
+      reportClientError('kyc-address', error)
       setZipLookupStatus('unavailable')
     }
   }

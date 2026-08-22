@@ -20,6 +20,7 @@ import {CONTINUE_URL_KEY, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useRedirectIfAuthenticated} from '@/hooks/use-redirect-if-authenticated'
 import {GoogleSignInButton} from '@/components/google-sign-in-button'
 import {Fingerprint} from 'lucide-react'
+import {reportClientError} from '@/lib/client-logging'
 
 /** The API answers 403 when the password is correct but the email is unverified. */
 const HTTP_FORBIDDEN = 403
@@ -115,6 +116,7 @@ function LoginForm() {
         // cancelled, rate-limited or offline initialization must leave the
         // password and explicit passkey controls fully usable.
         if (!active || isPasskeyCancellation(conditionalError)) return
+        reportClientError('conditional-passkey-login', conditionalError)
         if (authFlowStartedRef.current) {
           authFlowStartedRef.current = false
         }
@@ -152,6 +154,7 @@ function LoginForm() {
       const {data} = await api.post<AuthContinuation>('/v1.0/auth/login', {email, password})
       await continueAfterAuthentication(data)
     } catch (submitError) {
+      reportClientError('password-login', submitError)
       if (isAxiosError(submitError)) {
         if (submitError.response?.status === HTTP_FORBIDDEN) {
           setUnverifiedEmail(email)
@@ -179,8 +182,10 @@ function LoginForm() {
         setErrorVariant('default')
         setError(t('login.passkeyCancelled'))
       } else if (isAxiosError(passkeyError)) {
+        reportClientError('passkey-login', passkeyError)
         setError(passkeyError.response?.data?.detail ?? t('errors.loginFailed'))
       } else {
+        reportClientError('passkey-login', passkeyError)
         setError(t('errors.network'))
       }
       setPasskeyLoading(false)

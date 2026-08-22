@@ -3,6 +3,7 @@ package audit
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"time"
 )
 
@@ -35,6 +36,8 @@ func AnonPK(ip string) string { return pkAnonPrefix + ip }
 // EVT_{RFC3339Nano}_{4 random bytes hex}.
 func BuildSK(t time.Time) string {
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		slog.Error("audit: failed to generate event sort-key entropy", "error", err)
+	}
 	return skPrefix + t.UTC().Format(time.RFC3339Nano) + "_" + hex.EncodeToString(b)
 }

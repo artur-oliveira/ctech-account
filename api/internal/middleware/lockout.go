@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,13 +10,13 @@ import (
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 // AccountLockoutMiddleware returns a middleware that tracks failed login attempts
 // per account and locks accounts after excessive failed attempts.
 func AccountLockoutMiddleware(valkeyClient *cache.Client, cfg *config.Config) fiber.Handler {
 	return func(c fiber.Ctx) error {
-	_ = context.TODO() // Ensure context package is used
 		// Skip for non-auth endpoints
 		if !isAuthEndpoint(c.Path()) {
 			return c.Next()
@@ -37,7 +36,7 @@ func AccountLockoutMiddleware(valkeyClient *cache.Client, cfg *config.Config) fi
 		isLocked, err := valkeyClient.Exists(c.Context(), lockoutKey)
 		if err != nil {
 			// Fail closed on Valkey error
-			return apierror.ServiceUnavailable("temporarily unavailable", c.Path()).Send(c)
+			return apierror.ServiceUnavailable("temporarily unavailable", c.Path()).WithCause(err).Send(c)
 		}
 
 		if isLocked {
@@ -56,16 +55,16 @@ func AccountLockoutMiddleware(valkeyClient *cache.Client, cfg *config.Config) fi
 				attemptsKey := fmt.Sprintf("auth:failed_attempts:%s", normalized)
 				newCount, err := valkeyClient.Incr(c.Context(), attemptsKey, lockoutDuration(cfg))
 				if err != nil {
-					// Log error but don't block login attempt
-					// In a real implementation, we would use a logger
-					// For now, we'll just continue
+					observability.Error(c.Context(), "account lockout: failed to increment attempt counter", err)
 				} else {
 					// Check if threshold reached
 					if newCount >= lockoutThreshold(cfg) {
 						// Set lockout
 						lockoutUntil := time.Now().Add(lockoutDuration(cfg))
 						lockoutKey := fmt.Sprintf("auth:lockout:%s", normalized)
-						valkeyClient.Set(c.Context(), lockoutKey, lockoutUntil.Format(time.RFC3339), lockoutDuration(cfg))
+						if err := valkeyClient.Set(c.Context(), lockoutKey, lockoutUntil.Format(time.RFC3339), lockoutDuration(cfg)); err != nil {
+							observability.Error(c.Context(), "account lockout: failed to store lockout", err)
+						}
 
 						// Audit if enabled
 						if lockoutAuditEnabled(cfg) {
@@ -78,7 +77,9 @@ func AccountLockoutMiddleware(valkeyClient *cache.Client, cfg *config.Config) fi
 		} else {
 			// Successful login - reset counter
 			attemptsKey := fmt.Sprintf("auth:failed_attempts:%s", normalized)
-			valkeyClient.Delete(c.Context(), attemptsKey)
+			if err := valkeyClient.Delete(c.Context(), attemptsKey); err != nil {
+				observability.Warn(c.Context(), "account lockout: failed to clear attempt counter", err)
+			}
 		}
 
 		return err

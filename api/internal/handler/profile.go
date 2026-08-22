@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"log"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
@@ -11,6 +10,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -43,7 +43,7 @@ func (h *ProfileHandler) get(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrNotFound) {
 			return apierror.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -87,12 +87,12 @@ func (h *ProfileHandler) update(c fiber.Ctx) error {
 	}
 
 	if err := h.userSvc.UpdateProfile(c.Context(), userID, req.FirstName, req.LastName, req.DisplayName); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -120,7 +120,7 @@ func (h *ProfileHandler) changePassword(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrCurrentPasswordIncorrect) {
 			return apierror.InvalidCredentials(c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventPasswordChanged, nil)
@@ -148,7 +148,7 @@ func (h *ProfileHandler) setInitialPassword(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrPasswordAlreadySet) {
 			return apierror.Conflict("This account already has a password. Use the change-password endpoint.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventPasswordChanged, map[string]string{"method": "initial"})
@@ -168,7 +168,7 @@ func (h *ProfileHandler) unlinkGoogle(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrCannotUnlink) {
 			return apierror.Conflict("Cannot unlink Google without a password. Set a password first.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSocialUnlinked, nil)
@@ -179,6 +179,7 @@ func (h *ProfileHandler) unlinkGoogle(c fiber.Ctx) error {
 // Any password mutation must call this so a stolen refresh token stops working.
 func (h *ProfileHandler) revokeOtherSessions(c fiber.Ctx, userID, op string) {
 	if err := h.sessionSvc.RevokeAll(c.Context(), userID, middleware.GetSessionID(c)); err != nil {
-		log.Printf("%s: failed to revoke other sessions for user %s: %v", op, userID, err)
+		observability.Error(c.Context(), "profile: failed to revoke other sessions", err,
+			"operation", op, "user_id", userID)
 	}
 }

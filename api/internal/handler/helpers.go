@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/account/api/internal/validate"
 )
@@ -65,13 +65,14 @@ func emailDomain(email string) string {
 // sendNewDeviceEmailAsync fires a goroutine sending the new-device login
 // notification. Failures are logged, never surfaced — email is best-effort
 // and must never block or fail a login.
-func sendNewDeviceEmailAsync(emailCli *email.Client, to, firstName, deviceName, city, country, ip string) {
+func sendNewDeviceEmailAsync(ctx context.Context, emailCli *email.Client, to, firstName, deviceName, city, country, ip string) {
 	if emailCli == nil {
 		return
 	}
+	ctx = context.WithoutCancel(ctx)
 	go func() {
-		if err := emailCli.SendNewDeviceLoginEmail(context.Background(), to, firstName, deviceName, city, country, ip, time.Now()); err != nil {
-			log.Printf("new-device login email failed for %s: %v", to, err)
+		if err := emailCli.SendNewDeviceLoginEmail(ctx, to, firstName, deviceName, city, country, ip, time.Now()); err != nil {
+			observability.Error(ctx, "authentication: failed to send new-device email", err)
 		}
 	}()
 }

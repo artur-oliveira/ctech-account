@@ -165,6 +165,28 @@ All errors follow [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807):
 
 Token endpoint errors additionally include `error` and `error_description` (RFC 6749).
 
+### Error observability
+
+The API writes structured JSON logs to stdout. Every RFC 7807 response is logged at the HTTP
+boundary: client rejections (`4xx`) at `WARN` and server failures (`5xx`) at `ERROR`. Internal
+causes are attached with `Problem.WithCause` and are written only to the server log, never to the
+response. `X-Request-ID` is generated or preserved for every request, included in those logs, and
+exposed by CORS so browser diagnostics can carry the same correlation ID.
+
+Failures in best-effort and asynchronous work (email delivery, audit metadata, cache cleanup,
+object cleanup and background refreshes) are logged where they are handled because they do not
+reach the HTTP error boundary. Logs must contain identifiers needed for correlation, but must not
+contain credentials, tokens, cookies, request bodies, email addresses or other unnecessary PII.
+The UI follows the same rule: final Axios failures and browser-only operation failures are logged
+in a sanitized shape containing at most method, path without query string, status, safe error
+metadata and `request_id`.
+
+Expected control flow such as a missing optional record, invalid user input already represented by
+a `4xx`, or a user-cancelled WebAuthn/AbortController operation is not an unhandled operational
+failure. The HTTP rejection is still logged centrally. See
+[`docs/specs/2026-08-22-error-observability.md`](docs/specs/2026-08-22-error-observability.md) for
+the audit policy and the planned extraction of the reusable primitives to `ctech-go-common`.
+
 ### Rate limiting (`429`)
 
 Every rate limit is a Valkey counter per client IP (or per user, for `/account/*`). A

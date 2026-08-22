@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/observability"
 )
 
 const mfaTokenTTL = 5 * time.Minute
@@ -98,16 +98,20 @@ func (h *AuthHandler) register(c fiber.Ctx) error {
 			// anyone enumerate registered addresses. The address owner is told by email.
 			if h.emailCli != nil {
 				if existing, getErr := h.userSvc.GetByEmail(c.Context(), req.Email); getErr == nil {
+					asyncCtx := context.WithoutCancel(c.Context())
 					go func() {
-						if sendErr := h.emailCli.SendAccountExistsEmail(context.Background(), existing.Email, existing.FirstName); sendErr != nil {
-							log.Printf("register: failed to send account-exists email: %v", sendErr)
+						if sendErr := h.emailCli.SendAccountExistsEmail(asyncCtx, existing.Email, existing.FirstName); sendErr != nil {
+							observability.Error(asyncCtx, "registration: failed to send account-exists email", sendErr,
+								"user_id", existing.ID())
 						}
 					}()
+				} else {
+					observability.Error(c.Context(), "registration: failed to load conflicting account", getErr)
 				}
 			}
 			return registrationAccepted(c)
 		}
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, u.ID(), audit.EventTermsAccepted, map[string]string{
@@ -117,7 +121,7 @@ func (h *AuthHandler) register(c fiber.Ctx) error {
 
 	// Send verification email asynchronously — non-blocking.
 	if h.emailCli != nil {
-		go h.sendVerificationEmail(context.Background(), u.ID(), u.Email, u.FirstName)
+		go h.sendVerificationEmail(context.WithoutCancel(c.Context()), u.ID(), u.Email, u.FirstName)
 	}
 
 	return registrationAccepted(c)
@@ -153,6 +157,9 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		if known, getErr := h.userSvc.GetByEmail(c.Context(), strings.ToLower(req.Email)); getErr == nil {
 			recordAudit(c, h.audit, known.ID(), audit.EventLoginFailed, nil)
 		} else {
+			if !errors.Is(getErr, user.ErrNotFound) {
+				observability.Error(c.Context(), "login: failed to resolve account for audit", getErr)
+			}
 			recordAuditAnon(c, h.audit, audit.EventLoginFailed, map[string]string{"email_domain": emailDomain(req.Email)})
 		}
 		// A disabled account is reported as invalid credentials on purpose: a
@@ -166,6 +173,8 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 	var methods []string
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID()); totpErr == nil && totpSecret.IsSetup() {
 		methods = append(methods, "totp")
+	} else if totpErr != nil && !errors.Is(totpErr, totp.ErrNotFound) {
+		return apierror.ServerError(c.Path()).WithCause(totpErr).Send(c)
 	}
 
 	if len(methods) > 0 {
@@ -180,12 +189,12 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 // Shared by AuthHandler (password login) and PasskeyHandler (passkey login with TOTP required).
 func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, ip, userAgent, primaryAMR string, methods []string) error {
 	if cacheClient == nil || !cacheClient.Enabled() {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
 	}
 
 	rawToken, hashHex, err := crypto.GenerateMFAToken()
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	payload := mfaTokenPayload{
@@ -197,7 +206,7 @@ func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, i
 	}
 
 	if err := cacheClient.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -213,18 +222,21 @@ func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	ip := clientIP(c)
 	loc := geo.Lookup(ip)
 	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), deviceName, loc.Country)
+	if seenErr != nil {
+		observability.Warn(c.Context(), "authentication: failed to evaluate whether device is new", seenErr, "user_id", u.ID())
+	}
 	newDevice := seenErr == nil && !seen
 
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRPassword},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"session_id": sess.ID()}
 	if newDevice {
 		meta["new_device"] = "true"
-		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
+		sendNewDeviceEmailAsync(c.Context(), h.emailCli, u.Email, u.FirstName, deviceName, loc.City, loc.Country, ip)
 	}
 	recordAudit(c, h.audit, u.ID(), audit.EventLoginSuccess, meta)
 
@@ -251,7 +263,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	}
 
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
 	}
 
 	hashHex := crypto.HashToken(req.MFAToken)
@@ -269,10 +281,17 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 
 	// Since the token now survives a wrong guess, cap retries so it can't be
 	// brute-forced for its remaining TTL.
-	attempts, _ := h.cache.Incr(c.Context(), attemptsKey, mfaTokenTTL)
+	attempts, attemptsErr := h.cache.Incr(c.Context(), attemptsKey, mfaTokenTTL)
+	if attemptsErr != nil {
+		return apierror.ServiceUnavailable("MFA verification is temporarily unavailable.", c.Path()).WithCause(attemptsErr).Send(c)
+	}
 	if attempts > mfaMaxAttempts {
-		_ = h.cache.Delete(c.Context(), tokenKey)
-		_ = h.cache.Delete(c.Context(), attemptsKey)
+		if err := h.cache.Delete(c.Context(), tokenKey); err != nil {
+			observability.Error(c.Context(), "mfa: failed to delete exhausted token", err)
+		}
+		if err := h.cache.Delete(c.Context(), attemptsKey); err != nil {
+			observability.Error(c.Context(), "mfa: failed to delete exhausted attempt counter", err)
+		}
 		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "totp", "reason": "max_attempts"})
 		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
@@ -290,27 +309,32 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	if err := h.cache.GetDel(c.Context(), tokenKey, &claimed); err != nil {
 		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
-	_ = h.cache.Delete(c.Context(), attemptsKey)
+	if err := h.cache.Delete(c.Context(), attemptsKey); err != nil {
+		observability.Warn(c.Context(), "mfa: failed to clear attempt counter after success", err)
+	}
 
 	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	loc := geo.Lookup(payload.IP)
 	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), payload.DeviceName, loc.Country)
+	if seenErr != nil {
+		observability.Warn(c.Context(), "mfa: failed to evaluate whether device is new", seenErr, "user_id", u.ID())
+	}
 	newDevice := seenErr == nil && !seen
 
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, mfaSessionAMR(payload),
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"method": "totp", "session_id": sess.ID()}
 	if newDevice {
 		meta["new_device"] = "true"
-		sendNewDeviceEmailAsync(h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
+		sendNewDeviceEmailAsync(c.Context(), h.emailCli, u.Email, u.FirstName, payload.DeviceName, loc.City, loc.Country, payload.IP)
 	}
 	recordAudit(c, h.audit, u.ID(), audit.EventMFAChallengeSuccess, meta)
 
@@ -347,12 +371,19 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 	// copied or stolen ctech_session could still be replayed after logout.
 	if cookieValue := c.Cookies(sessionCookieName); cookieValue != "" {
 		if sess, err := h.sessionSvc.ValidateToken(c.Context(), cookieValue); err == nil {
-			_ = h.sessionSvc.Revoke(c.Context(), sess.UserID(), sess.ID())
+			if err := h.sessionSvc.Revoke(c.Context(), sess.UserID(), sess.ID()); err != nil {
+				observability.Error(c.Context(), "logout: failed to revoke session", err,
+					"user_id", sess.UserID(), "session_id", sess.ID())
+			}
+		} else {
+			observability.Warn(c.Context(), "logout: session cookie could not be validated", err)
 		}
 	}
 	// Also drop the per-client refresh token when the SPA sends its cookie.
 	if rt := c.Cookies(refreshTokenCookieName); rt != "" {
-		_ = h.sessionSvc.RevokeClientToken(c.Context(), rt)
+		if err := h.sessionSvc.RevokeClientToken(c.Context(), rt); err != nil {
+			observability.Error(c.Context(), "logout: failed to revoke client refresh token", err)
+		}
 	}
 
 	clearAuthCookie(c, h.cfg, sessionCookieName)
@@ -372,7 +403,12 @@ func (h *AuthHandler) logout(c fiber.Ctx) error {
 func (h *AuthHandler) endSession(c fiber.Ctx) error {
 	if cookieValue := c.Cookies(sessionCookieName); cookieValue != "" {
 		if sess, err := h.sessionSvc.ValidateToken(c.Context(), cookieValue); err == nil {
-			_ = h.sessionSvc.Revoke(c.Context(), sess.UserID(), sess.ID())
+			if err := h.sessionSvc.Revoke(c.Context(), sess.UserID(), sess.ID()); err != nil {
+				observability.Error(c.Context(), "end-session: failed to revoke session", err,
+					"user_id", sess.UserID(), "session_id", sess.ID())
+			}
+		} else {
+			observability.Warn(c.Context(), "end-session: session cookie could not be validated", err)
 		}
 	}
 
@@ -384,6 +420,8 @@ func (h *AuthHandler) endSession(c fiber.Ctx) error {
 	if postLogout := c.Query("post_logout_redirect_uri"); postLogout != "" {
 		if oauthClient, err := h.clientRepo.GetByID(c.Context(), c.Query("client_id")); err == nil && oauthClient.IsPostLogoutRedirectAllowed(postLogout) {
 			redirectTo = postLogout
+		} else if err != nil && !errors.Is(err, oauthclient.ErrNotFound) {
+			observability.Warn(c.Context(), "end-session: failed to resolve OAuth client redirect", err)
 		}
 	}
 	return c.Redirect().Status(fiber.StatusFound).To(redirectTo)
@@ -393,17 +431,21 @@ func (h *AuthHandler) endSession(c fiber.Ctx) error {
 
 func (h *AuthHandler) sendVerificationEmail(ctx context.Context, userID, toEmail, firstName string) {
 	if h.cache == nil || !h.cache.Enabled() || h.emailCli == nil {
+		observability.Warn(ctx, "verification email skipped because a dependency is unavailable", nil,
+			"user_id", userID, "cache_available", h.cache != nil && h.cache.Enabled(), "email_available", h.emailCli != nil)
 		return
 	}
 	rawToken, hashHex, err := crypto.GenerateMFAToken()
 	if err != nil {
+		observability.Error(ctx, "verification email: failed to generate token", err, "user_id", userID)
 		return
 	}
 	if err := h.cache.Set(ctx, "ev:"+hashHex, userID, emailVerifyTTL); err != nil {
+		observability.Error(ctx, "verification email: failed to store token", err, "user_id", userID)
 		return
 	}
 	if err := h.emailCli.SendVerificationEmail(ctx, toEmail, firstName, rawToken); err != nil {
-		log.Printf("send-verification-email: failed to send verification email to user %s: %v", userID, err)
+		observability.Error(ctx, "verification email: SES send failed", err, "user_id", userID)
 	}
 
 }
@@ -417,7 +459,7 @@ func (h *AuthHandler) verifyEmail(c fiber.Ctx) error {
 		return err
 	}
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("email verification cache is unavailable")).Send(c)
 	}
 	hashHex := crypto.HashToken(r.Token)
 	var userID string
@@ -426,7 +468,7 @@ func (h *AuthHandler) verifyEmail(c fiber.Ctx) error {
 		return apierror.InvalidToken("Verification link is invalid or has expired.", c.Path()).Send(c)
 	}
 	if err := h.userSvc.MarkEmailVerified(c.Context(), userID); err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventEmailVerified, nil)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"verified": true})
@@ -443,7 +485,7 @@ func (h *AuthHandler) resendVerification(c fiber.Ctx) error {
 	// Always respond 200 regardless — prevents email enumeration.
 	u, err := h.userSvc.GetByEmail(c.Context(), strings.ToLower(r.Email))
 	if err == nil && !u.EmailVerified && h.emailCli != nil {
-		go h.sendVerificationEmail(context.Background(), u.ID(), u.Email, u.FirstName)
+		go h.sendVerificationEmail(context.WithoutCancel(c.Context()), u.ID(), u.Email, u.FirstName)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"sent": true})
 }
@@ -462,16 +504,23 @@ func (h *AuthHandler) forgotPassword(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByEmail(c.Context(), strings.ToLower(r.Email))
 	if err == nil {
 		recordAudit(c, h.audit, u.ID(), audit.EventPasswordResetRequest, nil)
+	} else if !errors.Is(err, user.ErrNotFound) {
+		observability.Error(c.Context(), "forgot-password: failed to look up account", err)
 	}
 	if err == nil && h.emailCli != nil && h.cache != nil && h.cache.Enabled() {
 		rawToken, hashHex, genErr := crypto.GenerateMFAToken()
-		if genErr == nil {
+		if genErr != nil {
+			observability.Error(c.Context(), "forgot-password: failed to generate reset token", genErr, "user_id", u.ID())
+		} else {
 			if setErr := h.cache.Set(c.Context(), "pr:"+hashHex, u.ID(), passwordResetTTL); setErr == nil {
+				asyncCtx := context.WithoutCancel(c.Context())
 				go func() {
-					if err := h.emailCli.SendPasswordResetEmail(context.Background(), u.Email, u.FirstName, rawToken); err != nil {
-						log.Printf("forgot-password: failed to send reset email to user %s: %v", u.ID(), err)
+					if err := h.emailCli.SendPasswordResetEmail(asyncCtx, u.Email, u.FirstName, rawToken); err != nil {
+						observability.Error(asyncCtx, "forgot-password: failed to send reset email", err, "user_id", u.ID())
 					}
 				}()
+			} else {
+				observability.Error(c.Context(), "forgot-password: failed to store reset token", setErr, "user_id", u.ID())
 			}
 		}
 	}
@@ -488,7 +537,7 @@ func (h *AuthHandler) resetPassword(c fiber.Ctx) error {
 		return err
 	}
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(errors.New("password reset cache is unavailable")).Send(c)
 	}
 	hashHex := crypto.HashToken(r.Token)
 	var userID string
@@ -499,18 +548,18 @@ func (h *AuthHandler) resetPassword(c fiber.Ctx) error {
 
 	hash, err := crypto.HashPassword(r.NewPassword)
 	if err != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if _, err := h.userSvc.GetByID(c.Context(), userID); err != nil {
 		return apierror.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
 	}
 	if updErr := h.userSvc.ForceSetPassword(c.Context(), userID, hash); updErr != nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return apierror.ServerError(c.Path()).WithCause(updErr).Send(c)
 	}
 	// Revoke every existing session: a password reset must lock out anyone
 	// (including an attacker) holding a refresh token issued before the reset.
 	if revErr := h.sessionSvc.RevokeAll(c.Context(), userID, ""); revErr != nil {
-		log.Printf("reset-password: failed to revoke sessions for user %s: %v", userID, revErr)
+		observability.Error(c.Context(), "reset-password: failed to revoke sessions", revErr, "user_id", userID)
 	}
 	recordAudit(c, h.audit, userID, audit.EventPasswordResetComplete, nil)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"reset": true})
