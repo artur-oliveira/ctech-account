@@ -19,8 +19,8 @@ Gateway.
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)
 - **RFC 7807 Problem Details** — All error responses use `application/problem+json`
 - **RFC Health Check** — `GET /v1.0/health-check` responds with `application/health+json`
-- **DynamoDB** — Eight tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
-  `account_mfa`, `account_passkeys`, `account_audit`, `ctech_scopes`
+- **DynamoDB** — Nine tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
+  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `ctech_scopes`
 - **Valkey** — Required in non-dev (see §Configuration): OAuth codes, MFA/passkey challenges, recovery tokens and rate
   limiting live in Valkey with no DynamoDB fallback; the API refuses to boot without it outside dev
 
@@ -133,6 +133,15 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/account/mfa/passkeys/register/begin`         | `account:mfa:write`                     | WebAuthn registration challenge                                                                                                                                                                     |
 | `POST`   | `/v1.0/account/mfa/passkeys/register/complete`      | `account:mfa:write`                     | Validate attestation → persist credential                                                                                                                                                           |
 | `DELETE` | `/v1.0/account/mfa/passkeys/:id`                    | `account:mfa:write` + step-up           | Remove a passkey                                                                                                                                                                                    |
+| `POST`   | `/v1.0/support/tickets`                             | Optional session + Turnstile             | Create a public or signed-in support ticket; anonymous callers must provide email and receive a portal token                                                               |
+| `GET`    | `/v1.0/support/tickets/:id`                          | Owner bearer or anonymous token          | Read a ticket and its thread                                                                                                  |
+| `POST`   | `/v1.0/support/tickets/:id/reply`                    | Owner bearer or anonymous token          | Append a user reply; a closed ticket reopens                                                                                |
+| `POST`   | `/v1.0/support/tickets/:id/nps`                      | Owner bearer or anonymous token          | Submit a 1–5 NPS score after closure                                                                                        |
+| `GET`    | `/v1.0/account/support/tickets`                      | `account:profile:read`                   | List the caller's tickets                                                                                                    |
+| `GET`    | `/v1.0/admin/support/tickets`                        | Support role                             | List the support queue                                                                                                       |
+| `GET`    | `/v1.0/admin/support/tickets/:id`                    | Support role                             | Read any ticket thread                                                                                                       |
+| `POST`   | `/v1.0/admin/support/tickets/:id/reply`              | Support role                             | Add an agent reply                                                                                                           |
+| `PUT`    | `/v1.0/admin/support/tickets/:id/status`             | Support role                             | Change open, answered or closed status                                                                                       |
 | `GET`    | `/.well-known/openid-configuration`                 | —                                      | OIDC Discovery document                                                                                                                                                                             |
 | `GET`    | `/.well-known/jwks.json`                            | —                                      | JSON Web Key Set                                                                                                                                                                                    |
 | `GET`    | `/.well-known/oauth-protected-resource`             | —                                      | RFC 9728 metadata for the Account Resource Server                                                                                                                                                   |
@@ -200,6 +209,30 @@ either credential, GeoIP stays disabled and geo fields are simply empty (never f
 When a login's device name + country combination doesn't match any of the user's existing
 sessions, the login gets `new_device: "true"` audit metadata and an email notification
 (`email.SendNewDeviceLoginEmail`).
+
+---
+
+### Support tickets
+
+A self-hosted support-ticket system (`internal/domain/support`) replaces Zendesk: a public form at
+`/support` accepts both authenticated and anonymous submissions (anonymous callers get back an
+`anonymous_token` used to view/reply to their own ticket without a session), agents work the queue
+at `/admin/support`, and both directions thread over SES raw-MIME email
+(`In-Reply-To`/`References`, `[Ticket #N]` subject convention).
+
+- **Lifecycle:** `open` → `answered` (agent replied) → `closed` (agent-only transition). A user
+  reply on a closed ticket reopens it to `open`. Once closed, the ticket owner is prompted for a
+  1–5 NPS score; a message is required when the score is ≤3.
+- **`support_role`** (`""` / `agent` / `manager` / `admin`) gates every `/v1.0/admin/*` route via
+  `middleware.RequireSupportRole`, which checks the field with a plain DB lookup rather than a JWT
+  claim — `crypto.JWTService.SignAccessToken`'s many call sites are a Critical Area, and a role that
+  can change mid-session is a poor fit for a 15-minute access token anyway. There is no self-service
+  path to the role: it is granted/revoked with `go run ./cmd/supportrole set|revoke <user_id>
+  [-role agent|manager|admin]` (same `TABLE_PREFIX`/`ENVIRONMENT` convention as `cmd/kyc`).
+- **Known limitation:** inbound email replies are not ingested. The confirmation/reply/NPS emails
+  all point recipients back to the portal link rather than accepting a reply-to-this-address flow —
+  see `docs/specs/2026-08-22-support-tickets-design.md` §2 for the full v2 backlog (real-time
+  WS/protobuf chat, connection-presence audit events, ticket claim/assignment).
 
 ---
 
@@ -497,6 +530,7 @@ All configuration is read from environment variables at startup.
 | `PUBLIC_KEY_KID`             | No       | Key ID for the env-provided key (derived from the public key when unset). Ignored in SSM mode                                                                                                                                                                                                                                 |
 | `VALKEY_URL`                 | Non-dev  | Redis-compatible URL; **required outside dev** — the API refuses to boot without it (OAuth codes, MFA tokens and rate limiting have no DynamoDB fallback)                                                                                                                                                                     |
 | `FROM_EMAIL`                 | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled                                                                                                                                                                                                                     |
+| `TURNSTILE_SECRET_KEY`       | No       | Cloudflare Turnstile Siteverify secret for public support-ticket creation. The deployed API reads it from `/ctech-account/{env}/turnstile-secret-key`; empty disables verification only for local development. Never expose this value to the SPA. |
 | `KYC_DOCUMENTS_BUCKET`       | No       | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable                                                                                                                                                                                                      |
 | `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
@@ -630,12 +664,18 @@ grants receive the new explicit `account:*` permissions on their next rotation.
 # Nothing proxies /v1.0/* at the edge: the SPA calls the API host directly and CORS applies.
 NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app
 OAUTH_CLIENT_ID=accounts-ui
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=... # public site key only; supplied by GitHub Actions vars
 ```
 
 These live in `.github/workflows/frontend.yml`'s `build-env-*`, which the reusable workflow in
 `ctech-cdk` bakes into the export and derives the CSP's `connect-src` from. Every external origin the
 SPA talks to must appear there as a literal, or the generated `connect-src` blocks it. There is no
 Vercel or ECS runtime.
+
+The support form uses Cloudflare Turnstile. Its public `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is shared
+with Poker through the environment-specific `TURNSTILE_SITE_KEY_DEV`, `_STAGE`, and `_PROD` GitHub
+Actions variables; the paired private `TURNSTILE_SECRET_KEY` remains API-only in SSM. The frontend
+CSP explicitly permits Turnstile's script and iframe at `https://challenges.cloudflare.com`.
 
 Because the call is now cross-origin, `APP_URL` below is not only WebAuthn's RPID source — it is also
 prepended to the API's CORS allowlist (`api/cmd/api/main.go:278`). If it does not match the SPA's real

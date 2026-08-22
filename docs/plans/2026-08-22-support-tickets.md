@@ -270,7 +270,7 @@ git commit -m "feat: add support ticket/message domain model"
 **Interfaces:**
 - Produces: `validate.FreetextRule{Min, Max int}`, `validate.Freetext(s string, rule FreetextRule) (cleaned string, err error)` — trims, checks length, rejects junk. This is called explicitly from `support.Service` (not a struct tag) because the min/max bounds differ per field (`body` 15–4000, `subject_other` 3–120, `nps_message` 15–1000) and the required-ness of `nps_message` is conditional (§3.5 of the spec) — a single fixed tag can't express that.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package validate
@@ -1524,7 +1524,7 @@ Before writing these, **read `ses_test.go` first** to find how the existing test
 Run: `cd api && go test ./internal/email/... -v`
 Expected: FAIL (`SendTicketConfirmationEmail` etc. undefined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `ses.go`:
 
@@ -1611,11 +1611,13 @@ git commit -m "feat: add threaded ticket e-mails (confirmation/reply/NPS) via SE
 
 **Files:** determined by the skill invocation below.
 
-- [ ] **Step 1: Invoke the `turnstile-spin` skill**
+- [x] **Step 1: Invoke the `turnstile-spin` skill**
 
 This is exactly the scenario the skill exists for. Invoke it with: "add Cloudflare Turnstile verification to the `POST /v1.0/support/tickets` endpoint in `ctech-account/api`. The widget goes on the new `/support` ticket-creation page in `ctech-account/ui`. Secret key is already wired as `config.TurnstileSecretKey` (env `TURNSTILE_SECRET_KEY`, SSM `/ctech-account/{env}/turnstile-secret-key` — see Task 2 of `docs/plans/2026-08-22-support-tickets.md`). Verification must produce an `apierror.ValidationFailed` (422) on failure, per this repo's RFC 7807 convention — not a generic 400."
 
 Let the skill create/place the Cloudflare-side widget, the server-side `siteverify` package, and wire the site key into the UI's build-time env var list (`.github/workflows/frontend.yml`'s `build-env-*`, per README §5 — every external origin the SPA talks to must be a literal there for CSP `connect-src`).
+
+> Implementation note (2026-08-22): the `turnstile-spin` skill was not installed in the workspace, so this scope was implemented directly with the same contract: `api/internal/turnstile`, a reusable `ui/src/components/turnstile-widget.tsx`, the shared Poker site-key variables, and Cloudflare's required `script-src`/`frame-src` CSP origins. Task 14 wires the verifier into the handler when that route is created.
 
 - [ ] **Step 2: Build check**
 

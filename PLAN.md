@@ -132,6 +132,40 @@ See `PYDFE_MIGRATION.md` for the full plan.
 
 ---
 
+## Sprint 5 — Support Tickets
+
+See `docs/specs/2026-08-22-support-tickets-design.md` and `docs/plans/2026-08-22-support-tickets.md`
+for the full spec and implementation plan.
+
+### Go Backend
+
+- [x] `cdk/lib/dynamodb-stack.ts` — `account_support_tickets` table + `status-index`/`user-index`/`anon-token-index`/`ticket-number-index` GSIs
+- [x] `cdk/lib/api-stack.ts` + `internal/config/config.go` — `TURNSTILE_SECRET_KEY` SSM wiring
+- [x] `internal/domain/support/model.go` — `Ticket`/`Message`, category/priority/status/author catalogs
+- [x] `internal/validate/freetext.go` — reusable trim/length/junk-pattern validator (`subject_other`, `body`, `nps_message`)
+- [x] `internal/domain/user` — `SupportRole` field + `SetSupportRole`
+- [x] `internal/domain/support/repository.go` — DynamoDB repository (atomic ticket-number counter, cursor-paginated GSI queries)
+- [x] `internal/domain/support/service.go` — create/reply/status/NPS business logic, admin-unscoped fetch, SES Message-ID bookkeeping
+- [x] `internal/email/ses.go` — threaded confirmation/reply/NPS emails via SES raw MIME (`In-Reply-To`/`References`)
+- [x] `internal/turnstile/` — Cloudflare Turnstile Siteverify client
+- [x] `internal/middleware/support.go` — `RequireSupportRole` (DB lookup, not a JWT claim)
+- [x] `cmd/supportrole/` — operator CLI to grant/revoke `support_role`
+- [x] `internal/handler/support.go`, `support_admin.go` — public/account/admin routes
+- [x] `internal/handler/profile.go` — expose `support_role` on `GET /account/profile`
+- [x] `cmd/api/main.go` — wire repository/service/handlers, mount `/v1.0/support`, `/v1.0/account/support`, `/v1.0/admin`
+
+### Frontend (accounts.aoctech.app)
+
+- [x] `/support` — public ticket form (category + subcategory selects, Turnstile, conditional email field for anonymous submitters)
+- [x] `/support/ticket` — thread view + reply + NPS prompt on closure
+- [x] `/account/support` — "meus tickets" list
+- [x] `/admin/support`, `/admin/support/ticket` — agent queue + thread, gated by `support_role` via `admin/layout.tsx`
+- [x] `lib/support-catalog.ts` — category/subcategory catalog merged into one `subject_other` string
+- [x] `lib/mock.ts` — seeded support-ticket scenarios (open/answered/closed/closed-with-NPS/anonymous) for `NEXT_PUBLIC_MOCK_API` dev mode
+- [x] `locales/en.json`, `locales/pt-BR.json` — `support` i18n namespace
+
+---
+
 ## Pending Decisions
 
 | Decision                         | Options                                              | Status                                         |
@@ -152,6 +186,7 @@ See `PYDFE_MIGRATION.md` for the full plan.
 | `/ctech-account/{env}/rsa-private-key`      | SecureString | RSA 2048 PEM private key                                  |
 | `/ctech/{env}/valkey/url`                   | String       | Valkey connection URL (existing, from ctech-cdk)          |
 | `/ctech-account/{env}/from-email`           | String       | SES verified sender address (FROM_EMAIL)                  |
+| `/ctech-account/{env}/turnstile-secret-key` | SecureString | Cloudflare Turnstile Siteverify secret (TURNSTILE_SECRET_KEY); empty disables verification (dev only) |
 | `/ctech-account/{env}/app-url`              | String       | Public base URL, e.g. https://accounts.aoctech.app |
 | `/ctech-account/{env}/webauthn-rpid`        | String       | Optional shared WebAuthn RP ID; defaults to the app-url hostname |
 | `/ctech-account/{env}/google-client-id`     | String       | Google OAuth 2.0 client ID                                |

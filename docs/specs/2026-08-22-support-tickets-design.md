@@ -181,10 +181,16 @@ No HTTP endpoint sets or reads this outside `GET /v1.0/account/profile`, which s
 
 ### 4.3 New middleware: `RequireSupportRole`
 
-`internal/middleware/support.go` — `RequireSupportRole(minRole)` reads `support_role` from the verified JWT claims
-(added as a new custom claim `support_role`, populated at token-issuance time the same way `amr`/`last_mfa_at` are) and
-checks against a fixed ordering (`agent < manager < admin`). Rejects with `apierror.Forbidden` (reusing the existing
-constructor, no new problem type needed).
+`internal/middleware/support.go` — `RequireSupportRole(userSvc, minRole)` runs after `RequireAuth`, reads the caller's
+`user_id` (`middleware.GetUserID(c)`), loads the user via `userSvc.GetByID`, and checks `support_role` against a fixed
+ordering (`agent < manager < admin`). Rejects with `apierror.Forbidden` on a role too low or absent, `apierror.ServerError`
+if the lookup fails.
+
+This deliberately does **not** add `support_role` as a JWT claim. `crypto.JWTService.SignAccessToken` is a Critical Area
+(`api/CLAUDE.md`) with call sites in every login/refresh/passkey/social-callback path — plumbing a new claim through all
+of them to save one DynamoDB read on the handful of admin-only routes this feature adds is not a good trade. A plain
+`GetByID` per admin request is the simpler, lower-blast-radius choice, and admin traffic volume makes the extra read
+free in practice.
 
 ### 4.4 API routes
 
@@ -270,8 +276,8 @@ New routes, following the existing Next.js App Router + BFF Route Handler / Serv
   `priority` select (default "Baixa"), Turnstile widget, submit. If a session exists, `email` is omitted from the
   payload and the field is hidden; otherwise an e-mail input is shown and required.
 - `/account/support` — "Meus tickets" list (auth-gated by the existing `proxy.ts` pattern), links into
-  `/support/ticket/:id`.
-- `/support/ticket/:id` — thread view. Reads `?token=` for anonymous access (stored client-side only for the duration of
+  `/support/ticket?id=:id`.
+- `/support/ticket?id=:id` — thread view. Reads `&token=` for anonymous access (stored client-side only for the duration of
   the page — no cookie), or relies on the session for logged-in access. Shows the message timeline (including system
   events) and a reply box for the ticket owner (not for closing — only agents change status).
 - `/admin/support` — agent queue: filters (status/priority/category), list sorted by
