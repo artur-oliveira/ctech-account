@@ -1,6 +1,7 @@
 package email
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -13,8 +14,15 @@ import (
 	"gopkg.aoctech.app/api-commons/awsconfig"
 )
 
+// sesAPI is the subset of *sesv2.Client this package calls — narrowed to an
+// interface so tests can substitute a fake and capture what would have been
+// sent, without hitting real AWS.
+type sesAPI interface {
+	SendEmail(ctx context.Context, params *sesv2.SendEmailInput, optFns ...func(*sesv2.Options)) (*sesv2.SendEmailOutput, error)
+}
+
 type Client struct {
-	ses     *sesv2.Client
+	ses     sesAPI
 	from    string
 	baseURL string
 }
@@ -61,6 +69,67 @@ func (c *Client) SendNewDeviceLoginEmail(ctx context.Context, to, firstName, dev
 	subject := "Novo login detectado — ctech"
 	body := newDeviceLoginEmailHTML(deviceName, city, country, ip, when, c.baseURL+"/account/sessions")
 	return c.send(ctx, to, subject, newDeviceLoginEmailLayout(firstName, body))
+}
+
+// sendRaw builds a full RFC 5322 message and sends it via SESv2's raw
+// content mode, which is the only way to set custom headers (In-Reply-To,
+// References) — the existing send() helper uses Simple content and can't
+// express threading. Returns the assigned Message-ID (no angle brackets).
+func (c *Client) sendRaw(ctx context.Context, to, subject, htmlBody, inReplyTo, references string) (string, error) {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "From: %s\r\n", c.from)
+	fmt.Fprintf(&buf, "To: %s\r\n", to)
+	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
+	if inReplyTo != "" {
+		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", inReplyTo)
+	}
+	if references != "" {
+		fmt.Fprintf(&buf, "References: %s\r\n", references)
+	}
+	buf.WriteString("MIME-Version: 1.0\r\n")
+	buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
+	buf.WriteString(htmlBody)
+
+	in := sesv2.SendEmailInput{
+		Content: &sestypes.EmailContent{
+			Raw: &sestypes.RawMessage{Data: buf.Bytes()},
+		},
+	}
+	out, err := c.ses.SendEmail(ctx, &in)
+	if err != nil {
+		return "", err
+	}
+	return aws.ToString(out.MessageId), nil
+}
+
+// SendTicketConfirmationEmail is the first e-mail for a new support ticket —
+// no In-Reply-To, since it establishes the thread root. Returns the
+// Message-ID the caller persists as both root_ses_message_id and
+// last_ses_message_id.
+func (c *Client) SendTicketConfirmationEmail(ctx context.Context, to string, ticketNumber int64, subjectLine, portalLink string) (string, error) {
+	subject := fmt.Sprintf("[Ticket #%d] %s", ticketNumber, subjectLine)
+	body := fmt.Sprintf(`<h2>Seu ticket #%d foi criado</h2>
+  <p>Um agente em breve entrará em contato para responder sua dúvida.</p>
+  <p><strong>Assunto:</strong> %s</p>
+  %s`, ticketNumber, html.EscapeString(subjectLine), ctaButton("Acompanhar ticket", portalLink))
+	return c.sendRaw(ctx, to, subject, body, "", "")
+}
+
+// SendTicketReplyEmail sends an agent's reply, threaded via inReplyTo/references
+// onto the prior message in the ticket (root or previous reply).
+func (c *Client) SendTicketReplyEmail(ctx context.Context, to string, ticketNumber int64, subjectLine, agentBody, inReplyTo, references, portalLink string) (string, error) {
+	subject := fmt.Sprintf("Re: [Ticket #%d] %s", ticketNumber, subjectLine)
+	body := fmt.Sprintf(`<p>%s</p>
+  %s`, html.EscapeString(agentBody), ctaButton("Acompanhar ticket", portalLink))
+	return c.sendRaw(ctx, to, subject, body, inReplyTo, references)
+}
+
+// SendTicketNPSEmail is sent once when a ticket closes, threaded the same way.
+func (c *Client) SendTicketNPSEmail(ctx context.Context, to string, ticketNumber int64, npsLink, inReplyTo, references string) (string, error) {
+	subject := fmt.Sprintf("Re: [Ticket #%d] Como foi seu atendimento?", ticketNumber)
+	body := fmt.Sprintf(`<p>Seu ticket foi encerrado. Conta pra gente como foi o atendimento:</p>
+  %s`, ctaButton("Avaliar atendimento", npsLink))
+	return c.sendRaw(ctx, to, subject, body, inReplyTo, references)
 }
 
 func (c *Client) send(ctx context.Context, to, subject, htmlBody string) error {
