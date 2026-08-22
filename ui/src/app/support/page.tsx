@@ -1,24 +1,25 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
-import { useTranslation } from 'react-i18next'
-import { createSupportTicketAPI } from '@/lib/mutations'
-import { useAuthStore } from '@/store/auth'
-import { SUPPORT_CATEGORIES, buildSupportSubject, findSupportCategory } from '@/lib/support-catalog'
-import { TurnstileWidget } from '@/components/turnstile-widget'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {SyntheticEvent, useState} from 'react'
+import {useMutation} from '@tanstack/react-query'
+import {useRouter} from 'next/navigation'
+import {useTranslation} from 'react-i18next'
+import {createSupportTicketAPI} from '@/lib/mutations'
+import {useAuthStore} from '@/store/auth'
+import {buildSupportSubject, findSupportCategory, SUPPORT_CATEGORIES} from '@/lib/support-catalog'
+import {TurnstileWidget} from '@/components/turnstile-widget'
+import {Button} from '@/components/ui/button'
+import {Input} from '@/components/ui/input'
+import {Label} from '@/components/ui/label'
+import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 
 const PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent', 'critical'] as const
 
 export default function SupportPage() {
-  const { t } = useTranslation()
+  const {t} = useTranslation()
   const router = useRouter()
+  const isInitialized = useAuthStore((s) => s.isInitialized)
   const isAuthenticated = useAuthStore((s) => Boolean(s.accessToken))
   const [token, setToken] = useState('')
   const [error, setError] = useState('')
@@ -36,7 +37,7 @@ export default function SupportPage() {
     onError: () => setError(t('support.genericError')),
   })
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  function submit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     if (!token) {
@@ -64,6 +65,13 @@ export default function SupportPage() {
         <h1 className="text-2xl font-semibold">{t('support.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('support.subtitle')}</p>
       </div>
+      {!isInitialized ? (
+        <div className="space-y-3" aria-hidden="true">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      ) : (
       <form onSubmit={submit} className="space-y-4">
         <div>
           <Label htmlFor="category">{t('support.categoryLabel')}</Label>
@@ -75,7 +83,9 @@ export default function SupportPage() {
             }}
           >
             <SelectTrigger id="category" className="mt-1 w-full">
-              <SelectValue />
+              <SelectValue>
+                {category ? t(`support.categories.${category}`) : category}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {SUPPORT_CATEGORIES.map((c) => (
@@ -105,7 +115,9 @@ export default function SupportPage() {
             <Label htmlFor="subcategory">{t('support.subcategoryLabel')}</Label>
             <Select value={subcategory} onValueChange={(value) => setSubcategory((value ?? '') as string)}>
               <SelectTrigger id="subcategory" className="mt-1 w-full">
-                <SelectValue placeholder={t('support.subcategoryPlaceholder')} />
+                <SelectValue placeholder={t('support.subcategoryPlaceholder')}>
+                  {subcategory ? t(`support.subcategories.${subcategory}`) : subcategory}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {selectedCategory?.subcategories.map((s) => (
@@ -121,7 +133,7 @@ export default function SupportPage() {
         {!isAuthenticated && (
           <div>
             <Label htmlFor="email">{t('support.emailLabel')}</Label>
-            <Input id="email" name="email" type="email" required className="mt-1" />
+            <Input id="email" name="email" type="email" required className="mt-1"/>
           </div>
         )}
 
@@ -129,7 +141,9 @@ export default function SupportPage() {
           <Label htmlFor="priority">{t('support.priorityLabel')}</Label>
           <Select value={priority} onValueChange={(value) => setPriority((value ?? 'low') as string)}>
             <SelectTrigger id="priority" className="mt-1 w-full">
-              <SelectValue />
+              <SelectValue>
+                {priority ? t(`support.priority.${priority}`) : priority}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {PRIORITY_VALUES.map((p) => (
@@ -153,7 +167,8 @@ export default function SupportPage() {
           />
         </div>
 
-        <TurnstileWidget onToken={setToken} onError={() => setError(t('support.captchaError'))} onExpire={() => setToken('')} />
+        <TurnstileWidget onToken={setToken} onError={() => setError(t('support.captchaError'))}
+                         onExpire={() => setToken('')}/>
 
         {error && (
           <Alert variant="destructive">
@@ -165,6 +180,7 @@ export default function SupportPage() {
           {create.isPending ? t('support.submitting') : t('support.submit')}
         </Button>
       </form>
+      )}
     </main>
   )
 }
