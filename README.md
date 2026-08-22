@@ -675,9 +675,10 @@ Vercel or ECS runtime.
 The support form uses Cloudflare Turnstile. Its public `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is shared
 with Poker through the environment-specific `TURNSTILE_SITE_KEY_DEV`, `_STAGE`, and `_PROD` GitHub
 Actions variables; the paired private `TURNSTILE_SECRET_KEY` remains API-only in SSM. The frontend
-CSP explicitly permits Turnstile's script, iframe, and browser connection at
-`https://challenges.cloudflare.com` without replacing the Next.js bootstrap policy; Cloudflare's
-hosting-injected analytics beacon is also allowed as an external script. The widget is mounted once:
+CSP explicitly permits Turnstile's script and iframe at `https://challenges.cloudflare.com` without
+replacing the Next.js bootstrap policy. The frontend workflow adds its browser connection through
+the reusable workflow's `extra-connect-src` input (rather than overriding derived `connect-src`);
+Cloudflare's hosting-injected analytics beacon is also allowed as an external script. The widget is mounted once:
 form rerenders update its callbacks but never tear down and recreate its verification iframe.
 It submits with the stable `support_ticket` action; the API accepts Siteverify only when that action
 and the hostname parsed from the deployment's `APP_URL` both match. Failed submissions reset the
