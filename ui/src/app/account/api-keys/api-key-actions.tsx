@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, SyntheticEvent } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import {SyntheticEvent, useState} from 'react'
+import {useMutation, useQueryClient} from '@tanstack/react-query'
+import {useTranslation} from 'react-i18next'
+import {Button} from '@/components/ui/button'
+import {Input} from '@/components/ui/input'
+import {Label} from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -15,20 +15,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { createAPIKeyAPI, revokeAPIKeyAPI } from '@/lib/mutations'
-import { ScopePicker } from '@/components/scope-picker'
-import { isAxiosError } from '@/lib/axios'
-import { toast } from 'sonner'
-import { Plus, Copy } from 'lucide-react'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select'
+import {ConfirmDialog} from '@/components/confirm-dialog'
+import {Alert, AlertDescription} from '@/components/ui/alert'
+import {createAPIKeyAPI, revokeAPIKeyAPI} from '@/lib/mutations'
+import {ScopePicker} from '@/components/scope-picker'
+import {isAxiosError} from '@/lib/axios'
+import {toast} from 'sonner'
+import {Copy, Plus} from 'lucide-react'
 
 /** Read-only profile access — mirrors the API default. */
 const DEFAULT_API_KEY_SCOPE = 'account:profile:read'
@@ -37,19 +31,19 @@ const DEFAULT_API_KEY_SCOPE = 'account:profile:read'
 const EXPIRY_OPTIONS = [30, 90, 180, 365, 0] as const
 
 export function CreateAPIKeyDialog() {
-  const { t } = useTranslation()
+  const {t} = useTranslation()
   const [open, setOpen] = useState(false)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [scopes, setScopes] = useState<string[]>([DEFAULT_API_KEY_SCOPE])
   const [expiry, setExpiry] = useState<string>('90')
   const queryClient = useQueryClient()
 
-  const { mutate, isPending, reset } = useMutation({
+  const {mutate, isPending, reset} = useMutation({
     mutationFn: createAPIKeyAPI,
     onSuccess: (data) => {
       const key = data.raw_key ?? data.key
       if (key) setCreatedKey(key as string)
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({queryKey: ['api-keys']})
     },
     onError: (err) => {
       if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.createKeyFailed'))
@@ -81,11 +75,13 @@ export function CreateAPIKeyDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else setOpen(true) }}>
+    <Dialog open={open} onOpenChange={(v) => {
+      if (!v) handleClose(); else setOpen(true)
+    }}>
       <DialogTrigger
         render={
           <Button size="sm">
-            <Plus className="size-4" />
+            <Plus className="size-4"/>
             {t('apiKeys.newKey')}
           </Button>
         }
@@ -104,9 +100,9 @@ export function CreateAPIKeyDialog() {
               </AlertDescription>
             </Alert>
             <div className="flex gap-2">
-              <Input readOnly value={createdKey} className="font-mono text-xs min-w-0" />
+              <Input readOnly value={createdKey} className="font-mono text-xs min-w-0"/>
               <Button variant="outline" size="icon" aria-label={t('common.copy')} onClick={handleCopy}>
-                <Copy className="size-4" />
+                <Copy className="size-4"/>
               </Button>
             </div>
             <DialogFooter>
@@ -117,11 +113,11 @@ export function CreateAPIKeyDialog() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="name">{t('apiKeys.dialog.name')}</Label>
-              <Input id="name" name="name" required placeholder={t('apiKeys.dialog.namePlaceholder')} />
+              <Input id="name" name="name" required placeholder={t('apiKeys.dialog.namePlaceholder')}/>
             </div>
             <div className="space-y-1.5">
               <Label>{t('apiKeys.dialog.scopes')}</Label>
-              <ScopePicker value={scopes} onChange={setScopes} />
+              <ScopePicker value={scopes} onChange={setScopes}/>
               <p className="text-xs text-muted-foreground">{t('apiKeys.dialog.scopesHint')}</p>
             </div>
             <Alert>
@@ -131,12 +127,14 @@ export function CreateAPIKeyDialog() {
               <Label>{t('apiKeys.dialog.expiry')}</Label>
               <Select value={expiry} onValueChange={(v) => setExpiry(v ?? '90')}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {expiry === "0" ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', {days: expiry})}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {EXPIRY_OPTIONS.map((days) => (
                     <SelectItem key={days} value={String(days)}>
-                      {days === 0 ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', { days })}
+                      {days === 0 ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', {days})}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -154,13 +152,13 @@ export function CreateAPIKeyDialog() {
   )
 }
 
-export function RevokeAPIKeyButton({ keyId }: { keyId: string }) {
-  const { t } = useTranslation()
+export function RevokeAPIKeyButton({keyId}: { keyId: string }) {
+  const {t} = useTranslation()
   const queryClient = useQueryClient()
-  const { mutate } = useMutation({
+  const {mutate} = useMutation({
     mutationFn: () => revokeAPIKeyAPI(keyId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({queryKey: ['api-keys']})
       toast.success(t('toast.keyRevoked'))
     },
     onError: (err) => {

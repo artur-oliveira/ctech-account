@@ -1,21 +1,15 @@
 'use client'
 
-import { useInfiniteQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { fetchActivity } from '@/lib/queries'
-import { formatDistanceToNow } from '@/lib/format'
-import { Button } from '@/components/ui/button'
-import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
-import type { ActivityEvent } from '@/lib/types'
-import { QueryError } from '@/components/query-error'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import {useInfiniteQuery} from '@tanstack/react-query'
+import {useState} from 'react'
+import {useTranslation} from 'react-i18next'
+import {fetchActivity} from '@/lib/queries'
+import {formatDistanceToNow} from '@/lib/format'
+import {Button} from '@/components/ui/button'
+import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
+import type {ActivityEvent} from '@/lib/types'
+import {QueryError} from '@/components/query-error'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select'
 
 type ActivityFilter = 'all' | 'sign-in' | 'security' | 'developer'
 
@@ -27,11 +21,11 @@ function matchesFilter(event: ActivityEvent, filter: ActivityFilter) {
 }
 
 export default function ActivityPage() {
-  const { t, i18n } = useTranslation()
+  const {t, i18n} = useTranslation()
   const [filter, setFilter] = useState<ActivityFilter>('all')
-  const { data, isLoading, isError, error, refetch, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
+  const {data, isLoading, isError, error, refetch, hasNextPage, isFetchingNextPage, fetchNextPage} = useInfiniteQuery({
     queryKey: ['activity'],
-    queryFn: ({ pageParam }) => fetchActivity(pageParam),
+    queryFn: ({pageParam}) => fetchActivity(pageParam),
     initialPageParam: '',
     getNextPageParam: (last) => (last.next_cursor ? last.next_cursor : undefined),
   })
@@ -40,14 +34,14 @@ export default function ActivityPage() {
     return (
       <div className="space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-16 animate-pulse bg-muted rounded-lg" />
+          <div key={i} className="h-16 animate-pulse bg-muted rounded-lg"/>
         ))}
       </div>
     )
   }
 
   if (isError) {
-    return <QueryError error={error} onRetry={() => refetch()} />
+    return <QueryError error={error} onRetry={() => refetch()}/>
   }
 
   const events = (data?.pages.flatMap((p) => p.events) ?? []).filter((event) => matchesFilter(event, filter))
@@ -95,7 +89,9 @@ export default function ActivityPage() {
       <div className="w-full sm:w-56">
         <Select value={filter} onValueChange={(value) => setFilter((value ?? 'all') as ActivityFilter)}>
           <SelectTrigger aria-label={t('activity.filterLabel')}>
-            <SelectValue />
+            <SelectValue>
+              {filter ? t(`activity.filters.${filter}`) : filter}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t('activity.filters.all')}</SelectItem>

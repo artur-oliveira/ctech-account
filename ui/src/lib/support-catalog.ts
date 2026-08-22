@@ -15,56 +15,56 @@ export const SUPPORT_CATEGORIES: SupportCategory[] = [
     value: 'account',
     label: 'Conta e login',
     subcategories: [
-      { value: 'login_issue', label: 'Não consigo fazer login' },
-      { value: 'password_reset', label: 'Esqueci minha senha' },
-      { value: 'email_verification', label: 'Verificação de e-mail' },
-      { value: 'mfa_passkeys', label: 'Autenticação em duas etapas ou passkeys' },
-      { value: 'profile_data', label: 'Alterar dados cadastrais' },
+      {value: 'login_issue', label: 'Não consigo fazer login'},
+      {value: 'password_reset', label: 'Esqueci minha senha'},
+      {value: 'email_verification', label: 'Verificação de e-mail'},
+      {value: 'mfa_passkeys', label: 'Autenticação em duas etapas ou passkeys'},
+      {value: 'profile_data', label: 'Alterar dados cadastrais'},
     ],
   },
   {
     value: 'kyc',
     label: 'KYC e verificação',
     subcategories: [
-      { value: 'documents_rejected', label: 'Documentos reprovados' },
-      { value: 'review_delay', label: 'Verificação demorando' },
-      { value: 'change_data', label: 'Alterar CPF ou dados enviados' },
+      {value: 'documents_rejected', label: 'Documentos reprovados'},
+      {value: 'review_delay', label: 'Verificação demorando'},
+      {value: 'change_data', label: 'Alterar CPF ou dados enviados'},
     ],
   },
   {
     value: 'wallet',
     label: 'Wallet',
     subcategories: [
-      { value: 'deposit', label: 'Problema com depósito' },
-      { value: 'withdrawal', label: 'Problema com saque' },
-      { value: 'balance', label: 'Saldo incorreto' },
+      {value: 'deposit', label: 'Problema com depósito'},
+      {value: 'withdrawal', label: 'Problema com saque'},
+      {value: 'balance', label: 'Saldo incorreto'},
     ],
   },
   {
     value: 'dfe',
     label: 'DF-e',
     subcategories: [
-      { value: 'issue_note', label: 'Erro ao emitir nota' },
-      { value: 'cancel_note', label: 'Cancelamento de nota' },
-      { value: 'other_dfe', label: 'Outro assunto de DF-e' },
+      {value: 'issue_note', label: 'Erro ao emitir nota'},
+      {value: 'cancel_note', label: 'Cancelamento de nota'},
+      {value: 'other_dfe', label: 'Outro assunto de DF-e'},
     ],
   },
   {
     value: 'billing',
     label: 'Billing',
     subcategories: [
-      { value: 'wrong_charge', label: 'Cobrança indevida' },
-      { value: 'invoice', label: 'Nota fiscal ou recibo' },
-      { value: 'cancel_plan', label: 'Cancelamento de plano' },
+      {value: 'wrong_charge', label: 'Cobrança indevida'},
+      {value: 'invoice', label: 'Nota fiscal ou recibo'},
+      {value: 'cancel_plan', label: 'Cancelamento de plano'},
     ],
   },
   {
     value: 'poker',
     label: 'Poker',
     subcategories: [
-      { value: 'table_issue', label: 'Problema em mesa ou torneio' },
-      { value: 'chips_balance', label: 'Fichas ou saldo' },
-      { value: 'player_conduct', label: 'Conduta de outro jogador' },
+      {value: 'table_issue', label: 'Problema em mesa ou torneio'},
+      {value: 'chips_balance', label: 'Fichas ou saldo'},
+      {value: 'player_conduct', label: 'Conduta de outro jogador'},
     ],
   },
   {
@@ -92,5 +92,5 @@ export function buildSupportSubject(categoryValue: string, subcategoryValue: str
   if (!subcategory) {
     return category.label
   }
-  return `${category.label} — ${subcategory.label}`
+  return `${category.label} - ${subcategory.label}`
 }

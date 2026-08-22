@@ -66,7 +66,9 @@ export default function AdminSupportPage() {
         </div>
         <Select value={status} onValueChange={(value) => setStatus((value ?? 'open') as (typeof STATUS_VALUES)[number])}>
           <SelectTrigger aria-label={t('support.admin.statusFilter')} className="w-40">
-            <SelectValue />
+            <SelectValue>
+              {status ? t(`support.ticket.status.${status}`) : status}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {STATUS_VALUES.map((s) => (
