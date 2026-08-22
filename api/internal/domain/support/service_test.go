@@ -269,3 +269,58 @@ func TestReplyAsAgent_ThreadIDChaining(t *testing.T) {
 		t.Fatalf("root message id should not change: got %q", updated1.RootSESMessageID)
 	}
 }
+
+func TestRecordEmailMessageID_WrapsInAngleBrackets(t *testing.T) {
+	repo := newMemRepo()
+	svc := NewService(repo)
+	ticket, _ := svc.CreateTicket(context.Background(), CreateTicketInput{
+		UserID: "user-1", SubjectCategory: CategoryAccount, Priority: PriorityLow, Body: "Preciso de ajuda com o extrato da minha conta.",
+	})
+
+	if err := svc.RecordEmailMessageID(context.Background(), ticket.ID(), "abc123@ses.amazonaws.com", true); err != nil {
+		t.Fatalf("RecordEmailMessageID: %v", err)
+	}
+	got, err := repo.GetTicket(context.Background(), ticket.ID())
+	if err != nil {
+		t.Fatalf("GetTicket: %v", err)
+	}
+	if got.RootSESMessageID != "<abc123@ses.amazonaws.com>" {
+		t.Fatalf("got root_ses_message_id %q, want bracketed", got.RootSESMessageID)
+	}
+	if got.LastSESMessageID != "<abc123@ses.amazonaws.com>" {
+		t.Fatalf("got last_ses_message_id %q, want bracketed", got.LastSESMessageID)
+	}
+}
+
+func TestMarkNPSRequested(t *testing.T) {
+	repo := newMemRepo()
+	svc := NewService(repo)
+	ticket, _ := svc.CreateTicket(context.Background(), CreateTicketInput{
+		UserID: "user-1", SubjectCategory: CategoryAccount, Priority: PriorityLow, Body: "Ticket que será fechado para testar o NPS.",
+	})
+
+	if err := svc.MarkNPSRequested(context.Background(), ticket.ID()); err != nil {
+		t.Fatalf("MarkNPSRequested: %v", err)
+	}
+	got, err := repo.GetTicket(context.Background(), ticket.ID())
+	if err != nil {
+		t.Fatalf("GetTicket: %v", err)
+	}
+	if got.NPSRequestedAt == "" {
+		t.Fatal("expected nps_requested_at to be set")
+	}
+}
+
+func TestCreateTicket_AcceptsSubjectOtherForNonOtherCategory(t *testing.T) {
+	svc := NewService(newMemRepo())
+	ticket, err := svc.CreateTicket(context.Background(), CreateTicketInput{
+		UserID: "user-1", SubjectCategory: CategoryAccount, SubjectOther: "Conta e login — Esqueci minha senha", Priority: PriorityLow,
+		Body: "Não consigo redefinir minha senha pelo link enviado.",
+	})
+	if err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+	if ticket.SubjectOther != "Conta e login — Esqueci minha senha" {
+		t.Fatalf("got subject_other %q, want the merged category/subcategory label preserved", ticket.SubjectOther)
+	}
+}

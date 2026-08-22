@@ -40,6 +40,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
+	"gopkg.aoctech.app/account/api/internal/turnstile"
 )
 
 // noopTOTPService implements both TOTPService and TOTPManagementService.
@@ -232,6 +233,10 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewActivityHandler(auditSvc).Register(account)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
 	handler.NewTermsHandler(userSvc, auditSvc).Register(account)
+	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New(""), nil, cfg.AppURL)
+	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
+	supportH.RegisterAccount(account)
+	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
 	kycH.Register(account, stepUp)
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))

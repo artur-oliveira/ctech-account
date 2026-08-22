@@ -34,6 +34,7 @@ import (
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
+	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geoupdater"
@@ -42,6 +43,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
+	"gopkg.aoctech.app/account/api/internal/turnstile"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
 )
@@ -172,6 +174,7 @@ func main() {
 
 	// Services
 	userSvc := userDomain.NewService(userRepo)
+	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
 	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
@@ -244,6 +247,8 @@ func main() {
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc, emailCli)
+	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New(cfg.TurnstileSecretKey), emailCli, cfg.AppURL)
+	supportAdminH := handler.NewSupportAdminHandler(supportSvc, userSvc, emailCli, cfg.AppURL)
 	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, oauthClientOperator, auditSvc)
 
 	app := fiber.New(fiber.Config{
@@ -370,6 +375,7 @@ func main() {
 	stepUpH.Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
 	passkeyH.RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), userinfoH.UserInfo)
+	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc), perUserLimiter)
 	stepUp := middleware.RequireRecentMFA(middleware.StepUpMaxAge)
@@ -383,6 +389,8 @@ func main() {
 	kycH.Register(account, stepUp)
 	termsH.Register(account)
 	passkeyH.RegisterManagement(account, stepUp)
+	supportH.RegisterAccount(account)
+	supportAdminH.Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
 	scopeRegistryH.Register(v1,
 		middleware.RequireAuth(jwtSvc),

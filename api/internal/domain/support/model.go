@@ -38,25 +38,25 @@ var ValidPriorities = []string{PriorityLow, PriorityMedium, PriorityHigh, Priori
 var ValidStatuses = []string{StatusOpen, StatusAnswered, StatusClosed}
 
 type Ticket struct {
-	PK               string `dynamodbav:"pk"`
-	SK               string `dynamodbav:"sk"`
-	TicketNumber     int64  `dynamodbav:"ticket_number"`
-	UserID           string `dynamodbav:"user_id,omitempty"`
-	AnonymousEmail   string `dynamodbav:"anonymous_email,omitempty"`
-	AnonymousToken   string `dynamodbav:"anonymous_token,omitempty"`
-	SubjectCategory  string `dynamodbav:"subject_category"`
-	SubjectOther     string `dynamodbav:"subject_other,omitempty"`
-	Priority         string `dynamodbav:"priority"`
-	Status           string `dynamodbav:"status"`
-	CreatedAt        string `dynamodbav:"created_at"`
-	UpdatedAt        string `dynamodbav:"updated_at"`
-	ClosedAt         string `dynamodbav:"closed_at,omitempty"`
-	LastMessageAt    string `dynamodbav:"last_message_at"`
-	RootSESMessageID string `dynamodbav:"root_ses_message_id,omitempty"`
-	LastSESMessageID string `dynamodbav:"last_ses_message_id,omitempty"`
-	NPSScore         int    `dynamodbav:"nps_score,omitempty"`
-	NPSMessage       string `dynamodbav:"nps_message,omitempty"`
-	NPSRequestedAt   string `dynamodbav:"nps_requested_at,omitempty"`
+	PK               string `dynamodbav:"pk" json:"id"`
+	SK               string `dynamodbav:"sk" json:"-"`
+	TicketNumber     int64  `dynamodbav:"ticket_number" json:"ticket_number"`
+	UserID           string `dynamodbav:"user_id,omitempty" json:"user_id,omitempty"`
+	AnonymousEmail   string `dynamodbav:"anonymous_email,omitempty" json:"-"`
+	AnonymousToken   string `dynamodbav:"anonymous_token,omitempty" json:"-"`
+	SubjectCategory  string `dynamodbav:"subject_category" json:"subject_category"`
+	SubjectOther     string `dynamodbav:"subject_other,omitempty" json:"subject_other,omitempty"`
+	Priority         string `dynamodbav:"priority" json:"priority"`
+	Status           string `dynamodbav:"status" json:"status"`
+	CreatedAt        string `dynamodbav:"created_at" json:"created_at"`
+	UpdatedAt        string `dynamodbav:"updated_at" json:"updated_at"`
+	ClosedAt         string `dynamodbav:"closed_at,omitempty" json:"closed_at,omitempty"`
+	LastMessageAt    string `dynamodbav:"last_message_at" json:"last_message_at"`
+	RootSESMessageID string `dynamodbav:"root_ses_message_id,omitempty" json:"-"`
+	LastSESMessageID string `dynamodbav:"last_ses_message_id,omitempty" json:"-"`
+	NPSScore         int    `dynamodbav:"nps_score,omitempty" json:"nps_score,omitempty"`
+	NPSMessage       string `dynamodbav:"nps_message,omitempty" json:"nps_message,omitempty"`
+	NPSRequestedAt   string `dynamodbav:"nps_requested_at,omitempty" json:"nps_requested_at,omitempty"`
 }
 
 // BuildPK returns the item-collection partition key for ticket id.
@@ -69,13 +69,13 @@ func (t *Ticket) ID() string { return strings.TrimPrefix(t.PK, "TICKET_") }
 func (t *Ticket) IsAnonymous() bool { return t.UserID == "" }
 
 type Message struct {
-	PK           string `dynamodbav:"pk"`
-	SK           string `dynamodbav:"sk"`
-	AuthorType   string `dynamodbav:"author_type"`
-	AuthorID     string `dynamodbav:"author_id,omitempty"`
-	Body         string `dynamodbav:"body"`
-	CreatedAt    string `dynamodbav:"created_at"`
-	SESMessageID string `dynamodbav:"ses_message_id,omitempty"`
+	PK           string `dynamodbav:"pk" json:"-"`
+	SK           string `dynamodbav:"sk" json:"-"`
+	AuthorType   string `dynamodbav:"author_type" json:"author_type"`
+	AuthorID     string `dynamodbav:"author_id,omitempty" json:"-"`
+	Body         string `dynamodbav:"body" json:"body"`
+	CreatedAt    string `dynamodbav:"created_at" json:"created_at"`
+	SESMessageID string `dynamodbav:"ses_message_id,omitempty" json:"-"`
 }
 
 // BuildMessageSK returns the sort key for a message created at createdAt

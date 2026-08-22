@@ -61,7 +61,10 @@ func (h *ProfileHandler) get(c fiber.Ctx) error {
 		// (false) or "Unlink Google" (true). The raw sub is never
 		// exposed — only whether one is bound.
 		"google_linked": u.GoogleSub != "",
-		"created_at":    u.CreatedAt,
+		// support_role is an empty string for regular accounts. It only gates
+		// the support queue UI; authorization is always rechecked server-side.
+		"support_role": u.SupportRole,
+		"created_at":   u.CreatedAt,
 		// terms_pending drives the in-app re-acceptance gate. /authorize catches a
 		// version bump for anyone arriving through OAuth, but a session already
 		// holding a refreshable token never passes through it again.

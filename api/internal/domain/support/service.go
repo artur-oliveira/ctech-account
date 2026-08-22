@@ -44,14 +44,19 @@ func (s *Service) CreateTicket(ctx context.Context, in CreateTicketInput) (*Tick
 	if !contains(ValidCategories, in.SubjectCategory) {
 		return nil, fmt.Errorf("%w: unknown subject_category %q", ErrInvalidInput, in.SubjectCategory)
 	}
-	if in.SubjectCategory == CategoryOther {
+	// subject_other doubles as the merged "category — subcategory" label the
+	// UI sends for every category, and as the free-typed subject when
+	// category=other — so it's validated whenever present, and required only
+	// for category=other (the one case with no subcategory catalog to fall
+	// back on).
+	if in.SubjectOther != "" {
 		cleaned, err := validate.Freetext(in.SubjectOther, subjectOtherRule)
 		if err != nil {
 			return nil, fmt.Errorf("%w: subject_other %v", ErrInvalidInput, err)
 		}
 		in.SubjectOther = cleaned
-	} else {
-		in.SubjectOther = ""
+	} else if in.SubjectCategory == CategoryOther {
+		return nil, fmt.Errorf("%w: subject_other is required for category=other", ErrInvalidInput)
 	}
 	if in.Priority == "" {
 		in.Priority = PriorityLow
@@ -128,6 +133,39 @@ func (s *Service) GetTicketForCaller(ctx context.Context, id, userID, anonToken 
 		return nil, nil, fmt.Errorf("listing messages: %w", err)
 	}
 	return ticket, messages, nil
+}
+
+// GetTicketAdmin returns a complete thread without an owner check. The caller
+// is authorized by middleware.RequireSupportRole before reaching this method.
+func (s *Service) GetTicketAdmin(ctx context.Context, id string) (*Ticket, []*Message, error) {
+	ticket, err := s.repo.GetTicket(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	messages, err := s.repo.ListMessages(ctx, id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing messages: %w", err)
+	}
+	return ticket, messages, nil
+}
+
+// RecordEmailMessageID persists mail-thread state after SES accepted a send.
+// SES returns a bare Message-ID (no angle brackets); RFC 5322's
+// In-Reply-To/References headers require the bracketed form, so it's wrapped
+// once here rather than at every call site.
+func (s *Service) RecordEmailMessageID(ctx context.Context, id, messageID string, root bool) error {
+	wrapped := "<" + messageID + ">"
+	updates := map[string]any{"last_ses_message_id": wrapped}
+	if root {
+		updates["root_ses_message_id"] = wrapped
+	}
+	return s.repo.UpdateTicket(ctx, id, updates)
+}
+
+// MarkNPSRequested guards SendTicketNPSEmail against double-sends when a
+// ticket is closed more than once.
+func (s *Service) MarkNPSRequested(ctx context.Context, id string) error {
+	return s.repo.UpdateTicket(ctx, id, map[string]any{"nps_requested_at": time.Now().UTC().Format(time.RFC3339)})
 }
 
 func (s *Service) ReplyAsUser(ctx context.Context, id, userID, anonToken, body string) error {
