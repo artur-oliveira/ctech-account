@@ -33,6 +33,7 @@ import (
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
+	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
@@ -851,4 +852,118 @@ func (m *memPasskeyRepo) Delete(_ context.Context, userID, credentialSK string) 
 	}
 	delete(m.creds, k)
 	return nil
+}
+
+// mockSupportRepo is an in-memory support.Repository — direct map operations,
+// no pagination logic beyond returning everything with next="" (tests don't
+// exercise multi-page cursors; extend when a test actually needs it).
+type mockSupportRepo struct {
+	tickets  map[string]*supportDomain.Ticket
+	messages map[string][]*supportDomain.Message
+	counter  int64
+}
+
+func newMockSupportRepo() *mockSupportRepo {
+	return &mockSupportRepo{
+		tickets:  make(map[string]*supportDomain.Ticket),
+		messages: make(map[string][]*supportDomain.Message),
+	}
+}
+
+func (m *mockSupportRepo) NextTicketNumber(_ context.Context) (int64, error) {
+	m.counter++
+	return m.counter, nil
+}
+
+func (m *mockSupportRepo) CreateTicket(_ context.Context, t *supportDomain.Ticket) error {
+	m.tickets[t.ID()] = t
+	return nil
+}
+
+func (m *mockSupportRepo) GetTicket(_ context.Context, id string) (*supportDomain.Ticket, error) {
+	t, ok := m.tickets[id]
+	if !ok {
+		return nil, supportDomain.ErrNotFound
+	}
+	return t, nil
+}
+
+func (m *mockSupportRepo) GetTicketByAnonToken(_ context.Context, token string) (*supportDomain.Ticket, error) {
+	for _, t := range m.tickets {
+		if token != "" && t.AnonymousToken == token {
+			return t, nil
+		}
+	}
+	return nil, supportDomain.ErrNotFound
+}
+
+func (m *mockSupportRepo) GetTicketByNumber(_ context.Context, number int64) (*supportDomain.Ticket, error) {
+	for _, t := range m.tickets {
+		if t.TicketNumber == number {
+			return t, nil
+		}
+	}
+	return nil, supportDomain.ErrNotFound
+}
+
+func (m *mockSupportRepo) UpdateTicket(_ context.Context, id string, updates map[string]any) error {
+	t, ok := m.tickets[id]
+	if !ok {
+		return supportDomain.ErrNotFound
+	}
+	for k, v := range updates {
+		switch k {
+		case "status":
+			t.Status = v.(string)
+		case "updated_at":
+			t.UpdatedAt = v.(string)
+		case "closed_at":
+			t.ClosedAt = v.(string)
+		case "last_message_at":
+			t.LastMessageAt = v.(string)
+		case "last_ses_message_id":
+			t.LastSESMessageID = v.(string)
+		case "root_ses_message_id":
+			t.RootSESMessageID = v.(string)
+		case "nps_score":
+			t.NPSScore = v.(int)
+		case "nps_message":
+			t.NPSMessage = v.(string)
+		case "nps_requested_at":
+			t.NPSRequestedAt = v.(string)
+		}
+	}
+	return nil
+}
+
+func (m *mockSupportRepo) PutMessage(_ context.Context, msg *supportDomain.Message) error {
+	ticketID := msg.PK
+	msg.PK = supportDomain.BuildPK(ticketID)
+	msg.SK = supportDomain.BuildMessageSK(msg.CreatedAt)
+	m.messages[ticketID] = append(m.messages[ticketID], msg)
+	return nil
+}
+
+func (m *mockSupportRepo) ListMessages(_ context.Context, ticketID string) ([]*supportDomain.Message, error) {
+	return m.messages[ticketID], nil
+}
+
+func (m *mockSupportRepo) ListByUser(_ context.Context, userID, _ string, _ int32) ([]*supportDomain.Ticket, string, error) {
+	var out []*supportDomain.Ticket
+	for _, t := range m.tickets {
+		if t.UserID == userID {
+			out = append(out, t)
+		}
+	}
+	return out, "", nil
+}
+
+func (m *mockSupportRepo) ListByStatus(_ context.Context, status, _ string, _ int32) ([]*supportDomain.Ticket, string, error) {
+	var out []*supportDomain.Ticket
+	for _, t := range m.tickets {
+		if t.Status == status {
+			out = append(out, t)
+		}
+	}
+	return out, "", nil
 }
