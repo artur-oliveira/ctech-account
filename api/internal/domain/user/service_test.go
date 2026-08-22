@@ -102,6 +102,9 @@ func (m *mockRepo) Update(_ context.Context, userID string, updates map[string]a
 	if v, ok := updates["privacy_accepted_at"].(string); ok {
 		u.PrivacyAcceptedAt = v
 	}
+	if v, ok := updates["support_role"].(string); ok {
+		u.SupportRole = v
+	}
 	return nil
 }
 
@@ -182,6 +185,26 @@ func registerVerified(t *testing.T, svc *user.Service, email, password, firstNam
 		t.Fatalf("verifying %s: %v", email, err)
 	}
 	return u
+}
+
+func TestSetSupportRole(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+	u, err := svc.Register(context.Background(), "support-role@example.com", "password123", "Alice", "Smith")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if err := svc.SetSupportRole(context.Background(), u.ID(), user.SupportRoleAgent); err != nil {
+		t.Fatalf("SetSupportRole: %v", err)
+	}
+
+	got, err := svc.GetByID(context.Background(), u.ID())
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SupportRole != user.SupportRoleAgent {
+		t.Fatalf("got SupportRole %q, want %q", got.SupportRole, user.SupportRoleAgent)
+	}
 }
 
 func TestLogin_Success(t *testing.T) {

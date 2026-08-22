@@ -338,3 +338,9 @@ func (s *Service) AcceptTerms(ctx context.Context, userID string, tos, privacy b
 
 	return s.repo.Update(ctx, userID, updates)
 }
+
+// SetSupportRole grants or changes the caller's support-ticket role. There is
+// no self-service path to this — only cmd/supportrole calls it.
+func (s *Service) SetSupportRole(ctx context.Context, userID, role string) error {
+	return s.repo.Update(ctx, userID, map[string]any{"support_role": role})
+}

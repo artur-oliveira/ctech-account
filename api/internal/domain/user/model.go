@@ -2,6 +2,12 @@ package user
 
 import "strings"
 
+const (
+	SupportRoleAgent   = "agent"
+	SupportRoleManager = "manager"
+	SupportRoleAdmin   = "admin"
+)
+
 type User struct {
 	PK            string `dynamodbav:"pk"`
 	Email         string `dynamodbav:"email"`
@@ -41,6 +47,11 @@ type User struct {
 	TOSAcceptedAt     string `dynamodbav:"tos_accepted_at,omitempty"`
 	PrivacyVersion    string `dynamodbav:"privacy_version,omitempty"`
 	PrivacyAcceptedAt string `dynamodbav:"privacy_accepted_at,omitempty"`
+
+	// SupportRole gates the support-ticket admin UI/API. Empty for regular
+	// users. Deliberately scoped to this feature, not a general permissions
+	// field — see docs/specs/2026-08-22-support-tickets-design.md §2.
+	SupportRole string `dynamodbav:"support_role,omitempty"`
 }
 
 // Address is the residential address collected during Basic KYC. It lives
