@@ -38,5 +38,6 @@ jobs:
       csp-overrides: |
         img-src 'self' data: blob:
         media-src 'self' blob:
+        connect-src 'self' https://accounts-api.aoctech.app https://challenges.cloudflare.com
         script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com
         frame-src 'self' https://challenges.cloudflare.com

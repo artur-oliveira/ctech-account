@@ -247,7 +247,7 @@ func main() {
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, totpSvc, valkeyClient, cfg, auditSvc, emailCli)
-	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New(cfg.TurnstileSecretKey), emailCli, cfg.AppURL)
+	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New(cfg.TurnstileSecretKey, cfg.AppURL), emailCli, cfg.AppURL)
 	supportAdminH := handler.NewSupportAdminHandler(supportSvc, userSvc, emailCli, cfg.AppURL)
 	scopeRegistryH := handler.NewScopeRegistryHandler(scopeRegistrySvc, oauthClientRepo, oauthClientOperator, auditSvc)
 

@@ -675,8 +675,13 @@ Vercel or ECS runtime.
 The support form uses Cloudflare Turnstile. Its public `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is shared
 with Poker through the environment-specific `TURNSTILE_SITE_KEY_DEV`, `_STAGE`, and `_PROD` GitHub
 Actions variables; the paired private `TURNSTILE_SECRET_KEY` remains API-only in SSM. The frontend
-CSP explicitly permits Turnstile's script and iframe at `https://challenges.cloudflare.com` without replacing
-the Next.js bootstrap policy; Cloudflare's hosting-injected analytics beacon is also allowed as an external script.
+CSP explicitly permits Turnstile's script, iframe, and browser connection at
+`https://challenges.cloudflare.com` without replacing the Next.js bootstrap policy; Cloudflare's
+hosting-injected analytics beacon is also allowed as an external script. The widget is mounted once:
+form rerenders update its callbacks but never tear down and recreate its verification iframe.
+It submits with the stable `support_ticket` action; the API accepts Siteverify only when that action
+and the hostname parsed from the deployment's `APP_URL` both match. Failed submissions reset the
+widget before the user can retry, because Turnstile tokens are single-use.
 
 Because the call is now cross-origin, `APP_URL` below is not only WebAuthn's RPID source — it is also
 prepended to the API's CORS allowlist (`api/cmd/api/main.go:278`). If it does not match the SPA's real

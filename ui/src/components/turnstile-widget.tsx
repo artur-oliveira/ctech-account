@@ -6,8 +6,9 @@ const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script'
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
 type TurnstileAPI = {
-  render: (element: HTMLElement, options: Record<string, unknown>) => string
-  remove: (widgetId: string) => void
+	 render: (element: HTMLElement, options: Record<string, unknown>) => string
+	 reset: (widgetId: string) => void
+	 remove: (widgetId: string) => void
 }
 
 function turnstileAPI() {
@@ -21,18 +22,33 @@ export function TurnstileWidget({
   onToken,
   onError,
   onExpire,
+  resetSignal = 0,
 }: {
   onToken: (token: string) => void
   onError: () => void
   onExpire: () => void
+  // Increase after a rejected submit: Turnstile tokens are single-use.
+  resetSignal?: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const widgetRef = useRef('')
+  const onTokenRef = useRef(onToken)
+  const onErrorRef = useRef(onError)
+  const onExpireRef = useRef(onExpire)
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
+
+  // Parent forms naturally rerender as their fields change. Keep the provider
+  // iframe alive across those renders, while always delivering callbacks to
+  // the latest form state.
+  useEffect(() => {
+    onTokenRef.current = onToken
+    onErrorRef.current = onError
+    onExpireRef.current = onExpire
+  }, [onError, onExpire, onToken])
 
   useEffect(() => {
     if (!siteKey) {
-      onError()
+      onErrorRef.current()
       return undefined
     }
 
@@ -43,9 +59,10 @@ export function TurnstileWidget({
 
       widgetRef.current = api.render(containerRef.current, {
         sitekey: siteKey,
-        callback: onToken,
-        'error-callback': onError,
-        'expired-callback': onExpire,
+		action: 'support_ticket',
+        callback: (token: string) => onTokenRef.current(token),
+        'error-callback': () => onErrorRef.current(),
+        'expired-callback': () => onExpireRef.current(),
       })
     }
     const existing = document.getElementById(TURNSTILE_SCRIPT_ID) as HTMLScriptElement | null
@@ -59,7 +76,7 @@ export function TurnstileWidget({
       script.async = true
       script.defer = true
       script.addEventListener('load', render, { once: true })
-      script.addEventListener('error', onError, { once: true })
+      script.addEventListener('error', () => onErrorRef.current(), { once: true })
       document.head.appendChild(script)
     }
 
@@ -68,7 +85,13 @@ export function TurnstileWidget({
       if (widgetRef.current && turnstileAPI()) turnstileAPI()?.remove(widgetRef.current)
       widgetRef.current = ''
     }
-  }, [onError, onExpire, onToken, siteKey])
+  }, [siteKey])
+
+	useEffect(() => {
+		if (resetSignal > 0 && widgetRef.current && turnstileAPI()) {
+			turnstileAPI()?.reset(widgetRef.current)
+		}
+	}, [resetSignal])
 
   return <div ref={containerRef} aria-label="Cloudflare Turnstile verification" />
 }

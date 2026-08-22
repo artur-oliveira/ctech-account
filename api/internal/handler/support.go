@@ -21,6 +21,8 @@ type SupportHandler struct {
 	appURL   string
 }
 
+const supportTicketTurnstileAction = "support_ticket"
+
 func NewSupportHandler(s *support.Service, u *user.Service, v turnstile.Verifier, e *email.Client, appURL string) *SupportHandler {
 	return &SupportHandler{svc: s, users: u, verifier: v, email: e, appURL: appURL}
 }
@@ -47,7 +49,7 @@ func (h *SupportHandler) create(c fiber.Ctx) error {
 		return err
 	}
 	if h.verifier != nil {
-		if err := h.verifier.Verify(c.Context(), req.TurnstileToken, clientIP(c)); err != nil {
+		if err := h.verifier.Verify(c.Context(), req.TurnstileToken, clientIP(c), supportTicketTurnstileAction); err != nil {
 			return apierror.ValidationFailed("Turnstile verification failed.", c.Path()).Send(c)
 		}
 	}
@@ -121,6 +123,7 @@ func (h *SupportHandler) listMine(c fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
+
 // ticketLink builds the user-facing thread URL, including the anonymous
 // token when the ticket has no owning user. Shared by the public and admin
 // handlers so both send customers to the same place.

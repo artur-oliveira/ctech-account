@@ -56,4 +56,18 @@ describe('TurnstileWidget', () => {
     expect(onError).toHaveBeenCalledOnce()
     expect(document.getElementById('cloudflare-turnstile-script')).toBeNull()
   })
+
+  test('does not recreate the provider iframe when parent callbacks change', () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'site-key')
+    const remove = vi.fn()
+    const renderWidget = vi.fn(() => 'widget-1')
+    ;(window as typeof window & { turnstile: unknown }).turnstile = { render: renderWidget, remove }
+
+    const view = render(<TurnstileWidget onToken={vi.fn()} onError={vi.fn()} onExpire={vi.fn()} />)
+    fireEvent.load(document.getElementById('cloudflare-turnstile-script')!)
+    view.rerender(<TurnstileWidget onToken={vi.fn()} onError={vi.fn()} onExpire={vi.fn()} />)
+
+    expect(renderWidget).toHaveBeenCalledOnce()
+    expect(remove).not.toHaveBeenCalled()
+  })
 })

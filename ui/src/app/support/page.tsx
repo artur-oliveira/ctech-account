@@ -27,6 +27,7 @@ export default function SupportPage() {
   const [subcategory, setSubcategory] = useState('')
   const [subjectOther, setSubjectOther] = useState('')
   const [priority, setPriority] = useState('low')
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0)
   const selectedCategory = findSupportCategory(category)
   const isOtherCategory = category === 'other'
 
@@ -34,7 +35,11 @@ export default function SupportPage() {
     mutationFn: createSupportTicketAPI,
     onSuccess: (r) =>
       router.push(`/support/ticket?id=${encodeURIComponent(r.ticket_id)}${r.anonymous_token ? `&token=${encodeURIComponent(r.anonymous_token)}` : ''}`),
-    onError: () => setError(t('support.genericError')),
+    onError: () => {
+      setError(t('support.genericError'))
+      setToken('')
+      setTurnstileResetSignal((value) => value + 1)
+    },
   })
 
   function submit(e: SyntheticEvent<HTMLFormElement>) {
@@ -167,8 +172,12 @@ export default function SupportPage() {
           />
         </div>
 
-        <TurnstileWidget onToken={setToken} onError={() => setError(t('support.captchaError'))}
-                         onExpire={() => setToken('')}/>
+        <TurnstileWidget
+          onToken={setToken}
+          onError={() => setError(t('support.captchaError'))}
+          onExpire={() => setToken('')}
+          resetSignal={turnstileResetSignal}
+        />
 
         {error && (
           <Alert variant="destructive">

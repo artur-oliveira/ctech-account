@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,32 +29,34 @@ var ErrVerificationFailed = errors.New("turnstile: verification failed")
 
 // Verifier is the narrow dependency consumed by HTTP handlers.
 type Verifier interface {
-	Verify(ctx context.Context, token, remoteIP string) error
+	Verify(ctx context.Context, token, remoteIP, expectedAction string) error
 }
 
 // Service validates Turnstile tokens through Cloudflare's Siteverify API.
 type Service struct {
 	secret   string
+	hostname string
 	endpoint string
 	client   *http.Client
 }
 
-type verifyRequest struct {
-	Secret         string `json:"secret"`
-	Response       string `json:"response"`
-	RemoteIP       string `json:"remoteip,omitempty"`
-	IdempotencyKey string `json:"idempotency_key"`
-}
-
 type verifyResponse struct {
-	Success bool `json:"success"`
+	Success  bool   `json:"success"`
+	Action   string `json:"action"`
+	Hostname string `json:"hostname"`
 }
 
 // New creates a verifier. An empty secret deliberately disables validation in
 // local development; deployed environments receive the secret from SSM.
-func New(secret string) *Service {
+// appURL supplies the one frontend hostname allowed by this API deployment.
+func New(secret, appURL string) *Service {
+	hostname := ""
+	if parsed, err := url.Parse(appURL); err == nil {
+		hostname = parsed.Hostname()
+	}
 	return &Service{
 		secret:   strings.TrimSpace(secret),
+		hostname: hostname,
 		endpoint: siteverifyURL,
 		client:   &http.Client{Timeout: 6 * time.Second},
 	}
@@ -66,7 +69,7 @@ func (s *Service) Enabled() bool {
 
 // Verify validates one short-lived, single-use token. Tokens are never cached
 // or logged, because Cloudflare rejects a token after its first validation.
-func (s *Service) Verify(ctx context.Context, token, remoteIP string) error {
+func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction string) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -76,20 +79,19 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP string) error {
 		return ErrVerificationFailed
 	}
 
-	body, err := json.Marshal(verifyRequest{
-		Secret:         s.secret,
-		Response:       token,
-		RemoteIP:       strings.TrimSpace(remoteIP),
-		IdempotencyKey: uuid.NewString(),
-	})
-	if err != nil {
-		return fmt.Errorf("turnstile: encode siteverify request: %w", err)
+	body := url.Values{
+		"secret":          {s.secret},
+		"response":        {token},
+		"idempotency_key": {uuid.NewString()},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(body))
+	if remoteIP = strings.TrimSpace(remoteIP); remoteIP != "" {
+		body.Set("remoteip", remoteIP)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewBufferString(body.Encode()))
 	if err != nil {
 		return fmt.Errorf("turnstile: build siteverify request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -102,7 +104,9 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP string) error {
 		return fmt.Errorf("turnstile: read siteverify response: %w", err)
 	}
 	var result verifyResponse
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || json.Unmarshal(raw, &result) != nil || !result.Success {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || json.Unmarshal(raw, &result) != nil || !result.Success ||
+		(expectedAction != "" && result.Action != expectedAction) ||
+		(s.hostname != "" && result.Hostname != s.hostname) {
 		return ErrVerificationFailed
 	}
 	return nil

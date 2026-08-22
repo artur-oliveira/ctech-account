@@ -2,7 +2,6 @@ package turnstile
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -18,46 +17,47 @@ func TestVerify(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		secret  string
-		token   string
-		status  int
-		body    string
-		wantErr error
+		name     string
+		secret   string
+		token    string
+		status   int
+		body     string
+		action   string
+		hostname string
+		wantErr  error
 	}{
 		{name: "disabled in local development", token: "token", wantErr: nil},
-		{name: "accepts a successful response", secret: "secret", token: "token", status: http.StatusOK, body: `{"success":true}`, wantErr: nil},
+		{name: "accepts a matching response", secret: "secret", token: "token", action: "support_ticket", hostname: "accounts.aoctech.app", status: http.StatusOK, body: `{"success":true,"action":"support_ticket","hostname":"accounts.aoctech.app"}`, wantErr: nil},
 		{name: "rejects an empty token", secret: "secret", wantErr: ErrVerificationFailed},
-		{name: "rejects a provider failure", secret: "secret", token: "token", status: http.StatusOK, body: `{"success":false}`, wantErr: ErrVerificationFailed},
+		{name: "rejects a provider failure", secret: "secret", token: "token", action: "support_ticket", hostname: "accounts.aoctech.app", status: http.StatusOK, body: `{"success":false}`, wantErr: ErrVerificationFailed},
+		{name: "rejects an unexpected action", secret: "secret", token: "token", action: "support_ticket", hostname: "accounts.aoctech.app", status: http.StatusOK, body: `{"success":true,"action":"other","hostname":"accounts.aoctech.app"}`, wantErr: ErrVerificationFailed},
+		{name: "rejects an unexpected hostname", secret: "secret", token: "token", action: "support_ticket", hostname: "accounts.aoctech.app", status: http.StatusOK, body: `{"success":true,"action":"support_ticket","hostname":"other.aoctech.app"}`, wantErr: ErrVerificationFailed},
 		{name: "rejects an invalid response", secret: "secret", token: "token", status: http.StatusOK, body: `not json`, wantErr: ErrVerificationFailed},
 		{name: "rejects a non success status", secret: "secret", token: "token", status: http.StatusBadGateway, body: `{"success":true}`, wantErr: ErrVerificationFailed},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := New(tt.secret)
-			var received verifyRequest
+			svc := New(tt.secret, "https://accounts.aoctech.app")
 			svc.SetTransportForTest(roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				if req.Method != http.MethodPost || req.URL.String() != siteverifyURL {
 					t.Fatalf("unexpected request %s %s", req.Method, req.URL)
 				}
-				if req.Header.Get("Content-Type") != "application/json" {
+				if req.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
 					t.Fatalf("unexpected content type %q", req.Header.Get("Content-Type"))
 				}
-				if err := json.NewDecoder(req.Body).Decode(&received); err != nil {
-					t.Fatalf("decode request: %v", err)
+				if err := req.ParseForm(); err != nil {
+					t.Fatalf("parse request form: %v", err)
+				}
+				if req.Form.Get("secret") != tt.secret || req.Form.Get("response") != tt.token || req.Form.Get("remoteip") != "203.0.113.10" || req.Form.Get("idempotency_key") == "" {
+					t.Fatalf("unexpected request form: %v", req.Form)
 				}
 				return &http.Response{StatusCode: tt.status, Body: io.NopCloser(strings.NewReader(tt.body)), Header: make(http.Header)}, nil
 			}))
 
-			err := svc.Verify(context.Background(), tt.token, "203.0.113.10")
+			err := svc.Verify(context.Background(), tt.token, "203.0.113.10", tt.action)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Verify() error = %v, want %v", err, tt.wantErr)
-			}
-			if tt.secret != "" && tt.token != "" && len(tt.token) <= maxTokenLength {
-				if received.Secret != tt.secret || received.Response != tt.token || received.RemoteIP != "203.0.113.10" || received.IdempotencyKey == "" {
-					t.Fatalf("unexpected request payload: %+v", received)
-				}
 			}
 		})
 	}
@@ -65,12 +65,12 @@ func TestVerify(t *testing.T) {
 
 func TestVerifyReturnsProviderTransportErrors(t *testing.T) {
 	t.Parallel()
-	svc := New("secret")
+	svc := New("secret", "https://accounts.aoctech.app")
 	svc.SetTransportForTest(roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unavailable")
 	}))
 
-	if err := svc.Verify(context.Background(), "token", ""); err == nil || errors.Is(err, ErrVerificationFailed) {
+	if err := svc.Verify(context.Background(), "token", "", "support_ticket"); err == nil || errors.Is(err, ErrVerificationFailed) {
 		t.Fatalf("Verify() error = %v, want transport error", err)
 	}
 }

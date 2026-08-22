@@ -233,7 +233,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewActivityHandler(auditSvc).Register(account)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
 	handler.NewTermsHandler(userSvc, auditSvc).Register(account)
-	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New(""), nil, cfg.AppURL)
+	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)
 	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
