@@ -121,6 +121,57 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_api_keys', apiKeysTable);
 
+    const supportTicketsTable = new dynamodb.TableV2(this, 'SupportTicketsTableV2', {
+      tableName: `${environment}_account_support_tickets`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'status-index',
+          partitionKey: {name: 'status', type: dynamodb.AttributeType.STRING},
+          sortKey: {name: 'last_message_at', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+        {
+          indexName: 'user-index',
+          partitionKey: {name: 'user_id', type: dynamodb.AttributeType.STRING},
+          sortKey: {name: 'created_at', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+        {
+          indexName: 'anon-token-index',
+          partitionKey: {name: 'anonymous_token', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+        {
+          indexName: 'ticket-number-index',
+          partitionKey: {name: 'ticket_number', type: dynamodb.AttributeType.NUMBER},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
+    });
+    this.tables.set('account_support_tickets', supportTicketsTable);
+
     // Stores TOTP secrets (sk=TOTP_default) and PassKey credentials (sk=PASSKEY_{id})
     const mfaTable = new dynamodb.TableV2(this, 'MFATableV2', {
       tableName: `${environment}_account_mfa`,
