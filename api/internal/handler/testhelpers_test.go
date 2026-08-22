@@ -127,6 +127,8 @@ type testApp struct {
 	kycPresigner *memPresigner
 	kycSvc       *kycDomain.Service
 	passkeyRepo  *memPasskeyRepo
+	supportSvc   *supportDomain.Service
+	supportRepo  *mockSupportRepo
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -183,6 +185,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	auditSvc := audit.NewService(auditRepo)
 	kycPresigner := newMemPresigner()
 	kycSvc := kycDomain.NewService(newMemKYCRepo(userRepo), kycPresigner, riskDomain.NoopEvaluator{})
+	supportRepo := newMockSupportRepo()
+	supportSvc := supportDomain.NewService(supportRepo)
 
 	// WebAuthn instance for tests — uses localhost as RPID/origin.
 	wa, err := webauthn.New(&webauthn.Config{
@@ -252,6 +256,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		kycPresigner: kycPresigner,
 		kycSvc:       kycSvc,
 		passkeyRepo:  passkeyRepo,
+		supportSvc:   supportSvc,
+		supportRepo:  supportRepo,
 	}
 }
 
