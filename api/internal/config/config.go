@@ -53,6 +53,11 @@ type Config struct {
 	FromEmail string // FROM_EMAIL env var
 	AppURL    string // APP_URL env var — public Account resource/link URL (defaults to BaseURL)
 
+	// TurnstileSecretKey verifies the Cloudflare Turnstile token on the public
+	// ticket-creation endpoint (TURNSTILE_SECRET_KEY env var). Empty disables
+	// verification — only acceptable in dev.
+	TurnstileSecretKey string
+
 	// MaxMind GeoLite2 City credentials (MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY
 	// env vars). When either is empty, GeoIP lookups stay permanently disabled
 	// (geo.Lookup always returns a zero Location) — mirrors how an absent
@@ -182,6 +187,7 @@ func Load() (*Config, error) {
 		RPOrigins:          rpOrigins,
 		FromEmail:          getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
 		AppURL:             appURL,
+		TurnstileSecretKey: os.Getenv("TURNSTILE_SECRET_KEY"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		MaxMindAccountID:   os.Getenv("MAXMIND_ACCOUNT_ID"),

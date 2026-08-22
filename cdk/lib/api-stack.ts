@@ -104,6 +104,7 @@ export class ApiStack extends cdk.Stack {
       `GOOGLE_CLIENT_SECRET=/ctech-account/${environment}/google-client-secret`,
       `COOKIE_DOMAIN=/ctech-account/${environment}/cookie-domain`,
       `FROM_EMAIL=/ctech-account/${environment}/from-email`,
+      `TURNSTILE_SECRET_KEY=/ctech-account/${environment}/turnstile-secret-key`,
       `MAXMIND_ACCOUNT_ID=/ctech-account/${environment}/maxmind-account-id`,
       `MAXMIND_LICENSE_KEY=/ctech-account/${environment}/maxmind-license-key`,
       ...(valkeyUrlSsmPath ? [`VALKEY_URL=${valkeyUrlSsmPath}`] : []),
