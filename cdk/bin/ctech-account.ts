@@ -26,11 +26,10 @@ const CTECH_DEPLOYMENTS_BUCKET = process.env.CTECH_DEPLOYMENTS_BUCKET || `${ENVI
 const CTECH_LOGS_BUCKET = process.env.CTECH_LOGS_BUCKET || `${ENVIRONMENT}-ctech-application-logs`;
 // KYC identity documents — owned by this repo (unlike the shared buckets above).
 const KYC_DOCUMENTS_BUCKET = `${ENVIRONMENT}-ctech-account-kyc-documents`;
-// Session Manager on the API instances. **Off by default**: deploys replace the
-// instances through an ASG instance refresh, so nothing needs RunCommand any
-// more, and the agent costs ~70 MiB of RSS on a t4g.nano. Set
-// ENABLE_SSM_AGENT=true to get a shell back onto the box for debugging.
-const ENABLE_SSM_AGENT = process.env.ENABLE_SSM_AGENT === 'true';
+// Session Manager on the API instances. **On**: CI deploys over SSM RunCommand
+// (/opt/app/deploy.sh), which needs the agent running; it also gets a shell
+// back onto the box for debugging. Costs ~70 MiB of RSS on a t4g.nano.
+const ENABLE_SSM_AGENT = true;
 
 const env = {account: AWS_ACCOUNT, region: AWS_REGION};
 
