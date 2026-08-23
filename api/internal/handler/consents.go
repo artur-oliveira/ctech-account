@@ -7,8 +7,8 @@ import (
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/middleware"
-	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // ConsentsHandler exposes the user's "connected applications" — OAuth clients

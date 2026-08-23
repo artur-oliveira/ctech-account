@@ -19,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
@@ -42,12 +41,12 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
-	"gopkg.aoctech.app/account/api/internal/observability"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
+	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 )
 
 func main() {
@@ -277,14 +276,15 @@ func main() {
 		},
 	})
 
-	app.Use(requestid.New())
-	app.Use(func(c fiber.Ctx) error {
-		c.SetContext(observability.WithRequestID(c.Context(), requestid.FromContext(c)))
-		return c.Next()
-	})
+	app.Use(fiberobs.RequestID())
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
-		Format: `{"time":"${time}","method":"${method}","path":"${path}","status":${status},"latency":"${latency}","request_id":"${requestid}"}` + "\n",
+		Format: `{"time":"${time}","status":${status},"latency":"${latency}","method":"${method}",` +
+			`"path":"${path}","request_id":"${respHeader:X-Request-Id}"}` + "\n",
+		DisableColors: true,
+		Skip: func(c fiber.Ctx) bool {
+			return c.Path() == "/v1.0/health" || c.Path() == "/v1.0/health-check"
+		},
 	}))
 
 	rawOrigins := append([]string{cfg.AppURL}, cfg.AllowedOrigins...)

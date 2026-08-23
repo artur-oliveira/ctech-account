@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // Repository is the persistence contract for TOTP secrets. Services depend on

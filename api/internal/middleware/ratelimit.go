@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 const rateLimitKeyPrefix = "rl:"

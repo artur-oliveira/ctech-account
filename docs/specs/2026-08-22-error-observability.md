@@ -58,10 +58,10 @@ Domain event names, entity attributes, retry policy and the choice of which expe
 normal control flow remain in each API. Frontend logging also remains local because it is a
 TypeScript concern.
 
-The account implementation stays local until the common module is changed, reviewed and released.
-Migration order is: add tests and the package to `ctech-go-common`, publish a new semantic version,
-bump each consumer, replace its local primitives, then perform that API's own swallowed-error
-audit. Copying only the middleware is insufficient; the per-domain audit is required.
+The account implementation now consumes the shared `api-commons/observability` and
+`api-commons/observability/fiber` packages. `ctech-go-common` must be released as `v1.7.0` before
+the updated consumer dependency can be fetched outside the coordinated local workspace. Each
+consumer still requires its own swallowed-error audit; copying only the middleware is insufficient.
 
 ## Cross-project impact
 

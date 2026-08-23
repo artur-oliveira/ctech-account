@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 const birthDateLayout = "2006-01-02"

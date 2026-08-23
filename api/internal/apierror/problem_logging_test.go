@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 )
 
 func TestProblemSendLogsCauseAndRequestIDWithoutExposingCause(t *testing.T) {
@@ -20,10 +20,7 @@ func TestProblemSendLogsCauseAndRequestIDWithoutExposingCause(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		c.SetContext(observability.WithRequestID(c.Context(), "req-123"))
-		return c.Next()
-	})
+	app.Use(fiberobs.RequestID(fiberobs.RequestIDConfig{Generator: func() string { return "req-123" }}))
 	app.Get("/failure", func(c fiber.Ctx) error {
 		return ServerError(c.Path()).WithCause(errors.New("database offline")).Send(c)
 	})
@@ -45,7 +42,7 @@ func TestProblemSendLogsCauseAndRequestIDWithoutExposingCause(t *testing.T) {
 		t.Fatalf("internal cause leaked in response: %s", body)
 	}
 	logLine := logs.String()
-	for _, want := range []string{"http request failed", "request_id=req-123", `error="database offline"`, "status=500"} {
+	for _, want := range []string{"http request failed", "request_id=req-123", `err="database offline"`, "status=500"} {
 		if !strings.Contains(logLine, want) {
 			t.Fatalf("log %q does not contain %q", logLine, want)
 		}

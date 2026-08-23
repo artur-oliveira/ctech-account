@@ -15,8 +15,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/middleware"
-	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 type PasskeyHandler struct {

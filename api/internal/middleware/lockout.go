@@ -10,7 +10,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // AccountLockoutMiddleware returns a middleware that tracks failed login attempts

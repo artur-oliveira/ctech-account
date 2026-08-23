@@ -3,13 +3,13 @@ package apierror
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
+	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 )
 
 const baseURI = "https://accounts.aoctech.app/problems/"
@@ -71,25 +71,7 @@ func (p *Problem) WithCause(err error) *Problem {
 }
 
 func logProblem(c fiber.Ctx, p *Problem) {
-	attrs := []any{
-		"status", p.Status,
-		"problem_type", p.Type,
-		"method", c.Method(),
-		"path", c.Path(),
-	}
-	if requestID := observability.RequestID(c.Context()); requestID != "" {
-		attrs = append(attrs, "request_id", requestID)
-	}
-	if p.cause != nil {
-		attrs = append(attrs, "error", p.cause)
-	} else if p.Detail != "" {
-		attrs = append(attrs, "detail", p.Detail)
-	}
-	if p.Status >= http.StatusInternalServerError {
-		slog.ErrorContext(c.Context(), "http request failed", attrs...)
-		return
-	}
-	slog.WarnContext(c.Context(), "http request rejected", attrs...)
+	fiberobs.LogHTTPError(c, p.Status, p.Type, p.cause)
 }
 
 // WithOAuth adds RFC 6749 extension fields for token-endpoint compatibility.

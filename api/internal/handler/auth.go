@@ -19,7 +19,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 const mfaTokenTTL = 5 * time.Minute

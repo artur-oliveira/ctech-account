@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/cache"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // CatalogCacheKey caches the loaded catalog in Valkey. After adding a scope to

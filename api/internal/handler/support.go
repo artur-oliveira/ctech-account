@@ -10,8 +10,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
-	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 type SupportHandler struct {

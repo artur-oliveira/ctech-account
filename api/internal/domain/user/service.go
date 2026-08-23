@@ -9,7 +9,7 @@ import (
 
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/legal"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // ErrInvalidCredentials is returned when login credentials are incorrect or the account is disabled.

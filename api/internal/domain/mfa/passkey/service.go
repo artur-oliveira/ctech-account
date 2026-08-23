@@ -11,7 +11,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/crypto"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 const sessionTTL = 5 * time.Minute

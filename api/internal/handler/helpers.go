@@ -11,9 +11,9 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/email"
-	"gopkg.aoctech.app/account/api/internal/observability"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/account/api/internal/validate"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // clientIP extracts the real client IP from the first entry of the

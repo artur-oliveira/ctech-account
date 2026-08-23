@@ -167,7 +167,7 @@ Token endpoint errors additionally include `error` and `error_description` (RFC 
 
 ### Error observability
 
-The API writes structured JSON logs to stdout. Every RFC 7807 response is logged at the HTTP
+The API uses `api-commons/observability` for structured JSON logs and Request-ID propagation. Every RFC 7807 response is logged at the HTTP
 boundary: client rejections (`4xx`) at `WARN` and server failures (`5xx`) at `ERROR`. Internal
 causes are attached with `Problem.WithCause` and are written only to the server log, never to the
 response. `X-Request-ID` is generated or preserved for every request, included in those logs, and

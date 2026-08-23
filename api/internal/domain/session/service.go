@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/crypto"
-	"gopkg.aoctech.app/account/api/internal/observability"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 var ErrTokenReuse = errors.New("refresh token reuse detected — session revoked")
