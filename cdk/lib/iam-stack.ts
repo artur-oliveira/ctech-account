@@ -67,7 +67,10 @@ export class IAMStack extends cdk.Stack {
     // comes from SSM at runtime, so we allow any verified identity in the account).
     appRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-      resources: ['arn:aws:ses:*:*:identity/*'],
+      resources: [
+        'arn:aws:ses:*:*:identity/*',
+        'arn:aws:ses:*:*:configuration-set/*',
+      ],
     }));
 
     // S3 — deployments (read) + logs (write), scoped to this app's prefix
