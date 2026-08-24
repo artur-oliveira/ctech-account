@@ -11,7 +11,7 @@ concurrency:
 jobs:
   backend:
     name: Go Build & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@v7
 
@@ -39,7 +39,7 @@ jobs:
 
   cdk:
     name: CDK Synth
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     defaults:
       run:
         working-directory: cdk

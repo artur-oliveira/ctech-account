@@ -112,6 +112,9 @@ const apiStack = new ApiStack(app, id('Api'), {
   kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
   enableSsmAgent: ENABLE_SSM_AGENT,
+  // Alpine/ARM is the default since the prod pilot went healthy; OS_FAMILY=al2023
+  // is the one-line rollback if this ever needs to revert.
+  osFamily: (process.env.OS_FAMILY as 'al2023' | 'alpine' | undefined) ?? 'alpine',
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 apiStack.addStackDependency(iamStack);

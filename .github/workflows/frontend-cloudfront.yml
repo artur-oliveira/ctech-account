@@ -15,7 +15,7 @@ env:
 jobs:
   deploy:
     name: Build & Deploy Next.js
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     environment: production
     defaults:
       run:
