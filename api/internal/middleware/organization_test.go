@@ -30,6 +30,9 @@ func (orgRepoStub) CreateWithOwner(context.Context, *organization.Organization) 
 func (orgRepoStub) Get(context.Context, string) (*organization.Organization, error) {
 	return nil, organization.ErrNotFound
 }
+func (orgRepoStub) GetBySourceRef(context.Context, string, string) (*organization.Organization, error) {
+	return nil, organization.ErrNotFound
+}
 func (orgRepoStub) UpdateDisplayName(context.Context, string, string, time.Time) error { return nil }
 func (orgRepoStub) ListMembers(context.Context, string) ([]*organization.Membership, error) {
 	return nil, nil

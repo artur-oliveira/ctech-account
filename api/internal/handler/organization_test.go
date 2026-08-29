@@ -56,6 +56,16 @@ func (m *memOrgRepo) Get(_ context.Context, id string) (*orgDomain.Organization,
 	return &copied, nil
 }
 
+func (m *memOrgRepo) GetBySourceRef(_ context.Context, system, ref string) (*orgDomain.Organization, error) {
+	for _, org := range m.orgs {
+		if org.SourceSystem == system && org.SourceRef == ref && ref != "" {
+			copied := *org
+			return &copied, nil
+		}
+	}
+	return nil, orgDomain.ErrNotFound
+}
+
 func (m *memOrgRepo) UpdateDisplayName(_ context.Context, id, name string, now time.Time) error {
 	org, ok := m.orgs[id]
 	if !ok {

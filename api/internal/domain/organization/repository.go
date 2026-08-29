@@ -42,6 +42,11 @@ func orgPK(id string) string            { return orgPKPrefix + id }
 func memberSK(userID string) string     { return memberSKPrefix + userID }
 func lookupUserPK(userID string) string { return "USER#" + userID }
 
+// lookupSourcePK namespaces an imported row by the system it came from: two
+// systems may well hand over the same key, and a collision there would silently
+// merge two organizations.
+func lookupSourcePK(system, ref string) string { return "SOURCE#" + system + "#" + ref }
+
 // inviteSK normalizes the address, so inviting the same person twice replaces
 // the pending invitation instead of creating a second one nobody can see.
 func inviteSK(email string) string {
@@ -64,6 +69,7 @@ func emailFromSK(sk string) string  { return strings.TrimPrefix(sk, inviteSKPref
 type Repository interface {
 	CreateWithOwner(ctx context.Context, org *Organization) error
 	Get(ctx context.Context, id string) (*Organization, error)
+	GetBySourceRef(ctx context.Context, system, ref string) (*Organization, error)
 	UpdateDisplayName(ctx context.Context, id, name string, now time.Time) error
 	GetMembership(ctx context.Context, orgID, userID string) (*Membership, error)
 	ListMembers(ctx context.Context, orgID string) ([]*Membership, error)
@@ -120,6 +126,11 @@ func (r *repo) CreateWithOwner(ctx context.Context, org *Organization) error {
 	}
 	orgItem["pk"] = &types.AttributeValueMemberS{Value: orgPK(org.ID)}
 	orgItem["sk"] = &types.AttributeValueMemberS{Value: metaSK}
+	// Sparse on purpose: only an imported organization carries lookup_pk, so
+	// the index holds exactly the rows a migration needs to recognize.
+	if org.SourceSystem != "" && org.SourceRef != "" {
+		orgItem["lookup_pk"] = &types.AttributeValueMemberS{Value: lookupSourcePK(org.SourceSystem, org.SourceRef)}
+	}
 
 	memberItem, err := r.membershipItem(&Membership{
 		OrganizationID: org.ID,
@@ -154,6 +165,29 @@ func (r *repo) Get(ctx context.Context, id string) (*Organization, error) {
 		return nil, fmt.Errorf("unmarshaling organization: %w", err)
 	}
 	org.ID = id
+	return &org, nil
+}
+
+// GetBySourceRef answers "have I already imported this one". It reads a GSI, so
+// the answer is eventually consistent: a migration that re-runs within a second
+// of writing may not see its own row. That is acceptable here and nowhere else
+// — the write is conditional on absence, so the worst case is a rejected
+// duplicate, not a second organization.
+func (r *repo) GetBySourceRef(ctx context.Context, system, ref string) (*Organization, error) {
+	res, err := r.orgs.QueryGSI(ctx, lookupIndex, "lookup_pk", lookupSourcePK(system, ref), 1, nil)
+	if err != nil {
+		return nil, fmt.Errorf("reading organization by source ref: %w", err)
+	}
+	if len(res.Items) == 0 {
+		return nil, ErrNotFound
+	}
+	var org Organization
+	if err := attributevalue.UnmarshalMap(res.Items[0], &org); err != nil {
+		return nil, fmt.Errorf("unmarshaling organization: %w", err)
+	}
+	if pk, ok := res.Items[0]["pk"].(*types.AttributeValueMemberS); ok {
+		org.ID = orgIDFromPK(pk.Value)
+	}
 	return &org, nil
 }
 

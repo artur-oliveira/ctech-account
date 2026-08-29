@@ -34,3 +34,18 @@ func TestIDsAreRecoveredFromKeys(t *testing.T) {
 		t.Errorf("emailFromSK = %q", got)
 	}
 }
+
+// The migration has to be re-runnable, which means it must be able to ask "did
+// I already import this dfe organization". The source ref is the key it asks
+// with, and only migrated rows carry one — the index is sparse on purpose, so
+// organizations created through the product never appear in it.
+func TestSourceRefKeyIsNamespaced(t *testing.T) {
+	if got := lookupSourcePK("dfe", "CNPJ_123"); got != "SOURCE#dfe#CNPJ_123" {
+		t.Errorf("lookupSourcePK = %q", got)
+	}
+	// Two systems could hand over the same key. Namespacing by system is what
+	// keeps a dfe organization and some future import from colliding.
+	if lookupSourcePK("dfe", "X") == lookupSourcePK("wallet", "X") {
+		t.Error("source refs from different systems must not collide")
+	}
+}

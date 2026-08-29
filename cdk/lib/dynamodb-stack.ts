@@ -265,9 +265,11 @@ export class DynamoDBStack extends cdk.Stack {
     this.tables.set('ctech_scopes', scopesTable);
 
     // ── Platform organizations ────────────────────────────────────────────
-    // A workspace and its billing target. Read by id only, so it carries no
-    // GSI: the reverse question ("which organizations is this person in") is
-    // answered by the memberships table's lookup-index, not by scanning these.
+    // A workspace and its billing target. Read by id in the product; the
+    // lookup-index exists only for imports, keyed on lookup_pk=SOURCE#{system}#
+    // {ref}. It is sparse — an organization created through the product writes no
+    // lookup_pk — so the index holds exactly the rows a migration must
+    // recognize when it re-runs.
     const organizationsTable = new dynamodb.TableV2(this, 'OrganizationsTableV2', {
       tableName: `${environment}_account_organizations`,
       partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
@@ -280,6 +282,16 @@ export class DynamoDBStack extends cdk.Stack {
         pointInTimeRecoveryEnabled: pitr,
       },
       removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'lookup-index',
+          partitionKey: {name: 'lookup_pk', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
     });
     this.tables.set('account_organizations', organizationsTable);
 

@@ -47,6 +47,16 @@ func (f *fakeRepo) Get(_ context.Context, id string) (*Organization, error) {
 	return &copied, nil
 }
 
+func (f *fakeRepo) GetBySourceRef(_ context.Context, system, ref string) (*Organization, error) {
+	for _, org := range f.orgs {
+		if org.SourceSystem == system && org.SourceRef == ref && ref != "" {
+			copied := *org
+			return &copied, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (f *fakeRepo) UpdateDisplayName(_ context.Context, id, name string, now time.Time) error {
 	org, ok := f.orgs[id]
 	if !ok {

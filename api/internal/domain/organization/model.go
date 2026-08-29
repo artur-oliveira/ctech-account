@@ -43,11 +43,17 @@ func AtLeast(role, floor string) bool {
 // Organization is a workspace and a billing target: who shares access and who
 // receives the invoice.
 type Organization struct {
-	ID          string    `dynamodbav:"-"`
-	DisplayName string    `dynamodbav:"display_name"`
-	OwnerUserID string    `dynamodbav:"owner_user_id"`
-	CreatedAt   time.Time `dynamodbav:"created_at"`
-	UpdatedAt   time.Time `dynamodbav:"updated_at"`
+	ID          string `dynamodbav:"-"`
+	DisplayName string `dynamodbav:"display_name"`
+	OwnerUserID string `dynamodbav:"owner_user_id"`
+	// SourceSystem/SourceRef record where an imported organization came from —
+	// set only by a migration, empty for anything created through the product.
+	// They exist so an import can be re-run without writing the row twice, and
+	// so a row can be traced back to what it was before.
+	SourceSystem string    `dynamodbav:"source_system,omitempty"`
+	SourceRef    string    `dynamodbav:"source_ref,omitempty"`
+	CreatedAt    time.Time `dynamodbav:"created_at"`
+	UpdatedAt    time.Time `dynamodbav:"updated_at"`
 }
 
 // Membership is one person's access to one organization.
