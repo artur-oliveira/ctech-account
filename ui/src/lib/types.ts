@@ -243,6 +243,12 @@ export interface Organization {
 export interface OrganizationMember {
   organization_id: string
   user_id: string
+  /**
+   * Copied onto the row when the person joined, refreshed when they rename
+   * themselves. Absent on rows written before names were stored — render the
+   * user id rather than a blank.
+   */
+  name?: string
   role: OrganizationRole
   created_at: string
 }

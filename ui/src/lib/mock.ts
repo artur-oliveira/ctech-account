@@ -353,6 +353,7 @@ const routes: Route[] = [
             {
               organization_id: org.id,
               user_id: org.owner_user_id,
+              name: org.owner_user_id === 'mock_user' ? 'Mock User' : 'Sócia Fictícia',
               role: 'owner',
               created_at: org.joined_at,
             },
@@ -361,6 +362,7 @@ const routes: Route[] = [
             state.members[org.id].push({
               organization_id: org.id,
               user_id: 'mock_user',
+              name: 'Mock User',
               role: org.role,
               created_at: org.joined_at,
             })
@@ -384,7 +386,13 @@ const routes: Route[] = [
       }
       state.organizations.unshift(org)
       state.members[org.id] = [
-        { organization_id: org.id, user_id: 'mock_user', role: 'owner', created_at: org.joined_at },
+        {
+          organization_id: org.id,
+          user_id: 'mock_user',
+          name: 'Mock User',
+          role: 'owner',
+          created_at: org.joined_at,
+        },
       ]
       state.invitations[org.id] = []
       return org

@@ -38,14 +38,14 @@ func newMemOrgRepo() *memOrgRepo {
 	}
 }
 
-func (m *memOrgRepo) CreateWithOwner(_ context.Context, org *orgDomain.Organization) error {
+func (m *memOrgRepo) CreateWithOwner(_ context.Context, org *orgDomain.Organization, ownerName string) error {
 	if _, exists := m.orgs[org.ID]; exists {
 		return orgDomain.ErrAlreadyMember
 	}
 	copied := *org
 	m.orgs[org.ID] = &copied
 	m.memberships[org.ID] = map[string]*orgDomain.Membership{
-		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Role: orgDomain.RoleOwner, CreatedAt: org.CreatedAt},
+		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Name: ownerName, Role: orgDomain.RoleOwner, CreatedAt: org.CreatedAt},
 	}
 	return nil
 }
@@ -116,6 +116,15 @@ func (m *memOrgRepo) PutMembership(_ context.Context, mm *orgDomain.Membership) 
 	}
 	copied := *mm
 	m.memberships[mm.OrganizationID][mm.UserID] = &copied
+	return nil
+}
+
+func (m *memOrgRepo) RenameMember(_ context.Context, userID, name string) error {
+	for _, byUser := range m.memberships {
+		if mm, ok := byUser[userID]; ok {
+			mm.Name = name
+		}
+	}
 	return nil
 }
 
@@ -251,7 +260,7 @@ func TestAcceptUsesTheAccountsVerifiedEmail(t *testing.T) {
 	owner := a.registerUser(t, "dono@example.com", "Sup3rSecret!pass", "Dono")
 	intruder := a.registerUser(t, "intruso@example.com", "Sup3rSecret!pass", "Intruso")
 
-	org, err := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, err := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 	if err != nil {
 		t.Fatalf("seeding organization: %v", err)
 	}
@@ -279,7 +288,7 @@ func TestAcceptRefusesAnUnverifiedAccount(t *testing.T) {
 	owner := a.registerUser(t, "dono2@example.com", "Sup3rSecret!pass", "Dono")
 	invitee := a.registerUnverifiedUser(t, "convidado2@example.com", "Sup3rSecret!pass", "Convidado")
 
-	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado2@example.com", orgDomain.RoleMember)
 
 	resp := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
@@ -295,7 +304,7 @@ func TestAcceptAddsTheInvitedMember(t *testing.T) {
 	owner := a.registerUser(t, "dono3@example.com", "Sup3rSecret!pass", "Dono")
 	invitee := a.registerUser(t, "convidado3@example.com", "Sup3rSecret!pass", "Convidado")
 
-	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado3@example.com", orgDomain.RoleMember)
 
 	resp := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
@@ -318,7 +327,7 @@ func TestOrganizationRoutesRefuseNonMembers(t *testing.T) {
 	a := newOrgTestApp(t)
 	owner := a.registerUser(t, "dono4@example.com", "Sup3rSecret!pass", "Dono")
 	stranger := a.registerUser(t, "estranho@example.com", "Sup3rSecret!pass", "Estranho")
-	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 
 	token := a.issueToken(t, stranger.ID())
 	real := a.do(t, http.MethodGet, "/v1.0/organizations/"+org.ID, token, "")
@@ -351,7 +360,7 @@ func TestTheVerificationGateIsDistinguishableFromAnInvalidInvitation(t *testing.
 	owner := a.registerUser(t, "dono5@example.com", "Sup3rSecret!pass", "Dono")
 	unverified := a.registerUnverifiedUser(t, "naoverificado@example.com", "Sup3rSecret!pass", "Convidado")
 
-	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "naoverificado@example.com", orgDomain.RoleMember)
 
 	gate := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
@@ -382,7 +391,7 @@ func TestTheInvitationFailuresStayMerged(t *testing.T) {
 	a := newOrgTestApp(t)
 	owner := a.registerUser(t, "dono6@example.com", "Sup3rSecret!pass", "Dono")
 	intruder := a.registerUser(t, "intruso2@example.com", "Sup3rSecret!pass", "Intruso")
-	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
 	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "outra@example.com", orgDomain.RoleMember)
 
 	wrongPerson := a.do(t, http.MethodPost, "/v1.0/invitations/accept",

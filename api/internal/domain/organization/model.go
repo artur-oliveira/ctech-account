@@ -58,11 +58,17 @@ type Organization struct {
 
 // Membership is one person's access to one organization.
 type Membership struct {
-	OrganizationID string    `dynamodbav:"-"`
-	UserID         string    `dynamodbav:"-"`
-	Role           string    `dynamodbav:"role"`
-	InvitedBy      string    `dynamodbav:"invited_by,omitempty"`
-	CreatedAt      time.Time `dynamodbav:"created_at"`
+	OrganizationID string `dynamodbav:"-"`
+	UserID         string `dynamodbav:"-"`
+	// Name is a copy of the person's display name, kept here so a roster is one
+	// query instead of one query plus a lookup per row. It is a cache, not the
+	// record: the account is the source of truth, and RenameMember refreshes
+	// every copy when it changes. Inside an organization a colleague's name is
+	// not a disclosure — you already work with them.
+	Name      string    `dynamodbav:"name,omitempty"`
+	Role      string    `dynamodbav:"role"`
+	InvitedBy string    `dynamodbav:"invited_by,omitempty"`
+	CreatedAt time.Time `dynamodbav:"created_at"`
 }
 
 // Invitation is an offer of membership to one e-mail address.

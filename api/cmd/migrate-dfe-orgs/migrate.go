@@ -32,6 +32,7 @@ type dfeOrg struct {
 // dfeMember is one row of dfe's organization_users.
 type dfeMember struct {
 	UserID      string
+	Name        string
 	Role        string
 	Permissions []string
 	InvitedBy   string
@@ -70,6 +71,7 @@ type decision struct {
 	DisplayName string
 	OwnerUserID string
 	CreatedAt   time.Time
+	OwnerName   string
 	Action      string
 	Review      []string
 	Notes       []string
@@ -157,6 +159,11 @@ func planOrg(ctx context.Context, org dfeOrg, members []dfeMember, userExists fu
 
 		if role == orgDomain.RoleOwner {
 			owners++
+			// dfe keeps a display-only name snapshot on each membership row
+			// (repositories/organization_users.go). It is the only name this
+			// migration has, so it comes along — a roster of bare ids would be
+			// a worse workspace than the one being migrated from.
+			d.OwnerName = strings.TrimSpace(m.Name)
 			if d.OwnerUserID != "" && userID != d.OwnerUserID {
 				d.Review = append(d.Review, fmt.Sprintf(
 					"the OWNER row is %s but owner_user_id is %s; dfe disagrees with itself", userID, d.OwnerUserID))
@@ -172,6 +179,7 @@ func planOrg(ctx context.Context, org dfeOrg, members []dfeMember, userExists fu
 		}
 		d.Members = append(d.Members, orgDomain.Membership{
 			UserID:    userID,
+			Name:      strings.TrimSpace(m.Name),
 			Role:      role,
 			InvitedBy: strings.TrimSpace(m.InvitedBy),
 			CreatedAt: memberCreated,
@@ -238,7 +246,7 @@ func apply(ctx context.Context, repo orgDomain.Repository, d decision) (applyRes
 			CreatedAt:    d.CreatedAt,
 			UpdatedAt:    d.CreatedAt,
 		}
-		if err := repo.CreateWithOwner(ctx, org); err != nil {
+		if err := repo.CreateWithOwner(ctx, org, d.OwnerName); err != nil {
 			return res, fmt.Errorf("creating organization for %s: %w", d.SourceRef, err)
 		}
 		res.OrganizationID = org.ID

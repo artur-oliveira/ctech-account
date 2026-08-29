@@ -158,7 +158,7 @@ function TransferSection({ organization }: { organization: Organization }) {
               <SelectContent>
                 {candidates.map((m) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.user_id}
+                    {m.name || m.user_id}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -170,7 +170,9 @@ function TransferSection({ organization }: { organization: Organization }) {
                 {t('organizations.settings.transfer')}
               </Button>
             }
-            title={t('organizations.settings.transferConfirmTitle', { name: target })}
+            title={t('organizations.settings.transferConfirmTitle', {
+              name: candidates.find((m) => m.user_id === target)?.name || target,
+            })}
             description={t('organizations.settings.transferConfirmBody')}
             onConfirm={() => mutate(target)}
           />

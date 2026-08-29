@@ -91,8 +91,12 @@ type workspaceDTO struct {
 type membershipDTO struct {
 	OrganizationID string `json:"organization_id"`
 	UserID         string `json:"user_id"`
-	Role           string `json:"role"`
-	CreatedAt      string `json:"created_at"`
+	// Copied onto the row when the person joined and refreshed when they rename
+	// themselves. Empty for a row written before names were stored, which the
+	// UI falls back from rather than showing a blank.
+	Name      string `json:"name,omitempty"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
 }
 
 type invitationDTO struct {
@@ -107,7 +111,7 @@ func (h *OrganizationHandler) create(c fiber.Ctx) error {
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
-	org, err := h.svc.Create(c.Context(), middleware.GetUserID(c), req.DisplayName)
+	org, err := h.svc.Create(c.Context(), middleware.GetUserID(c), h.callerName(c), req.DisplayName)
 	if err != nil {
 		return organizationProblem(c, err)
 	}
@@ -166,7 +170,7 @@ func (h *OrganizationHandler) listMembers(c fiber.Ctx) error {
 	out := make([]membershipDTO, 0, len(members))
 	for _, m := range members {
 		out = append(out, membershipDTO{
-			OrganizationID: m.OrganizationID, UserID: m.UserID,
+			OrganizationID: m.OrganizationID, UserID: m.UserID, Name: m.Name,
 			Role: m.Role, CreatedAt: m.CreatedAt.Format(time.RFC3339),
 		})
 	}
@@ -271,12 +275,12 @@ func (h *OrganizationHandler) accept(c fiber.Ctx) error {
 		// it cannot tell them apart from a shared status and prose detail.
 		return apierror.EmailNotVerified(c.Path()).Send(c)
 	}
-	m, err := h.svc.Accept(c.Context(), req.Token, middleware.GetUserID(c), u.Email)
+	m, err := h.svc.Accept(c.Context(), req.Token, middleware.GetUserID(c), u.Email, u.DisplayOrFullName())
 	if err != nil {
 		return organizationProblem(c, err)
 	}
 	return c.Status(http.StatusCreated).JSON(membershipDTO{
-		OrganizationID: m.OrganizationID, UserID: m.UserID,
+		OrganizationID: m.OrganizationID, UserID: m.UserID, Name: m.Name,
 		Role: m.Role, CreatedAt: m.CreatedAt.Format(time.RFC3339),
 	})
 }
@@ -284,6 +288,21 @@ func (h *OrganizationHandler) accept(c fiber.Ctx) error {
 // organizationProblem is the single mapping from domain error to HTTP status.
 // Membership failures answer 403 with one message, so the API cannot be used to
 // discover which organizations exist.
+// callerName resolves the signed-in person's display name for the row about to
+// be written. A failure here is not worth refusing the write over: a membership
+// with no name renders as the user id, which is what every row looked like
+// before names were stored.
+func (h *OrganizationHandler) callerName(c fiber.Ctx) string {
+	if h.users == nil {
+		return ""
+	}
+	u, err := h.users.GetByID(c.Context(), middleware.GetUserID(c))
+	if err != nil {
+		return ""
+	}
+	return u.DisplayOrFullName()
+}
+
 func organizationProblem(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, organization.ErrInvalidName):

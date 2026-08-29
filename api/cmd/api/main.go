@@ -254,7 +254,7 @@ func main() {
 	tokenH := handler.NewTokenHandler(oauthClientRepo, authCodeRepo, sessionSvc, userSvc, apiKeySvc, scopesCatalogSvc, jwtSvc, cfg.AppURL, cfg, auditSvc)
 	userinfoH := handler.NewUserInfoHandler(userSvc)
 	sessionsH := handler.NewSessionsHandler(sessionSvc, auditSvc)
-	profileH := handler.NewProfileHandler(userSvc, sessionSvc, auditSvc)
+	profileH := handler.NewProfileHandler(userSvc, sessionSvc, auditSvc).WithOrganizations(orgSvc)
 	apiKeysH := handler.NewAPIKeysHandler(apiKeySvc, scopesCatalogSvc, auditSvc)
 	oauthClientsH := handler.NewOAuthClientsHandler(oauthClientSvc, auditSvc)
 	consentsH := handler.NewConsentsHandler(consentSvc, oauthClientRepo, auditSvc)

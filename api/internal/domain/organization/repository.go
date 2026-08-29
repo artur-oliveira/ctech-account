@@ -67,7 +67,7 @@ func emailFromSK(sk string) string  { return strings.TrimPrefix(sk, inviteSKPref
 // Repository is the data access this domain needs. An interface so the service
 // is testable without DynamoDB — the same shape support and kyc already use.
 type Repository interface {
-	CreateWithOwner(ctx context.Context, org *Organization) error
+	CreateWithOwner(ctx context.Context, org *Organization, ownerName string) error
 	Get(ctx context.Context, id string) (*Organization, error)
 	GetBySourceRef(ctx context.Context, system, ref string) (*Organization, error)
 	UpdateDisplayName(ctx context.Context, id, name string, now time.Time) error
@@ -77,6 +77,7 @@ type Repository interface {
 	PutMembership(ctx context.Context, m *Membership) error
 	SetRole(ctx context.Context, orgID, userID, role string) error
 	RemoveMembership(ctx context.Context, orgID, userID string) error
+	RenameMember(ctx context.Context, userID, name string) error
 	TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID string, now time.Time) error
 	PutInvitation(ctx context.Context, inv *Invitation) error
 	GetInvitationByToken(ctx context.Context, tokenHash string) (*Invitation, error)
@@ -119,7 +120,7 @@ func (r *repo) membershipItem(m *Membership) (map[string]types.AttributeValue, e
 // CreateWithOwner writes the organization and its single owner membership in
 // one transaction. Two writes would leave a window in which an organization
 // exists with nobody able to reach it, and a failure in that window is silent.
-func (r *repo) CreateWithOwner(ctx context.Context, org *Organization) error {
+func (r *repo) CreateWithOwner(ctx context.Context, org *Organization, ownerName string) error {
 	orgItem, err := attributevalue.MarshalMap(org)
 	if err != nil {
 		return fmt.Errorf("marshaling organization: %w", err)
@@ -135,6 +136,7 @@ func (r *repo) CreateWithOwner(ctx context.Context, org *Organization) error {
 	memberItem, err := r.membershipItem(&Membership{
 		OrganizationID: org.ID,
 		UserID:         org.OwnerUserID,
+		Name:           ownerName,
 		Role:           RoleOwner,
 		CreatedAt:      org.CreatedAt,
 	})
@@ -325,6 +327,36 @@ func (r *repo) RemoveMembership(ctx context.Context, orgID, userID string) error
 	}
 	if err != nil {
 		return fmt.Errorf("removing membership: %w", err)
+	}
+	return nil
+}
+
+// RenameMember refreshes this person's cached name on every membership they
+// hold.
+//
+// One UpdateItem per row, not a BatchWriteItem: DynamoDB has no batch *update*
+// — BatchWriteItem only puts or deletes whole items, so using it would mean
+// reading each row and writing it back entire, and a role change landing in
+// that window would be silently undone by a rename. A person belongs to a
+// handful of organizations, so the round trips are not the cost worth
+// optimizing; the role is.
+func (r *repo) RenameMember(ctx context.Context, userID, name string) error {
+	memberships, err := r.ListForUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, m := range memberships {
+		ok, err := database.ConditionalUpdate(ctx, r.db, r.membershipsName,
+			orgPK(m.OrganizationID), aws.String(memberSK(userID)),
+			map[string]any{"name": name}, "attribute_exists(pk)", nil, nil)
+		if err != nil {
+			return fmt.Errorf("renaming membership in %s: %w", m.OrganizationID, err)
+		}
+		if !ok {
+			// Removed between the listing and the write. Nothing to refresh,
+			// and nothing wrong.
+			continue
+		}
 	}
 	return nil
 }

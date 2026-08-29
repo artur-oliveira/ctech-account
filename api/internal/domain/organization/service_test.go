@@ -26,14 +26,14 @@ func newFakeRepo() *fakeRepo {
 	}
 }
 
-func (f *fakeRepo) CreateWithOwner(_ context.Context, org *Organization) error {
+func (f *fakeRepo) CreateWithOwner(_ context.Context, org *Organization, ownerName string) error {
 	if _, exists := f.orgs[org.ID]; exists {
 		return ErrAlreadyMember
 	}
 	copied := *org
 	f.orgs[org.ID] = &copied
 	f.memberships[org.ID] = map[string]*Membership{
-		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Role: RoleOwner, CreatedAt: org.CreatedAt},
+		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Name: ownerName, Role: RoleOwner, CreatedAt: org.CreatedAt},
 	}
 	return nil
 }
@@ -105,6 +105,18 @@ func (f *fakeRepo) PutMembership(_ context.Context, m *Membership) error {
 	}
 	copied := *m
 	f.memberships[m.OrganizationID][m.UserID] = &copied
+	return nil
+}
+
+// RenameMember touches only the name, exactly as the conditional UpdateItem in
+// the real repository does — a fake that rewrites the whole row would hide the
+// clobber this design exists to avoid.
+func (f *fakeRepo) RenameMember(_ context.Context, userID, name string) error {
+	for _, byUser := range f.memberships {
+		if m, ok := byUser[userID]; ok {
+			m.Name = name
+		}
+	}
 	return nil
 }
 
@@ -189,7 +201,7 @@ func (f *fakeRepo) DeleteInvitation(_ context.Context, orgID, email string) erro
 func TestCreateMakesTheCallerTheOwner(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
 
-	org, err := svc.Create(context.Background(), "usr_1", "CTech")
+	org, err := svc.Create(context.Background(), "usr_1", "Pessoa", "CTech")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -208,7 +220,7 @@ func TestCreateMakesTheCallerTheOwner(t *testing.T) {
 // A workspace with no name is a workspace nobody can tell apart in a switcher.
 func TestCreateRefusesAnEmptyName(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
-	if _, err := svc.Create(context.Background(), "usr_1", "   "); err == nil {
+	if _, err := svc.Create(context.Background(), "usr_1", "Pessoa", "   "); err == nil {
 		t.Fatal("accepted an organization with no name")
 	}
 }
@@ -217,8 +229,8 @@ func TestListForUserReturnsEveryMembership(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
 	ctx := context.Background()
 
-	first, _ := svc.Create(ctx, "usr_1", "CTech")
-	second, _ := svc.Create(ctx, "usr_1", "Contabilidade Silva")
+	first, _ := svc.Create(ctx, "usr_1", "Pessoa", "CTech")
+	second, _ := svc.Create(ctx, "usr_1", "Pessoa", "Contabilidade Silva")
 
 	got, err := svc.ListForUser(ctx, "usr_1")
 	if err != nil {
@@ -240,7 +252,7 @@ func TestListForUserReturnsEveryMembership(t *testing.T) {
 func TestGetRefusesANonMember(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
 	ctx := context.Background()
-	org, _ := svc.Create(ctx, "usr_1", "CTech")
+	org, _ := svc.Create(ctx, "usr_1", "Pessoa", "CTech")
 	if _, err := svc.Get(ctx, org.ID, "usr_stranger"); err == nil {
 		t.Fatal("a non-member read the organization")
 	}
@@ -252,7 +264,7 @@ func seedOrg(t *testing.T, ownerID string) (*Service, *Organization) {
 	t.Helper()
 	repo := newFakeRepo()
 	svc := NewService(repo, fixedClock)
-	org, err := svc.Create(context.Background(), ownerID, "CTech")
+	org, err := svc.Create(context.Background(), ownerID, "Pessoa", "CTech")
 	if err != nil {
 		t.Fatalf("seeding: %v", err)
 	}
@@ -340,7 +352,7 @@ func TestAMemberCannotChangeRoles(t *testing.T) {
 func TestInvitationStoresOnlyTheHash(t *testing.T) {
 	repo := newFakeRepo()
 	svc := NewService(repo, fixedClock)
-	org, _ := svc.Create(context.Background(), "usr_owner", "CTech")
+	org, _ := svc.Create(context.Background(), "usr_owner", "Pessoa", "CTech")
 
 	token, err := svc.Invite(context.Background(), org.ID, "usr_owner", "novo@example.com", RoleMember)
 	if err != nil {
@@ -368,10 +380,10 @@ func TestAcceptRequiresTheInvitedAddress(t *testing.T) {
 	ctx := context.Background()
 	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
 
-	if _, err := svc.Accept(ctx, token, "usr_outro", "outro@example.com"); err == nil {
+	if _, err := svc.Accept(ctx, token, "usr_outro", "outro@example.com", "Outro"); err == nil {
 		t.Fatal("accepted with an address the invitation was not sent to")
 	}
-	m, err := svc.Accept(ctx, token, "usr_convidado", "Convidado@Example.com")
+	m, err := svc.Accept(ctx, token, "usr_convidado", "Convidado@Example.com", "Convidado")
 	if err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
@@ -386,10 +398,10 @@ func TestAcceptConsumesTheInvitation(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
 	ctx := context.Background()
 	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
-	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com"); err != nil {
+	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com", "Convidado"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com"); err == nil {
+	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com", "Convidado"); err == nil {
 		t.Fatal("the same invitation was accepted twice")
 	}
 }
@@ -400,11 +412,11 @@ func TestAcceptRefusesAnExpiredInvitation(t *testing.T) {
 	repo := newFakeRepo()
 	clock := fixedClock()
 	svc := NewService(repo, func() time.Time { return clock })
-	org, _ := svc.Create(context.Background(), "usr_owner", "CTech")
+	org, _ := svc.Create(context.Background(), "usr_owner", "Pessoa", "CTech")
 	token, _ := svc.Invite(context.Background(), org.ID, "usr_owner", "c@example.com", RoleMember)
 
 	clock = clock.Add(invitationTTL + time.Hour)
-	if _, err := svc.Accept(context.Background(), token, "usr_c", "c@example.com"); err == nil {
+	if _, err := svc.Accept(context.Background(), token, "usr_c", "c@example.com", "Convidado"); err == nil {
 		t.Fatal("accepted an expired invitation")
 	}
 }
@@ -431,7 +443,7 @@ func TestInviteRequiresAdmin(t *testing.T) {
 func TestListWorkspacesCarriesTheName(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
 	ctx := context.Background()
-	created, _ := svc.Create(ctx, "usr_1", "CTech")
+	created, _ := svc.Create(ctx, "usr_1", "Pessoa", "CTech")
 
 	got, err := svc.ListWorkspaces(ctx, "usr_1")
 	if err != nil {
@@ -474,7 +486,7 @@ func TestListWorkspacesIsOrdered(t *testing.T) {
 	svc := NewService(newFakeRepo(), fixedClock)
 	ctx := context.Background()
 	for _, name := range []string{"Zeta", "Alfa", "Meio"} {
-		if _, err := svc.Create(ctx, "usr_1", name); err != nil {
+		if _, err := svc.Create(ctx, "usr_1", "Pessoa", name); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -484,5 +496,100 @@ func TestListWorkspacesIsOrdered(t *testing.T) {
 	}
 	if got[0].DisplayName != "Alfa" || got[2].DisplayName != "Zeta" {
 		t.Fatalf("order = %q, %q, %q", got[0].DisplayName, got[1].DisplayName, got[2].DisplayName)
+	}
+}
+
+// The roster shows people, not opaque ids. The name is copied onto the
+// membership so a roster is one query instead of one query plus a lookup per
+// row — the copy is a cache, and the next test is what keeps it honest.
+func TestTheMembershipCarriesTheName(t *testing.T) {
+	svc := NewService(newFakeRepo(), fixedClock)
+	ctx := context.Background()
+
+	org, err := svc.Create(ctx, "usr_1", "Artur Oliveira", "CTech")
+	if err != nil {
+		t.Fatal(err)
+	}
+	members, err := svc.ListMembers(ctx, org.ID, "usr_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 || members[0].Name != "Artur Oliveira" {
+		t.Fatalf("members = %+v, want the owner's name on the row", members)
+	}
+}
+
+// Renaming yourself has to reach every roster you appear on, or colleagues keep
+// seeing a name you no longer use.
+func TestRenamingReachesEveryMembership(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo, fixedClock)
+	ctx := context.Background()
+
+	first, _ := svc.Create(ctx, "usr_1", "Nome Antigo", "CTech")
+	second, _ := svc.Create(ctx, "usr_1", "Nome Antigo", "Contabilidade Silva")
+
+	if err := svc.RenameMember(ctx, "usr_1", "Nome Novo"); err != nil {
+		t.Fatalf("RenameMember: %v", err)
+	}
+
+	for _, id := range []string{first.ID, second.ID} {
+		m, err := repo.GetMembership(ctx, id, "usr_1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Name != "Nome Novo" {
+			t.Fatalf("organization %s still shows %q", id, m.Name)
+		}
+	}
+}
+
+// The name is a copy; the role is the record. A rename must not touch the role,
+// which is what makes writing whole items back the wrong primitive here.
+func TestRenamingDoesNotDisturbTheRole(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo, fixedClock)
+	ctx := context.Background()
+	org, _ := svc.Create(ctx, "usr_owner", "Dono", "CTech")
+	if err := repo.PutMembership(ctx, &Membership{
+		OrganizationID: org.ID, UserID: "usr_2", Name: "Antigo", Role: RoleAdmin, CreatedAt: fixedClock(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RenameMember(ctx, "usr_2", "Novo"); err != nil {
+		t.Fatal(err)
+	}
+
+	m, _ := repo.GetMembership(ctx, org.ID, "usr_2")
+	if m.Role != RoleAdmin {
+		t.Fatalf("role = %q, want admin — the rename rewrote more than the name", m.Role)
+	}
+	if m.Name != "Novo" {
+		t.Fatalf("name = %q", m.Name)
+	}
+}
+
+// Somebody in no organization renaming themselves is not an error.
+func TestRenamingWithNoMembershipsIsQuiet(t *testing.T) {
+	svc := NewService(newFakeRepo(), fixedClock)
+	if err := svc.RenameMember(context.Background(), "usr_alone", "Novo"); err != nil {
+		t.Fatalf("RenameMember: %v", err)
+	}
+}
+
+// The invited person's name lands on the row they accept into, from their own
+// account record — never from the invitation, which the inviter typed.
+func TestAcceptCarriesTheInviteesOwnName(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "c@example.com", RoleMember)
+
+	m, err := svc.Accept(ctx, token, "usr_c", "c@example.com", "Convidado Silva")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "Convidado Silva" {
+		t.Fatalf("name = %q", m.Name)
 	}
 }

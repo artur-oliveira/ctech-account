@@ -149,6 +149,34 @@ must not derive it from anything cached longer than that query: a demotion has t
 effect on the next render, which is what the server-side rule of reading the membership
 row on every request exists to guarantee.
 
+## Names on the roster
+
+A membership row carries a copy of the person's display name, written when they
+join and refreshed when they rename themselves. Inside an organization a
+colleague's name is not a disclosure — you already work with them — and a roster
+of bare ids is a worse workspace than the one people came from.
+
+It is a **cache, not the record**. The account is the source of truth, so:
+
+- `POST /account/profile` calls `RenameMember`, which refreshes the copy on every
+  membership that person holds. It runs after the profile has saved and **never
+  fails the save**: a stale name is cosmetic, and telling somebody their profile
+  did not save when it did is not.
+- The refresh is one conditional `UpdateItem` per row, **not** a
+  `BatchWriteItem`. DynamoDB has no batch *update* — `BatchWriteItem` puts or
+  deletes whole items, so using it would mean reading each row and writing it
+  back entire, and a role change landing in that window would be silently undone
+  by a rename. A person belongs to a handful of organizations; the round trips
+  are not the cost worth optimizing, the role is.
+- A row written before names were stored has none. The UI renders the user id
+  rather than a blank, and a test pins that fallback.
+
+The id stays visible under the name: it is what support asks for, and it is the
+only thing a legacy row has.
+
+The dfe migration carries names across — dfe already keeps a display-only name
+snapshot on each membership row — so a migrated roster arrives readable.
+
 ## What a non-member is told
 
 `RequireOrgRole` answers the same `403` with the same body for "you are not in this

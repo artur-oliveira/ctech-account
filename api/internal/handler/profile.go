@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
+	"gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
@@ -18,10 +19,21 @@ type ProfileHandler struct {
 	userSvc    *user.Service
 	sessionSvc *session.Service
 	audit      *audit.Service
+	// orgs refreshes the name cached on this person's memberships after a
+	// rename. Optional: handlers built without it simply skip the refresh.
+	orgs *organization.Service
 }
 
 func NewProfileHandler(userSvc *user.Service, sessionSvc *session.Service, auditSvc *audit.Service) *ProfileHandler {
 	return &ProfileHandler{userSvc: userSvc, sessionSvc: sessionSvc, audit: auditSvc}
+}
+
+// WithOrganizations wires the membership name refresh. Separate from the
+// constructor so every existing call site — and every test — keeps working
+// unchanged.
+func (h *ProfileHandler) WithOrganizations(orgs *organization.Service) *ProfileHandler {
+	h.orgs = orgs
+	return h
 }
 
 func (h *ProfileHandler) Register(account fiber.Router, stepUp fiber.Handler) {
@@ -93,6 +105,17 @@ func (h *ProfileHandler) update(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+
+	// Every roster this person appears on carries a copy of their name. Refresh
+	// it here, and never fail the rename over it: the copy is a cache, a stale
+	// one is cosmetic, and telling somebody their profile did not save when it
+	// did is not.
+	if h.orgs != nil {
+		if err := h.orgs.RenameMember(c.Context(), userID, u.DisplayOrFullName()); err != nil {
+			observability.Error(c.Context(), "profile: failed to refresh membership names", err,
+				"user_id", userID)
+		}
 	}
 
 	return c.JSON(fiber.Map{

@@ -205,6 +205,7 @@ func (r *dfeReader) members(ctx context.Context, orgPK string) ([]dfeMember, err
 	for _, item := range res.Items {
 		out = append(out, dfeMember{
 			UserID:      attrString(item, "user_id"),
+			Name:        attrString(item, "name"),
 			Role:        attrString(item, "role"),
 			Permissions: attrStrings(item, "permissions"),
 			InvitedBy:   attrString(item, "invited_by"),

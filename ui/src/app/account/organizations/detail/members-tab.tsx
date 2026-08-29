@@ -72,7 +72,20 @@ export function MembersTab({ organization }: { organization: Organization }) {
       key: 'user',
       header: t('organizations.members.user'),
       title: true,
-      cell: (m) => <code className="font-mono text-sm">{m.user_id}</code>,
+      // The name is what a colleague recognizes; the id is what support asks
+      // for. Both, with the name leading — and the id alone on a row that
+      // predates stored names.
+      cell: (m) =>
+        m.name ? (
+          <div className="min-w-0">
+            <span className="block truncate text-sm font-medium">{m.name}</span>
+            <code className="block truncate font-mono text-xs text-muted-foreground">
+              {m.user_id}
+            </code>
+          </div>
+        ) : (
+          <code className="font-mono text-sm">{m.user_id}</code>
+        ),
     },
     {
       key: 'role',

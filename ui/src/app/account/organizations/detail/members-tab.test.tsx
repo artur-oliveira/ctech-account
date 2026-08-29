@@ -85,3 +85,40 @@ describe('members tab', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('member identity', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // The name is what a colleague recognizes. The id stays because it is what
+  // support asks for, and because a row written before names were stored has
+  // nothing else to show.
+  it('leads with the name and keeps the id', async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue([
+      {
+        organization_id: 'org_1',
+        user_id: 'usr_owner',
+        name: 'Artur Oliveira',
+        role: 'owner',
+        created_at: new Date().toISOString(),
+      },
+    ])
+    renderTab('viewer')
+
+    expect(await screen.findAllByText('Artur Oliveira')).not.toHaveLength(0)
+    expect(screen.getAllByText('usr_owner')).not.toHaveLength(0)
+  })
+
+  it('falls back to the id when a row predates stored names', async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue([
+      {
+        organization_id: 'org_1',
+        user_id: 'usr_legacy',
+        role: 'member',
+        created_at: new Date().toISOString(),
+      },
+    ])
+    renderTab('viewer')
+
+    expect(await screen.findAllByText('usr_legacy')).not.toHaveLength(0)
+  })
+})

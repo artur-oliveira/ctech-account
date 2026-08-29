@@ -26,7 +26,10 @@ func (s orgRepoStub) GetMembership(_ context.Context, orgID, userID string) (*or
 	return &organization.Membership{OrganizationID: orgID, UserID: userID, Role: role}, nil
 }
 
-func (orgRepoStub) CreateWithOwner(context.Context, *organization.Organization) error { return nil }
+func (orgRepoStub) CreateWithOwner(context.Context, *organization.Organization, string) error {
+	return nil
+}
+func (orgRepoStub) RenameMember(context.Context, string, string) error { return nil }
 func (orgRepoStub) Get(context.Context, string) (*organization.Organization, error) {
 	return nil, organization.ErrNotFound
 }

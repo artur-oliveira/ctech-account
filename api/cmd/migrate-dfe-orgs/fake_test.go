@@ -22,14 +22,14 @@ func newFakeRepo() *fakeRepo {
 	}
 }
 
-func (f *fakeRepo) CreateWithOwner(_ context.Context, org *orgDomain.Organization) error {
+func (f *fakeRepo) CreateWithOwner(_ context.Context, org *orgDomain.Organization, ownerName string) error {
 	if _, exists := f.orgs[org.ID]; exists {
 		return orgDomain.ErrAlreadyMember
 	}
 	copied := *org
 	f.orgs[org.ID] = &copied
 	f.memberships[org.ID] = map[string]*orgDomain.Membership{
-		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Role: orgDomain.RoleOwner, CreatedAt: org.CreatedAt},
+		org.OwnerUserID: {OrganizationID: org.ID, UserID: org.OwnerUserID, Name: ownerName, Role: orgDomain.RoleOwner, CreatedAt: org.CreatedAt},
 	}
 	return nil
 }
@@ -58,6 +58,8 @@ func (f *fakeRepo) PutMembership(_ context.Context, m *orgDomain.Membership) err
 
 // The migration reads and writes nothing else. These exist to satisfy the
 // interface, and each returns the answer that makes a misuse loud.
+func (f *fakeRepo) RenameMember(context.Context, string, string) error { return nil }
+
 func (f *fakeRepo) Get(context.Context, string) (*orgDomain.Organization, error) {
 	return nil, orgDomain.ErrNotFound
 }

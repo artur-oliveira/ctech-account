@@ -54,7 +54,7 @@ func NewService(repo Repository, now func() time.Time) *Service {
 // is a workspace, not a claim on a company. Claiming a legal entity is a
 // separate act with evidence behind it (phase 3), and conflating the two would
 // mean the first person to type a name owns it.
-func (s *Service) Create(ctx context.Context, ownerUserID, displayName string) (*Organization, error) {
+func (s *Service) Create(ctx context.Context, ownerUserID, ownerName, displayName string) (*Organization, error) {
 	name := strings.TrimSpace(displayName)
 	if name == "" || len(name) > maxDisplayName {
 		return nil, ErrInvalidName
@@ -70,7 +70,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, displayName string) (
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.repo.CreateWithOwner(ctx, org); err != nil {
+	if err := s.repo.CreateWithOwner(ctx, org, strings.TrimSpace(ownerName)); err != nil {
 		return nil, err
 	}
 	return org, nil
@@ -277,7 +277,7 @@ func HashToken(token string) string {
 // userEmail must be the address the session has already verified. The
 // invitation names one address, and a token that any signed-in account could
 // spend would let a leaked link be redeemed by whoever found it.
-func (s *Service) Accept(ctx context.Context, token, userID, userEmail string) (*Membership, error) {
+func (s *Service) Accept(ctx context.Context, token, userID, userEmail, userName string) (*Membership, error) {
 	if token == "" || strings.TrimSpace(userID) == "" {
 		return nil, ErrInvitationInvalid
 	}
@@ -299,9 +299,13 @@ func (s *Service) Accept(ctx context.Context, token, userID, userEmail string) (
 	m := &Membership{
 		OrganizationID: inv.OrganizationID,
 		UserID:         userID,
-		Role:           inv.Role,
-		InvitedBy:      inv.InvitedBy,
-		CreatedAt:      s.now().UTC(),
+		// From the account record, never from the invitation — the inviter
+		// typed the address, and letting them name the person too would put
+		// text they wrote on somebody else's row.
+		Name:      strings.TrimSpace(userName),
+		Role:      inv.Role,
+		InvitedBy: inv.InvitedBy,
+		CreatedAt: s.now().UTC(),
 	}
 	if err := s.repo.AcceptInvitation(ctx, m, inv.Email); err != nil {
 		return nil, err
@@ -339,6 +343,20 @@ type Workspace struct {
 	OwnerUserID string
 	Role        string
 	JoinedAt    time.Time
+}
+
+// RenameMember refreshes this person's name on every roster they appear on.
+//
+// It is called after a profile rename and must never fail that rename: the name
+// on a membership is a copy, and a stale copy is a cosmetic problem, while a
+// profile save that reports failure is a real one. The caller logs and moves
+// on.
+func (s *Service) RenameMember(ctx context.Context, userID, name string) error {
+	name = strings.TrimSpace(name)
+	if strings.TrimSpace(userID) == "" || name == "" {
+		return nil
+	}
+	return s.repo.RenameMember(ctx, userID, name)
 }
 
 // ListWorkspaces answers what the switcher and the organizations screen both
