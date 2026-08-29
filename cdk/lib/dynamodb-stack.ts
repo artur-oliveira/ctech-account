@@ -264,6 +264,84 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('ctech_scopes', scopesTable);
 
+    // ── Platform organizations ────────────────────────────────────────────
+    // A workspace and its billing target. Read by id only, so it carries no
+    // GSI: the reverse question ("which organizations is this person in") is
+    // answered by the memberships table's lookup-index, not by scanning these.
+    const organizationsTable = new dynamodb.TableV2(this, 'OrganizationsTableV2', {
+      tableName: `${environment}_account_organizations`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+    });
+    this.tables.set('account_organizations', organizationsTable);
+
+    // One row per person per organization (pk=ORG#{id}, sk=MEMBER#{user}).
+    // lookup-index is keyed on lookup_pk=USER#{user}: the console asks "which
+    // organizations may I act in" on every sign-in, and that must be one query
+    // rather than a scan.
+    const membershipsTable = new dynamodb.TableV2(this, 'MembershipsTableV2', {
+      tableName: `${environment}_account_memberships`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'lookup-index',
+          partitionKey: {name: 'lookup_pk', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
+    });
+    this.tables.set('account_memberships', membershipsTable);
+
+    // Pending invitations (pk=ORG#{id}, sk=INVITE#{email}). lookup_pk holds the
+    // SHA-256 of the token, never the token, so acceptance is one indexed read
+    // and a dump of this table is a list of who was invited, not a set of keys.
+    // TTL on expires_at reaps an offer nobody accepted without a job running.
+    const invitationsTable = new dynamodb.TableV2(this, 'InvitationsTableV2', {
+      tableName: `${environment}_account_invitations`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      timeToLiveAttribute: 'expires_at',
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'lookup-index',
+          partitionKey: {name: 'lookup_pk', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
+    });
+    this.tables.set('account_invitations', invitationsTable);
+
     for (const [name, table] of this.tables) {
       new cdk.CfnOutput(this, `${name}_TableName`, {
         value: table.tableName,
