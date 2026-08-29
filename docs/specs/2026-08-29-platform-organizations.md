@@ -33,7 +33,7 @@ pk = ORG#<organization_id>            sk = META
     lookup_pk = OWNER#<owner_user_id>       (GSI lookup-index, sparse)
 ```
 
-`organization_id` is a ULID and never a slug. A human-chosen id is a name, and names are renamed; billing's partition
+`organization_id` is an opaque, time-ordered id (UUIDv7) and never a slug. A human-chosen id is a name, and names are renamed; billing's partition
 key already carries this value
 ([ADR 0003](https://github.com/artur-oliveira/ctech-billing/blob/main/docs/adr/0003-tenant-and-livemode-partition-key.md)),
 so it must outlive every rename.

@@ -15,7 +15,7 @@
 - **Roles are exactly four and fixed:** `owner`, `admin`, `member`, `viewer`. No permission matrix, no custom roles. `owner` is never grantable through the member routes — it moves only through the transfer endpoint.
 - **Exactly one `owner` per organization**, enforced by a DynamoDB condition, never by application logic that reads then writes.
 - **The role is read from the membership row on every request.** Never from a JWT claim: a role in a token survives its own revocation for the token's lifetime.
-- **Organization ids are ULIDs**, never slugs. `ctech-billing` already partitions data by this value ([ADR 0003](https://github.com/artur-oliveira/ctech-billing/blob/main/docs/adr/0003-tenant-and-livemode-partition-key.md)), so it must outlive every rename.
+- **Organization ids are opaque and time-ordered (UUIDv7)**, never slugs. UUIDv7 rather than ULID because `google/uuid` is already a dependency here and gives the same two properties the id needs — opacity and time ordering — while ULID would add a module for a difference in text encoding. `ctech-billing` already partitions data by this value ([ADR 0003](https://github.com/artur-oliveira/ctech-billing/blob/main/docs/adr/0003-tenant-and-livemode-partition-key.md)), so it must outlive every rename.
 - **Table names carry the `account_` prefix** and are constructed with `database.NewBase(db, tablePrefix, "account_x")` — the physical name gets the environment prefix from config, exactly as `account_support_tickets` does.
 - **All management routes are behind `RequireClientID(SELF_CLIENT_ID)`.** Machine and delegated tokens do not manage memberships.
 - **Nothing fiscal enters this repository.** No CNPJ field on the organization, no certificate, no tax regime. The company claim (phase 3) stores a tax id as the subject of a claim; that is the boundary.
@@ -443,7 +443,7 @@ Expected: FAIL — `NewService` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Write `service.go` with `NewService(repo Repository, now func() time.Time) *Service`, `Create` (trim and reject an empty name, mint a ULID, call `CreateWithOwner`), `ListForUser`, `RoleOf` (returns `ErrNotAMember` when absent). Write `fakeRepo` in `service_test.go` as maps keyed by `orgID` and `orgID+userID`, plus `fixedClock`.
+Write `service.go` with `NewService(repo Repository, now func() time.Time) *Service`, `Create` (trim and reject an empty name, mint a UUIDv7, call `CreateWithOwner`), `ListForUser`, `RoleOf` (returns `ErrNotAMember` when absent). Write `fakeRepo` in `service_test.go` as maps keyed by `orgID` and `orgID+userID`, plus `fixedClock`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -799,7 +799,7 @@ git commit -m "feat(cdk): organization, membership and invitation tables"
 **The four decisions this migration must not make silently:**
 
 1. **One dfe organization becomes one platform organization.** Not "one per owner": two CNPJs owned by the same person are two workspaces until a human merges them, because merging is irreversible and splitting is not.
-2. **The new organization id is a fresh ULID**, and the dfe key is recorded as `source_ref`. Reusing `CNPJ_…` as an id would put a tax id in the partition key of every billing row forever.
+2. **The new organization id is a fresh UUIDv7**, and the dfe key is recorded as `source_ref`. Reusing `CNPJ_…` as an id would put a tax id in the partition key of every billing row forever.
 3. **A membership whose user no longer exists in `account_users` is skipped and reported**, never written. A membership pointing at nobody is an access grant that cannot be audited.
 4. **An organization whose `owner_user_id` is empty gets no owner membership and is reported.** Inventing one from the oldest `OWNER` row would be guessing who owns a company.
 
