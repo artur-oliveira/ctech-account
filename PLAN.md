@@ -175,6 +175,21 @@ for the full spec and implementation plan.
 
 ---
 
+## Sprint 6 — Admin KYC Review
+
+See `docs/specs/2026-08-29-admin-kyc-review.md` for the security and API contract.
+
+- [x] Account user `kyc-level-index` GSI for request-path Enhanced review queues
+- [x] Manager-only `/v1.0/admin/kyc/*` endpoints with database-backed role checks
+- [x] Pending/completed queue and detailed identity review UI
+- [x] Explicit, short-lived document access with reviewer audit attribution
+- [x] Conditional approve/reject writes with persistent reviewer snapshot
+- [x] Fixed rejection-reason catalog plus optional 255-character details (`other` requires details)
+- [x] Admin entry point exposed from the authenticated user menu
+- [x] JWT/OIDC contract unchanged (`kyc_level` remains `"" | "basic" | "verified"`)
+
+---
+
 ## Pending Decisions
 
 | Decision                         | Options                                              | Status                                         |

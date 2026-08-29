@@ -41,6 +41,15 @@ export class DynamoDBStack extends cdk.Stack {
           maxReadRequestUnits: 1000,
           maxWriteRequestUnits: 1000,
         },
+        {
+          indexName: 'kyc-level-index',
+          partitionKey: {name: 'kyc_level', type: dynamodb.AttributeType.STRING},
+          sortKey: {name: 'kyc_submitted_at', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
       ],
     });
     this.tables.set('account_users', usersTable);

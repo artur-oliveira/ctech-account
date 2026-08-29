@@ -140,6 +140,7 @@ export interface KYCStatus {
   basic_verified_at?: string
   documents?: KYCDocument[]
   rejection_reason?: string
+  rejection_code?: KYCRejectionCode
   submitted_at?: string
   expires_at?: string
   verified_at?: string
@@ -178,4 +179,47 @@ export interface PresignedUpload {
   expires_in: number
   max_bytes: number
   content_type: string
+}
+
+export type KYCReviewQueue = 'pending' | 'completed'
+export type KYCReviewDecision = 'approve' | 'reject'
+export type KYCRejectionCode = 'document_unreadable' | 'document_incomplete' | 'document_mismatch' | 'selfie_mismatch' | 'data_mismatch' | 'suspected_fraud' | 'other'
+
+export interface AdminKYCReviewSummary {
+  user_id: string
+  legal_name: string
+  submitted_at: string
+  status: 'pending' | 'verified' | 'rejected'
+  risk_score: number
+  reviewed_at?: string
+  reviewed_by?: string
+  reviewed_by_name?: string
+  decision?: KYCReviewDecision
+}
+
+export interface AdminKYCReview extends AdminKYCReviewSummary {
+  cpf: string
+  birth_date: string
+  phone_number: string
+  address: KYCAddress
+  risk_signals: string[]
+  risk_evaluated_at?: string
+  documents: KYCDocument[]
+  rejection_reason?: string
+  rejection_code?: KYCRejectionCode
+  expires_at?: string
+}
+
+export interface AdminKYCAuditEvent {
+  event_type: 'kyc.documents_viewed' | 'kyc.verified' | 'kyc.rejected'
+  created_at: string
+  actor_id: string
+  actor_name: string
+  actor_role: User['support_role']
+  reason_code?: KYCRejectionCode
+  details?: string
+}
+
+export interface AdminKYCDocument extends KYCDocument {
+  url: string
 }

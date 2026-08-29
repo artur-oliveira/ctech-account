@@ -14,7 +14,8 @@ S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, a private KYC docume
 bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
 
 There is **no Lambda and no API Gateway** — the API is a long-running Go binary on the
-ASG, and KYC review is a CLI (`api/cmd/kyc`), not an HTTP route. See `README.md`
+ASG. KYC review normally runs through manager-only API/UI routes backed by the
+`kyc-level-index`; `api/cmd/kyc` remains the break-glass fallback. See `README.md`
 (§Tables, §Compute) for the authoritative layout.
 
 > **Stale-doc correction:** older text here said "single-table design /

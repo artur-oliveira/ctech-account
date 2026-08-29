@@ -11,6 +11,8 @@ import { fetchProfile } from '@/lib/queries'
 import { UserMenu } from '@/components/user-menu'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { QueryError } from '@/components/query-error'
+import { hasSupportRole } from '@/lib/support-role'
+import { Headphones, IdCard } from 'lucide-react'
 
 /**
  * Gates every `/admin/*` route: requires a session (like `account/layout.tsx`)
@@ -72,10 +74,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
         <div className="mx-auto max-w-5xl flex h-14 items-center justify-between px-4">
-          <Link href="/admin/support" className="flex items-center gap-2 font-semibold text-sm">
-            <Image src="/app.svg" alt="" aria-hidden="true" width={28} height={28} />
-            {t('support.admin.title')}
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/admin/support" className="flex items-center gap-2 font-semibold text-sm">
+              <Image src="/app.svg" alt="" aria-hidden="true" width={28} height={28} />
+              {t('admin.title')}
+            </Link>
+            <nav aria-label={t('admin.navigation')} className="flex items-center gap-1">
+              <Link href="/admin/support" className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+                <Headphones className="size-4" />
+                <span className="hidden sm:inline">{t('admin.support')}</span>
+              </Link>
+              {hasSupportRole(user.support_role, 'manager') && (
+                <Link href="/admin/kyc" className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <IdCard className="size-4" />
+                  <span className="hidden sm:inline">{t('admin.kyc')}</span>
+                </Link>
+              )}
+            </nav>
+          </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
             <UserMenu user={user} />

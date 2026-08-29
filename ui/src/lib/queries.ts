@@ -1,5 +1,5 @@
 import { api, isAxiosError } from './axios'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -89,4 +89,14 @@ export async function fetchAdminSupportTicket(id: string): Promise<{ ticket: Sup
 export async function fetchAdminSupportMetrics(): Promise<{buckets: SupportMetricBucket[]}> {
   const {data} = await api.get('/v1.0/admin/support/metrics')
   return {buckets: data.buckets ?? []}
+}
+
+export async function fetchAdminKYCReviews(status: KYCReviewQueue): Promise<AdminKYCReviewSummary[]> {
+  const { data } = await api.get<{ reviews: AdminKYCReviewSummary[] }>(`/v1.0/admin/kyc/reviews?status=${status}`)
+  return data.reviews ?? []
+}
+
+export async function fetchAdminKYCReview(userId: string): Promise<{ review: AdminKYCReview; audit_log: AdminKYCAuditEvent[] }> {
+  const { data } = await api.get<{ review: AdminKYCReview; audit_log: AdminKYCAuditEvent[] }>(`/v1.0/admin/kyc/reviews/${encodeURIComponent(userId)}`)
+  return { review: data.review, audit_log: data.audit_log ?? [] }
 }

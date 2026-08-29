@@ -358,6 +358,7 @@
   },
   "menu": {
     "settings": "Settings",
+    "admin": "Admin workspace",
     "signOut": "Sign out",
     "signingOut": "Signing out…"
   },
@@ -595,6 +596,76 @@
       "terms": "Terms of Use",
       "support": "Support",
       "privacy": "Privacy"
+    }
+  },
+  "admin": {
+    "title": "Admin",
+    "navigation": "Admin navigation",
+    "support": "Support",
+    "kyc": "KYC reviews"
+  },
+  "adminKyc": {
+    "title": "Identity reviews",
+    "description": "Review Enhanced KYC submissions, access protected documents, and keep every decision attributable.",
+    "queues": "Review queues",
+    "pending": "Pending",
+    "completed": "Completed",
+    "person": "Person",
+    "status": "Status",
+    "submitted": "Submitted",
+    "reviewer": "Reviewer",
+    "open": "Review",
+    "emptyPending": "No reviews waiting",
+    "emptyCompleted": "No completed reviews yet",
+    "emptyHint": "New Enhanced submissions will appear here automatically.",
+    "back": "Back to reviews",
+    "identityData": "Identity data",
+    "cpf": "CPF",
+    "birthDate": "Date of birth",
+    "phone": "Phone",
+    "risk": "Risk score",
+    "address": "Address",
+    "riskSignals": "Risk signals",
+    "documents": "Protected documents",
+    "documentsPrivacy": "Access creates an audit entry and links expire after 10 minutes.",
+    "accessDocuments": "Access documents",
+    "openDocument": "Open",
+    "documentsError": "Couldn't issue protected document links.",
+    "decision": "Decision",
+    "decisionHint": "Confirm that all identity details and documents belong to the same person.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveTitle": "Approve this identity?",
+    "approveDescription": "This grants verified Enhanced KYC and records you as the authorizing reviewer.",
+    "rejectTitle": "Reject this identity?",
+    "rejectDescription": "The reason is shown to the account owner and they must upload fresh documents.",
+    "rejectionReason": "Rejection reason",
+    "rejectionReasonPlaceholder": "Select a reason",
+    "rejectionDetails": "Additional details (optional)",
+    "rejectionReasonRequired": "Enter a clear rejection reason.",
+    "rejectionReasons": {
+      "document_unreadable": "Document is unreadable",
+      "document_incomplete": "Document is incomplete",
+      "document_mismatch": "Documents don't match",
+      "selfie_mismatch": "Selfie doesn't match the document",
+      "data_mismatch": "Submitted data doesn't match the documents",
+      "suspected_fraud": "Suspected fraud or manipulation",
+      "other": "Other"
+    },
+    "decisionSaved": "KYC decision recorded.",
+    "decisionError": "The decision couldn't be recorded. The review may already be completed.",
+    "missingId": "Review identifier is missing.",
+    "audit": "Audit trail",
+    "noAudit": "No reviewer actions recorded yet.",
+    "system": "System",
+    "states": { "pending": "Pending", "verified": "Approved", "rejected": "Rejected" },
+    "documentTypes": { "id_front": "ID — front", "id_back": "ID — back", "selfie_with_document": "Selfie with ID" },
+    "events": {
+      "kyc": {
+        "documents_viewed": "accessed the protected documents",
+        "verified": "approved the identity",
+        "rejected": "rejected the identity"
+      }
     }
   },
   "support": {

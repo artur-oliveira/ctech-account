@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { KYCBasicSubmission, KYCDocumentType, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -199,6 +199,15 @@ export async function replyAdminSupportTicketAPI(id: string, body: string) { awa
 export async function setAdminSupportTicketStatusAPI(id: string, status: string) { await api.put(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/status`, { status }) }
 export async function addAdminSupportInternalNoteAPI(id: string, body: string) { await api.post(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/notes`, {body}) }
 export async function setAdminSupportEscalationAPI(id: string, level: string) { await api.put(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/escalation`, {level}) }
+
+export async function accessAdminKYCDocumentsAPI(userId: string): Promise<{ documents: AdminKYCDocument[]; expires_in: number }> {
+  const { data } = await api.post<{ documents: AdminKYCDocument[]; expires_in: number }>(`/v1.0/admin/kyc/reviews/${encodeURIComponent(userId)}/documents/access`)
+  return { documents: data.documents ?? [], expires_in: data.expires_in }
+}
+
+export async function decideAdminKYCReviewAPI(userId: string, decision: KYCReviewDecision, reasonCode?: KYCRejectionCode, details = ''): Promise<void> {
+  await api.post(`/v1.0/admin/kyc/reviews/${encodeURIComponent(userId)}/decision`, { decision, reason_code: reasonCode, details })
+}
 
 export async function beginPasskeyAuthAPI() {
   const { data } = await api.post<{ session_token: string; options: string }>(

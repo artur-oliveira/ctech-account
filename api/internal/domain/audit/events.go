@@ -39,6 +39,7 @@ const (
 	EventKYCPhoneVerified    = "kyc.phone_verified"
 	EventKYCVerified         = "kyc.verified"
 	EventKYCDocumentUploaded = "kyc.document_uploaded"
+	EventKYCDocumentsViewed  = "kyc.documents_viewed"
 	EventKYCRejected         = "kyc.rejected"
 
 	// EventTermsAccepted fires at registration for the password flow, on the

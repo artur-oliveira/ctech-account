@@ -7,6 +7,8 @@ import type { TFunction } from 'i18next'
 
 /** Most-specific prefix first — matched top to bottom against the current pathname. */
 const ROUTE_TITLES: Array<[string, (t: TFunction) => string]> = [
+  ['/admin/kyc', (t) => t('adminKyc.title')],
+  ['/admin/support', (t) => t('support.admin.title')],
   ['/account/security/totp', (t) => t('nav.authenticator')],
   ['/account/security/passkeys', (t) => t('nav.passkeys')],
   ['/account/security', (t) => t('nav.security')],

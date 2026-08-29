@@ -236,9 +236,10 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)
-	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
+	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
 	kycH.Register(account, stepUp)
+	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL, cfg.Audience).Register(app)
@@ -340,21 +341,23 @@ func (m *memKYCRepo) SaveEnhancedSubmission(_ context.Context, userID, submitted
 	return nil
 }
 
-func (m *memKYCRepo) MarkVerified(_ context.Context, userID, verifiedAt string) error {
+func (m *memKYCRepo) MarkVerified(_ context.Context, userID, verifiedAt string, actor kycDomain.ReviewActor) error {
 	u, ok := m.users.byID[userID]
 	if !ok {
 		return userDomain.ErrNotFound
 	}
 	u.KYCStatus, u.KYCVerifiedAt, u.KYCRejectionReason = kycDomain.StatusVerified, verifiedAt, ""
+	u.KYCReviewedAt, u.KYCReviewedBy, u.KYCReviewedByName, u.KYCReviewDecision = verifiedAt, actor.ID, actor.Name, kycDomain.DecisionApprove
 	return nil
 }
 
-func (m *memKYCRepo) MarkRejected(_ context.Context, userID, reason string) error {
+func (m *memKYCRepo) MarkRejected(_ context.Context, userID, reasonCode, details, reviewedAt string, actor kycDomain.ReviewActor) error {
 	u, ok := m.users.byID[userID]
 	if !ok {
 		return userDomain.ErrNotFound
 	}
-	u.KYCStatus, u.KYCRejectionReason = kycDomain.StatusRejected, reason
+	u.KYCStatus, u.KYCRejectionCode, u.KYCRejectionReason = kycDomain.StatusRejected, reasonCode, details
+	u.KYCReviewedAt, u.KYCReviewedBy, u.KYCReviewedByName, u.KYCReviewDecision = reviewedAt, actor.ID, actor.Name, kycDomain.DecisionReject
 	u.KYCDocuments = nil
 	return nil
 }
@@ -372,6 +375,19 @@ func (m *memKYCRepo) ListPendingKYC(_ context.Context) ([]*userDomain.User, erro
 	var out []*userDomain.User
 	for _, u := range m.users.byID {
 		if u.KYCLevel == kycDomain.LevelEnhanced && u.KYCStatus == kycDomain.StatusPending {
+			cp := *u
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (m *memKYCRepo) ListKYCReviews(_ context.Context, queue string) ([]*userDomain.User, error) {
+	var out []*userDomain.User
+	for _, u := range m.users.byID {
+		pending := u.KYCLevel == kycDomain.LevelEnhanced && u.KYCStatus == kycDomain.StatusPending
+		completed := u.KYCLevel == kycDomain.LevelEnhanced && (u.KYCStatus == kycDomain.StatusVerified || u.KYCStatus == kycDomain.StatusRejected)
+		if (queue == kycDomain.ReviewQueuePending && pending) || (queue == kycDomain.ReviewQueueCompleted && completed) {
 			cp := *u
 			out = append(out, &cp)
 		}

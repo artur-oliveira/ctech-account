@@ -12,9 +12,9 @@ import (
 	scopeCatalog "gopkg.aoctech.app/account/api/internal/scopes"
 )
 
-// KYCHandler serves the user-facing identity verification routes and the
-// slim internal (service-to-service) read used by ctech-wallet. The human
-// approve/reject decision is not an HTTP route — see cmd/kyc.
+// KYCHandler serves user-facing identity verification and the slim internal
+// read used by ctech-wallet. Human-review HTTP routes live separately in
+// KYCAdminHandler so their manager authorization cannot be mounted by mistake.
 type KYCHandler struct {
 	kycSvc *kyc.Service
 	audit  *audit.Service
@@ -215,6 +215,8 @@ func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 		return apierror.ValidationFailed("content_type: unsupported document content type.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidDecision):
 		return apierror.ValidationFailed("decision: must be approve or reject.", c.Path()).Send(c)
+	case errors.Is(err, kyc.ErrInvalidRejectionReason):
+		return apierror.ValidationFailed("reason_code: invalid rejection reason.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrUnderage):
 		return apierror.AgeRequirementNotMet(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrAlreadyVerified):

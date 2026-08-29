@@ -119,7 +119,11 @@ function EnhancedSection({ status }: { status: KYCStatus }) {
         <Alert variant="destructive">
           <XCircle className="size-4" />
           <AlertDescription className="space-y-2">
-            {status.rejection_reason && <p>{t('identity.rejectionReason', { reason: status.rejection_reason })}</p>}
+            {(status.rejection_code || status.rejection_reason) && (
+              <p>{t('identity.rejectionReason', {
+                reason: `${status.rejection_code ? t(`adminKyc.rejectionReasons.${status.rejection_code}`) : ''}${status.rejection_code && status.rejection_reason ? ' — ' : ''}${status.rejection_reason ?? ''}`,
+              })}</p>
+            )}
             <p>{t('identity.rejectionGuidance')}</p>
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">{t('identity.contactSupport')}</a>
           </AlertDescription>

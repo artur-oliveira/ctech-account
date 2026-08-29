@@ -65,11 +65,11 @@ type Repository interface {
 	// by Service.SubmitEnhanced; no CPF transaction is needed since it was
 	// already claimed at Basic time.
 	SaveEnhancedSubmission(ctx context.Context, userID, submittedAt, expiresAt string) error
-	MarkVerified(ctx context.Context, userID, verifiedAt string) error
+	MarkVerified(ctx context.Context, userID, verifiedAt string, actor ReviewActor) error
 	// MarkRejected records the rejection and clears kyc_documents: a rejected
 	// submission's documents were judged insufficient, so a resubmission must
 	// upload fresh ones.
-	MarkRejected(ctx context.Context, userID, reason string) error
+	MarkRejected(ctx context.Context, userID, reasonCode, details, reviewedAt string, actor ReviewActor) error
 
 	// SaveRiskAssessment overwrites the latest risk snapshot — no history is
 	// kept (spec §9).
@@ -78,6 +78,9 @@ type Repository interface {
 	// ListPendingKYC returns every user whose Enhanced submission is queued
 	// for review, for cmd/kyc list. Operator-tool Scan, not a request path.
 	ListPendingKYC(ctx context.Context) ([]*user.User, error)
+	// ListKYCReviews powers the request-path admin queue through the
+	// kyc-level-index GSI; it never scans the users table.
+	ListKYCReviews(ctx context.Context, queue string) ([]*user.User, error)
 }
 
 type dynamoRepository struct {
@@ -136,7 +139,7 @@ func (r *dynamoRepository) SaveBasicSubmission(ctx context.Context, userID strin
 				UpdateExpression: aws.String(
 					"SET cpf = :cpf, legal_name = :ln, birth_date = :bd, phone_number = :phone, address = :addr, " +
 						"kyc_level = :lvl, kyc_status = :st, kyc_submitted_at = :sub, kyc_basic_verified_at = :verified, updated_at = :now " +
-						"REMOVE kyc_rejection_reason, phone_verified_at",
+						"REMOVE kyc_rejection_code, kyc_rejection_reason, phone_verified_at",
 				),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
 					":cpf":      &types.AttributeValueMemberS{Value: rec.CPF},
@@ -272,35 +275,64 @@ func (r *dynamoRepository) SaveEnhancedSubmission(ctx context.Context, userID, s
 		"kyc_submitted_at":     submittedAt,
 		"kyc_expires_at":       expiresAt,
 		"kyc_rejection_reason": "",
+		"kyc_rejection_code":   nil,
+		"kyc_reviewed_at":      nil,
+		"kyc_reviewed_by":      nil,
+		"kyc_reviewed_by_name": nil,
+		"kyc_review_decision":  nil,
 	})
 }
 
-func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt string) error {
-	return r.userRepo.Update(ctx, userID, map[string]any{
+func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt string, actor ReviewActor) error {
+	applied, err := database.ConditionalUpdate(ctx, r.db, r.table, user.BuildPK(userID), nil, map[string]any{
 		"kyc_status":           StatusVerified,
 		"kyc_verified_at":      verifiedAt,
 		"kyc_rejection_reason": "",
+		"kyc_rejection_code":   nil,
+		"kyc_reviewed_at":      verifiedAt,
+		"kyc_reviewed_by":      actor.ID,
+		"kyc_reviewed_by_name": actor.Name,
+		"kyc_review_decision":  DecisionApprove,
+		"updated_at":           time.Now().UTC().Format(time.RFC3339),
+	}, "#kyc_level = :expected_level AND #kyc_status = :expected_status", map[string]string{
+		"#kyc_level": "kyc_level", "#kyc_status": "kyc_status",
+	}, map[string]types.AttributeValue{
+		":expected_level":  &types.AttributeValueMemberS{Value: LevelEnhanced},
+		":expected_status": &types.AttributeValueMemberS{Value: StatusPending},
 	})
-}
-
-func (r *dynamoRepository) MarkRejected(ctx context.Context, userID, reason string) error {
-	if err := r.userRepo.Update(ctx, userID, map[string]any{
-		"kyc_status":           StatusRejected,
-		"kyc_rejection_reason": reason,
-	}); err != nil {
+	if err != nil {
 		return err
 	}
-	// Documents were judged insufficient — clear them so re-submission requires
-	// a fresh upload instead of silently reusing the rejected ones.
-	update := types.Update{
-		TableName: aws.String(r.table),
-		Key: map[string]types.AttributeValue{
-			"pk": &types.AttributeValueMemberS{Value: user.BuildPK(userID)},
-		},
-		UpdateExpression: aws.String("REMOVE kyc_documents"),
+	if !applied {
+		return ErrNotSubmitted
 	}
-	_, err := r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{{Update: &update}}})
-	return err
+	return nil
+}
+
+func (r *dynamoRepository) MarkRejected(ctx context.Context, userID, reasonCode, details, reviewedAt string, actor ReviewActor) error {
+	applied, err := database.ConditionalUpdate(ctx, r.db, r.table, user.BuildPK(userID), nil, map[string]any{
+		"kyc_status":           StatusRejected,
+		"kyc_rejection_code":   reasonCode,
+		"kyc_rejection_reason": details,
+		"kyc_reviewed_at":      reviewedAt,
+		"kyc_reviewed_by":      actor.ID,
+		"kyc_reviewed_by_name": actor.Name,
+		"kyc_review_decision":  DecisionReject,
+		"kyc_documents":        nil,
+		"updated_at":           time.Now().UTC().Format(time.RFC3339),
+	}, "#kyc_level = :expected_level AND #kyc_status = :expected_status", map[string]string{
+		"#kyc_level": "kyc_level", "#kyc_status": "kyc_status",
+	}, map[string]types.AttributeValue{
+		":expected_level":  &types.AttributeValueMemberS{Value: LevelEnhanced},
+		":expected_status": &types.AttributeValueMemberS{Value: StatusPending},
+	})
+	if err != nil {
+		return err
+	}
+	if !applied {
+		return ErrNotSubmitted
+	}
+	return nil
 }
 
 func (r *dynamoRepository) SaveRiskAssessment(ctx context.Context, userID string, a risk.Assessment) error {
@@ -349,4 +381,51 @@ func (r *dynamoRepository) ListPendingKYC(ctx context.Context) ([]*user.User, er
 		startKey = out.LastEvaluatedKey
 	}
 	return users, nil
+}
+
+func (r *dynamoRepository) ListKYCReviews(ctx context.Context, queue string) ([]*user.User, error) {
+	var filter string
+	values := map[string]types.AttributeValue{
+		":level": &types.AttributeValueMemberS{Value: LevelEnhanced},
+	}
+	switch queue {
+	case ReviewQueuePending:
+		filter = "kyc_status = :pending"
+		values[":pending"] = &types.AttributeValueMemberS{Value: StatusPending}
+	case ReviewQueueCompleted:
+		filter = "kyc_status = :verified OR kyc_status = :rejected"
+		values[":verified"] = &types.AttributeValueMemberS{Value: StatusVerified}
+		values[":rejected"] = &types.AttributeValueMemberS{Value: StatusRejected}
+	default:
+		return nil, ErrInvalidDecision
+	}
+
+	var outUsers []*user.User
+	var startKey map[string]types.AttributeValue
+	for len(outUsers) < 100 {
+		out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+			TableName: aws.String(r.table), IndexName: aws.String("kyc-level-index"),
+			KeyConditionExpression: aws.String("kyc_level = :level"),
+			FilterExpression:       aws.String(filter), ExpressionAttributeValues: values,
+			ScanIndexForward: aws.Bool(false), Limit: aws.Int32(100), ExclusiveStartKey: startKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("querying kyc reviews: %w", err)
+		}
+		for _, item := range out.Items {
+			var u user.User
+			if err := attributevalue.UnmarshalMap(item, &u); err != nil {
+				return nil, fmt.Errorf("unmarshaling kyc review: %w", err)
+			}
+			outUsers = append(outUsers, &u)
+			if len(outUsers) == 100 {
+				break
+			}
+		}
+		if len(out.LastEvaluatedKey) == 0 {
+			break
+		}
+		startKey = out.LastEvaluatedKey
+	}
+	return outUsers, nil
 }

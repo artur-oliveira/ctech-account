@@ -60,15 +60,17 @@ func (m *memRepo) SaveEnhancedSubmission(_ context.Context, userID, submittedAt,
 	return nil
 }
 
-func (m *memRepo) MarkVerified(_ context.Context, userID, verifiedAt string) error {
+func (m *memRepo) MarkVerified(_ context.Context, userID, verifiedAt string, actor ReviewActor) error {
 	u := m.users[userID]
 	u.KYCStatus, u.KYCVerifiedAt, u.KYCRejectionReason = StatusVerified, verifiedAt, ""
+	u.KYCReviewedAt, u.KYCReviewedBy, u.KYCReviewedByName, u.KYCReviewDecision = verifiedAt, actor.ID, actor.Name, DecisionApprove
 	return nil
 }
 
-func (m *memRepo) MarkRejected(_ context.Context, userID, reason string) error {
+func (m *memRepo) MarkRejected(_ context.Context, userID, reasonCode, details, reviewedAt string, actor ReviewActor) error {
 	u := m.users[userID]
-	u.KYCStatus, u.KYCRejectionReason = StatusRejected, reason
+	u.KYCStatus, u.KYCRejectionCode, u.KYCRejectionReason = StatusRejected, reasonCode, details
+	u.KYCReviewedAt, u.KYCReviewedBy, u.KYCReviewedByName, u.KYCReviewDecision = reviewedAt, actor.ID, actor.Name, DecisionReject
 	u.KYCDocuments = nil
 	return nil
 }
@@ -105,6 +107,19 @@ func (m *memRepo) ListPendingKYC(_ context.Context) ([]*user.User, error) {
 	var out []*user.User
 	for _, u := range m.users {
 		if u.KYCLevel == LevelEnhanced && u.KYCStatus == StatusPending {
+			cp := *u
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRepo) ListKYCReviews(_ context.Context, queue string) ([]*user.User, error) {
+	var out []*user.User
+	for _, u := range m.users {
+		pending := u.KYCLevel == LevelEnhanced && u.KYCStatus == StatusPending
+		completed := u.KYCLevel == LevelEnhanced && (u.KYCStatus == StatusVerified || u.KYCStatus == StatusRejected)
+		if (queue == ReviewQueuePending && pending) || (queue == ReviewQueueCompleted && completed) {
 			cp := *u
 			out = append(out, &cp)
 		}

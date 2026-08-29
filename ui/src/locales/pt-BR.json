@@ -358,6 +358,7 @@
   },
   "menu": {
     "settings": "Configurações",
+    "admin": "Área administrativa",
     "signOut": "Sair",
     "signingOut": "Saindo…"
   },
@@ -595,6 +596,76 @@
       "terms": "Termos de Uso",
       "support": "Ajuda",
       "privacy": "Privacidade"
+    }
+  },
+  "admin": {
+    "title": "Admin",
+    "navigation": "Navegação administrativa",
+    "support": "Suporte",
+    "kyc": "Revisões KYC"
+  },
+  "adminKyc": {
+    "title": "Revisões de identidade",
+    "description": "Analise envios KYC Enhanced, acesse documentos protegidos e mantenha cada decisão atribuída.",
+    "queues": "Filas de revisão",
+    "pending": "Pendentes",
+    "completed": "Concluídos",
+    "person": "Pessoa",
+    "status": "Status",
+    "submitted": "Enviado",
+    "reviewer": "Revisor",
+    "open": "Analisar",
+    "emptyPending": "Nenhuma revisão aguardando",
+    "emptyCompleted": "Nenhuma revisão concluída",
+    "emptyHint": "Novos envios Enhanced aparecerão aqui automaticamente.",
+    "back": "Voltar às revisões",
+    "identityData": "Dados de identidade",
+    "cpf": "CPF",
+    "birthDate": "Data de nascimento",
+    "phone": "Telefone",
+    "risk": "Pontuação de risco",
+    "address": "Endereço",
+    "riskSignals": "Sinais de risco",
+    "documents": "Documentos protegidos",
+    "documentsPrivacy": "O acesso gera um registro de auditoria e os links expiram em 10 minutos.",
+    "accessDocuments": "Acessar documentos",
+    "openDocument": "Abrir",
+    "documentsError": "Não foi possível emitir os links protegidos.",
+    "decision": "Decisão",
+    "decisionHint": "Confirme que todos os dados e documentos pertencem à mesma pessoa.",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "approveTitle": "Aprovar esta identidade?",
+    "approveDescription": "Isso concede KYC Enhanced verificado e registra você como revisor autorizador.",
+    "rejectTitle": "Rejeitar esta identidade?",
+    "rejectDescription": "O motivo será mostrado ao titular e ele deverá enviar novos documentos.",
+    "rejectionReason": "Motivo da rejeição",
+    "rejectionReasonPlaceholder": "Selecione um motivo",
+    "rejectionDetails": "Detalhes adicionais (opcional)",
+    "rejectionReasonRequired": "Informe um motivo de rejeição claro.",
+    "rejectionReasons": {
+      "document_unreadable": "Documento ilegível",
+      "document_incomplete": "Documento incompleto",
+      "document_mismatch": "Os documentos não correspondem",
+      "selfie_mismatch": "A selfie não corresponde ao documento",
+      "data_mismatch": "Os dados informados não correspondem aos documentos",
+      "suspected_fraud": "Suspeita de fraude ou manipulação",
+      "other": "Outro"
+    },
+    "decisionSaved": "Decisão KYC registrada.",
+    "decisionError": "Não foi possível registrar a decisão. A revisão pode já ter sido concluída.",
+    "missingId": "O identificador da revisão está ausente.",
+    "audit": "Trilha de auditoria",
+    "noAudit": "Nenhuma ação de revisor registrada.",
+    "system": "Sistema",
+    "states": { "pending": "Pendente", "verified": "Aprovado", "rejected": "Rejeitado" },
+    "documentTypes": { "id_front": "Documento — frente", "id_back": "Documento — verso", "selfie_with_document": "Selfie com documento" },
+    "events": {
+      "kyc": {
+        "documents_viewed": "acessou os documentos protegidos",
+        "verified": "aprovou a identidade",
+        "rejected": "rejeitou a identidade"
+      }
     }
   },
   "support": {

@@ -66,6 +66,14 @@ func TestRecordSwallowsRepositoryError(t *testing.T) {
 	NewService(repo).Record(context.Background(), Entry{UserID: "u1", Type: EventLoginSuccess})
 }
 
+func TestRecordStrictReturnsRepositoryError(t *testing.T) {
+	want := errors.New("dynamo down")
+	err := NewService(&memRepo{err: want}).RecordStrict(context.Background(), Entry{UserID: "u1", Type: EventKYCDocumentsViewed})
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+}
+
 func TestListByUserDelegatesToRepository(t *testing.T) {
 	repo := &memRepo{}
 	svc := NewService(repo)

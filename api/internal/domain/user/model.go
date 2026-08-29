@@ -31,6 +31,7 @@ type User struct {
 	KYCStatus          string        `dynamodbav:"kyc_status,omitempty"`            // kyc.Status* — renamed from kyc_doc_status
 	KYCBasicVerifiedAt string        `dynamodbav:"kyc_basic_verified_at,omitempty"` // RFC3339 — set once, never cleared
 	KYCVerifiedAt      string        `dynamodbav:"kyc_verified_at,omitempty"`       // RFC3339 — Enhanced verified timestamp
+	KYCRejectionCode   string        `dynamodbav:"kyc_rejection_code,omitempty"`    // fixed review-reason catalog code
 	KYCRejectionReason string        `dynamodbav:"kyc_rejection_reason,omitempty"`  // reviewer's note, Enhanced only
 	KYCSubmittedAt     string        `dynamodbav:"kyc_submitted_at,omitempty"`      // RFC3339 — whichever level is currently pending
 	KYCExpiresAt       string        `dynamodbav:"kyc_expires_at,omitempty"`        // RFC3339 — stale Enhanced pending unlocks re-submission
@@ -42,6 +43,10 @@ type User struct {
 	KYCRiskScore       int      `dynamodbav:"kyc_risk_score,omitempty"`
 	KYCRiskSignals     []string `dynamodbav:"kyc_risk_signals,omitempty"`      // "name:detail" pairs, latest snapshot
 	KYCRiskEvaluatedAt string   `dynamodbav:"kyc_risk_evaluated_at,omitempty"` // RFC3339
+	KYCReviewedAt      string   `dynamodbav:"kyc_reviewed_at,omitempty"`       // RFC3339 — latest Enhanced decision
+	KYCReviewedBy      string   `dynamodbav:"kyc_reviewed_by,omitempty"`       // authenticated reviewer user ID
+	KYCReviewedByName  string   `dynamodbav:"kyc_reviewed_by_name,omitempty"`  // display snapshot for the admin queue
+	KYCReviewDecision  string   `dynamodbav:"kyc_review_decision,omitempty"`   // approve | reject
 
 	TOSVersion        string `dynamodbav:"tos_version,omitempty"`
 	TOSAcceptedAt     string `dynamodbav:"tos_accepted_at,omitempty"`

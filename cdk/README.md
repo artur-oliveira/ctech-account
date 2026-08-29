@@ -102,7 +102,7 @@ prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}
 
 | Logical key | Table name | PK / SK | TTL attr | GSIs | File |
 |-------------|-----------|---------|----------|------|------|
-| `account_users` | `{env}_account_users` | `pk` (string) | — | `email-index` (pk=`email`) | `:24` |
+| `account_users` | `{env}_account_users` | `pk` (string) | — | `email-index` (pk=`email`); `kyc-level-index` (pk=`kyc_level`, sk=`kyc_submitted_at`) | `:24` |
 | `account_sessions` | `{env}_account_sessions` | `pk` / `sk` | `expires_at` | `token-hash-index` (pk=`refresh_token_hash`) | `:48` |
 | `account_oauth_clients` | `{env}_account_oauth_clients` | `pk` | — | `owner-index` (pk=`owner_user_id`) | `:74` |
 | `account_api_keys` | `{env}_account_api_keys` | `pk` / `sk` | `expires_at` | `key-hash-index` (pk=`key_hash`) | `:98` |
@@ -112,7 +112,8 @@ prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}
 | `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (`SERVICE` legacy/built-ins, `RESOURCE_SERVER` current manifests, immutable `RESOURCE_SERVER_HISTORY#{id}` revisions) | `:176` |
 
 Notes:
-- `account_users` is the only table with a GSI on `email` (login lookup).
+- `account_users` uses `email-index` for login lookup and `kyc-level-index` for the manager review queue. The KYC
+  index projects full user records for the protected API after authorization; it is never queried by the browser.
 - Refresh tokens are stored per `(session, client)` in `account_sessions`
   (`token-hash-index`).
 - `ctech_scopes` deliberately breaks the `{env}_account_*` convention because it is

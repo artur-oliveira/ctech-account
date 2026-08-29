@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/store/auth'
 import { oauthClient, hasAuthHint, clearAuthHint } from '@/lib/oauth-client'
 import { startOAuthFlow } from '@/lib/auth-flow'
+import { MOCK_ACCESS_TOKEN, USE_MOCK } from '@/lib/mock'
 
 /** Pages where a failed silent refresh must never auto-start an OAuth redirect. */
 const AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/consent', '/accept-terms']
@@ -40,6 +41,15 @@ function AuthInitializer() {
     initialized.current = true
 
     const store = useAuthStore.getState()
+
+    // Mock mode has no persistent refresh-token cookie. Initialize the
+    // in-memory session directly so a full-page load cannot enter the OAuth
+    // retry loop used by the real environment.
+    if (USE_MOCK) {
+      store.setAccessToken(MOCK_ACCESS_TOKEN)
+      store.setInitialized()
+      return
+    }
 
     // Without the hint cookie there is no session to refresh — skip the request
     // entirely instead of burning a guaranteed failure against the /token rate limit.

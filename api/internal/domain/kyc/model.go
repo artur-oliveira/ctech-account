@@ -19,6 +19,23 @@ const (
 	LevelEnhanced = "enhanced"
 )
 
+const (
+	RejectionDocumentUnreadable = "document_unreadable"
+	RejectionDocumentIncomplete = "document_incomplete"
+	RejectionDocumentMismatch   = "document_mismatch"
+	RejectionSelfieMismatch     = "selfie_mismatch"
+	RejectionDataMismatch       = "data_mismatch"
+	RejectionSuspectedFraud     = "suspected_fraud"
+	RejectionOther              = "other"
+)
+
+var RejectionCodes = []string{
+	RejectionDocumentUnreadable, RejectionDocumentIncomplete, RejectionDocumentMismatch,
+	RejectionSelfieMismatch, RejectionDataMismatch, RejectionSuspectedFraud, RejectionOther,
+}
+
+func IsValidRejectionCode(code string) bool { return slices.Contains(RejectionCodes, code) }
+
 // KYCStatus values. StatusRejected is only reachable from LevelEnhanced —
 // Basic never regresses once verified (spec §4).
 const (
@@ -53,9 +70,19 @@ var RequiredDocTypes = []string{DocTypeIDFront, DocTypeIDBack, DocTypeSelfieWith
 
 // Review decisions accepted by cmd/kyc.
 const (
-	DecisionApprove = "approve"
-	DecisionReject  = "reject"
+	DecisionApprove      = "approve"
+	DecisionReject       = "reject"
+	ReviewQueuePending   = "pending"
+	ReviewQueueCompleted = "completed"
 )
+
+// ReviewActor is the authenticated operator attached to an Enhanced KYC
+// decision. Persisting a display-name snapshot keeps completed reviews
+// attributable even when the operator later edits their profile.
+type ReviewActor struct {
+	ID   string
+	Name string
+}
 
 const (
 	// MinAge is the minimum age (years) to submit for KYC.
@@ -132,13 +159,14 @@ var (
 	// documents and the submit route are frozen until it is rejected or expires.
 	ErrSubmissionLocked = errors.New("kyc submission is pending and cannot be changed")
 
-	ErrInvalidDocumentType = errors.New("invalid document type")
-	ErrInvalidContentType  = errors.New("invalid document content type")
-	ErrDocumentNotUploaded = errors.New("document was not uploaded")
-	ErrDocumentTooLarge    = errors.New("document exceeds the maximum size")
-	ErrTooManyDocuments    = errors.New("too many documents for this submission")
-	ErrNoDocuments         = errors.New("no documents uploaded")
-	ErrInvalidDecision     = errors.New("invalid review decision")
+	ErrInvalidDocumentType    = errors.New("invalid document type")
+	ErrInvalidContentType     = errors.New("invalid document content type")
+	ErrDocumentNotUploaded    = errors.New("document was not uploaded")
+	ErrDocumentTooLarge       = errors.New("document exceeds the maximum size")
+	ErrTooManyDocuments       = errors.New("too many documents for this submission")
+	ErrNoDocuments            = errors.New("no documents uploaded")
+	ErrInvalidDecision        = errors.New("invalid review decision")
+	ErrInvalidRejectionReason = errors.New("invalid rejection reason")
 
 	// ErrDocumentTypeMismatch is returned when the type a client confirms does
 	// not match the type the document was presigned for (SEC-018).
@@ -175,6 +203,7 @@ type Status struct {
 	BasicVerifiedAt string     `json:"basic_verified_at,omitempty"`
 	Documents       []Document `json:"documents,omitempty"`
 	RejectionReason string     `json:"rejection_reason,omitempty"`
+	RejectionCode   string     `json:"rejection_code,omitempty"`
 	SubmittedAt     string     `json:"submitted_at,omitempty"`
 	ExpiresAt       string     `json:"expires_at,omitempty"`
 	VerifiedAt      string     `json:"verified_at,omitempty"`

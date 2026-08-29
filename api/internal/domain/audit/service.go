@@ -29,6 +29,15 @@ type Entry struct {
 // errors are logged and swallowed — losing one audit row must never break
 // a login or a password change.
 func (s *Service) Record(ctx context.Context, e Entry) {
+	if err := s.RecordStrict(ctx, e); err != nil {
+		observability.Error(ctx, "audit: failed to record event", err, "type", e.Type)
+	}
+}
+
+// RecordStrict persists an event and returns repository failures. Use it when
+// the protected action must fail closed if its audit trail cannot be written
+// (for example issuing links to identity documents).
+func (s *Service) RecordStrict(ctx context.Context, e Entry) error {
 	now := time.Now().UTC()
 	pk := BuildPK(e.UserID)
 	if e.UserID == "" {
@@ -44,9 +53,7 @@ func (s *Service) Record(ctx context.Context, e Entry) {
 		CreatedAt: now.Format(time.RFC3339),
 		ExpiresAt: now.Add(EventTTL).Unix(),
 	}
-	if err := s.repo.Put(ctx, evt); err != nil {
-		observability.Error(ctx, "audit: failed to record event", err, "type", e.Type)
-	}
+	return s.repo.Put(ctx, evt)
 }
 
 // ListByUser returns the user's events, newest first, with cursor pagination.

@@ -1,6 +1,6 @@
-// Command kyc is the operator tool for manual KYC review: KYC has no admin
-// UI, so a reviewer lists pending submissions, opens the presigned document
-// URLs in a browser, and approves or rejects from here.
+// Command kyc is the fallback operator tool for manual KYC review. The normal
+// reviewer workflow lives in the manager-only admin UI; this CLI remains for
+// break-glass operation when the frontend is unavailable.
 //
 //	AWS_REGION=... TABLE_PREFIX=production KYC_DOCUMENTS_BUCKET=... go run ./cmd/kyc list
 //	... go run ./cmd/kyc show <user_id>

@@ -146,6 +146,10 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `PUT`    | `/v1.0/admin/support/tickets/:id/escalation`         | Support role                             | Set `none`, `specialist`, or `engineering` escalation                                                                        |
 | `PUT`    | `/v1.0/admin/support/tickets/:id/status`             | Support role                             | Change an active ticket; `closed` is terminal and is recorded atomically with metrics                                        |
 | `GET`    | `/v1.0/admin/support/metrics`                        | Support role                             | Daily, monthly, yearly, and all-time created/resolved counts, resolution average, and created-ticket product distribution     |
+| `GET`    | `/v1.0/admin/kyc/reviews?status=pending\|completed`  | Support role ≥ `manager`                 | List up to 100 Enhanced KYC reviews, newest first, through `kyc-level-index`; summary data only                               |
+| `GET`    | `/v1.0/admin/kyc/reviews/:user_id`                  | Support role ≥ `manager`                 | Read the full identity submission and its reviewer audit trail                                                                |
+| `POST`   | `/v1.0/admin/kyc/reviews/:user_id/documents/access` | Support role ≥ `manager`                 | Issue 10-minute private document URLs and record the authenticated reviewer who accessed them                                |
+| `POST`   | `/v1.0/admin/kyc/reviews/:user_id/decision`         | Support role ≥ `manager`                 | Atomically approve/reject a pending submission; rejection requires a fixed `reason_code`, accepts ≤255-char `details`, and is attributed |
 | `GET`    | `/.well-known/openid-configuration`                 | —                                      | OIDC Discovery document                                                                                                                                                                             |
 | `GET`    | `/.well-known/jwks.json`                            | —                                      | JSON Web Key Set                                                                                                                                                                                    |
 | `GET`    | `/.well-known/oauth-protected-resource`             | —                                      | RFC 9728 metadata for the Account Resource Server                                                                                                                                                   |
@@ -252,7 +256,9 @@ at `/admin/support`, and both directions thread over SES raw-MIME email
 - **`support_role`** (`""` / `agent` / `manager` / `admin`) gates every `/v1.0/admin/*` route via
   `middleware.RequireSupportRole`, which checks the field with a plain DB lookup rather than a JWT
   claim — `crypto.JWTService.SignAccessToken`'s many call sites are a Critical Area, and a role that
-  can change mid-session is a poor fit for a 15-minute access token anyway. There is no self-service
+  can change mid-session is a poor fit for a 15-minute access token anyway. Support routes require
+  `agent`; KYC identity review requires `manager`. All admin HTTP routes additionally require `azp=SELF_CLIENT_ID`,
+  preventing API-key, machine and delegated-client tokens from entering the admin context. There is no self-service
   path to the role: it is granted/revoked with `go run ./cmd/supportrole set|revoke <user_id>
   [-role agent|manager|admin]` (same `TABLE_PREFIX`/`ENVIRONMENT` convention as `cmd/kyc`).
 - **Known limitation:** inbound email replies are not ingested. The confirmation/reply/NPS emails
@@ -467,8 +473,17 @@ An informational-only risk evaluation hook scores each submission at `SubmitBasi
 IP and user details (via a pluggable risk evaluator, defaulting to a zero-score no-op implementation) and persists the
 latest evaluation.
 
-**Manual review — `cmd/kyc`** (CLI tool, no HTTP endpoints):
-Reviewers list and review Enhanced submissions from a CLI environment:
+**Manual review — admin workspace:** managers and admins use `/admin/kyc` to switch between pending and completed
+reviews, inspect full identity data, explicitly request short-lived document links, and approve or reject. Every
+document-link issuance records `kyc.documents_viewed` with reviewer ID/name/role, IP and user-agent; decisions retain
+the reviewer snapshot on the user item and append `kyc.verified`/`kyc.rejected`. The backend reloads `support_role`
+from DynamoDB on every action, so changing client state or forging the profile response grants no data access.
+Decision writes condition on `enhanced/pending`, so only one concurrent reviewer can complete a submission.
+Rejection uses the fixed reason catalog `document_unreadable`, `document_incomplete`, `document_mismatch`,
+`selfie_mismatch`, `data_mismatch`, `suspected_fraud`, or `other`; `details` are optional up to 255 characters except
+for `other`, where they are required. The code and details are stored separately for stable translation and reporting.
+
+`cmd/kyc` remains a break-glass fallback for operators:
 
 ```bash
 cd api
@@ -481,7 +496,8 @@ AWS_REGION=... TABLE_PREFIX=production_ KYC_DOCUMENTS_BUCKET=... go run ./cmd/ky
 `GET /v1.0/internal/kyc/:user_id` is the internal machine-to-machine route that returns the raw unmasked CPF, legal
 name, birth date, and phone number for withdrawal validations. Downstream JWT consumers map `kyc_level` claim values to
 `""` | `"basic"` | `"verified"` via `ClaimLevel` (no change in `ctech-wallet` or `ctech-dfe`).
-Audit events: `kyc.submitted`, `kyc.phone_verified`, `kyc.document_uploaded`, `kyc.verified`, `kyc.rejected`.
+Audit events: `kyc.submitted`, `kyc.phone_verified`, `kyc.document_uploaded`, `kyc.documents_viewed`,
+`kyc.verified`, `kyc.rejected`. See [`docs/specs/2026-08-29-admin-kyc-review.md`](docs/specs/2026-08-29-admin-kyc-review.md).
 
 ### Step-up authentication (recent MFA)
 

@@ -16,6 +16,13 @@ Regenerate Go from the repository root with
 `protoc --go_out=api --go_opt=module=gopkg.aoctech.app/account/api proto/support.proto`, then regenerate TypeScript
 with `npm run generate:support-proto` in `ui/`.
 
+The authenticated user menu exposes an Admin workspace only when `GET /account/profile` reports a support role.
+That client-side check is an affordance, not an authorization boundary: support pages require a database-backed
+`agent` role on the Go API, while `/admin/kyc` list/detail/document/decision requests require `manager` or `admin`.
+In `NEXT_PUBLIC_MOCK_API=true`, authentication is initialized in memory and `mock_support_role` is read from local storage on every profile request, which supports role-based browser QA without an OAuth cookie.
+The KYC reviewer UI never persists presigned document URLs and sends only a fixed rejection-reason code plus optional
+details capped at 255 characters (`other` requires details).
+
 ## Development and quality gates
 
 ```bash

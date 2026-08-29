@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { logoutAPI } from '@/lib/mutations'
 import type { User } from '@/lib/types'
@@ -65,6 +65,12 @@ export function UserMenu({ user }: { user: User }) {
           <Settings className="size-4" />
           {t('menu.settings')}
         </DropdownMenuItem>
+        {user.support_role && (
+          <DropdownMenuItem render={<a href="/admin/support" />}>
+            <ShieldCheck className="size-4" />
+            {t('menu.admin')}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={handleLogout}

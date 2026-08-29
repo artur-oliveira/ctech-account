@@ -6,6 +6,8 @@ import axios, { AxiosError } from 'axios'
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import type {
   APIKey,
+  AdminKYCAuditEvent,
+  AdminKYCReview,
   ActivityEvent,
   ConsentGrant,
   KYCDocumentType,
@@ -224,6 +226,18 @@ const state = {
     ],
   } as Record<string, SupportMessage[]>,
   supportInternalNotes: {} as Record<string, Array<{id: string; author_id: string; body: string; created_at: string}>>,
+  adminKYCReview: {
+    user_id: 'mock_kyc_subject', legal_name: 'Marina Andrade', submitted_at: new Date(Date.now() - 4 * 3_600_000).toISOString(),
+    status: 'pending', risk_score: 18, cpf: '11144477735', birth_date: '1992-06-14', phone_number: '+5511987654321',
+    address: {zip_code: '01310100', street: 'Av. Paulista', number: '1000', district: 'Bela Vista', city: 'São Paulo', state: 'SP'},
+    risk_signals: ['device:new'], risk_evaluated_at: new Date(Date.now() - 4 * 3_600_000).toISOString(),
+    documents: [
+      {id: 'mock_front', type: 'id_front', uploaded_at: new Date(Date.now() - 4 * 3_600_000).toISOString()},
+      {id: 'mock_back', type: 'id_back', uploaded_at: new Date(Date.now() - 4 * 3_600_000).toISOString()},
+      {id: 'mock_selfie', type: 'selfie_with_document', uploaded_at: new Date(Date.now() - 4 * 3_600_000).toISOString()},
+    ],
+  } as AdminKYCReview,
+  adminKYCAudit: [] as AdminKYCAuditEvent[],
 }
 
 function ok<T>(data: T, config: InternalAxiosRequestConfig): AxiosResponse<T> {
@@ -274,7 +288,16 @@ type Route = {
 }
 
 const routes: Route[] = [
-  { method: 'get', pattern: /^\/v1\.0\/account\/profile$/, handle: () => state.user },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/account\/profile$/,
+    handle: () => {
+      // Read the role at request time so browser-based QA can switch roles
+      // without restarting the mock module.
+      state.user.support_role = mockSupportRole()
+      return state.user
+    },
+  },
   { method: 'get', pattern: /^\/v1\.0\/account\/sessions$/, handle: () => ({ sessions: state.sessions }) },
   { method: 'get', pattern: /^\/v1\.0\/account\/api-keys$/, handle: () => ({ api_keys: state.apiKeys }) },
   { method: 'get', pattern: /^\/v1\.0\/account\/oauth-clients$/, handle: () => ({ oauth_clients: state.oauthClients }) },
@@ -308,6 +331,22 @@ const routes: Route[] = [
       const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
       if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
       return { ticket, messages: state.supportMessages[ticket.id] ?? [], internal_notes: state.supportInternalNotes[ticket.id] ?? [] }
+    },
+  },
+  {
+    method: 'get', pattern: /^\/v1\.0\/admin\/kyc\/reviews$/,
+    handle: (_m, _b, config) => {
+      const status = new URL(config.url ?? '', 'http://mock').searchParams.get('status') || 'pending'
+      const review = state.adminKYCReview
+      const matches = status === 'pending' ? review.status === 'pending' : review.status !== 'pending'
+      return {reviews: matches ? [review] : []}
+    },
+  },
+  {
+    method: 'get', pattern: /^\/v1\.0\/admin\/kyc\/reviews\/([^/]+)$/,
+    handle: (m, _b, config) => {
+      if (m[1] !== state.adminKYCReview.user_id) fail(404, {detail: 'KYC review not found'}, config)
+      return {review: state.adminKYCReview, audit_log: state.adminKYCAudit}
     },
   },
   {
@@ -392,6 +431,30 @@ const routes: Route[] = [
       ticket.status = 'answered'
       ticket.last_message_at = now
       return { message: state.supportMessages[ticket.id].at(-1), ticket }
+    },
+  },
+  {
+    method: 'post', pattern: /^\/v1\.0\/admin\/kyc\/reviews\/([^/]+)\/documents\/access$/,
+    handle: (m, _b, config) => {
+      if (m[1] !== state.adminKYCReview.user_id) fail(404, {detail: 'KYC review not found'}, config)
+      state.adminKYCAudit.unshift({event_type: 'kyc.documents_viewed', created_at: new Date().toISOString(), actor_id: state.user.user_id, actor_name: state.user.display_name || `${state.user.first_name} ${state.user.last_name}`, actor_role: state.user.support_role})
+      return {documents: state.adminKYCReview.documents.map((document) => ({...document, url: 'https://example.invalid/mock-kyc-document'})), expires_in: 600}
+    },
+  },
+  {
+    method: 'post', pattern: /^\/v1\.0\/admin\/kyc\/reviews\/([^/]+)\/decision$/,
+    handle: (m, body, config) => {
+      if (m[1] !== state.adminKYCReview.user_id || state.adminKYCReview.status !== 'pending') fail(409, {detail: 'Review already completed'}, config)
+      const decision = body.decision === 'reject' ? 'reject' : 'approve'
+      state.adminKYCReview.status = decision === 'approve' ? 'verified' : 'rejected'
+      state.adminKYCReview.decision = decision
+      state.adminKYCReview.reviewed_at = new Date().toISOString()
+      state.adminKYCReview.reviewed_by = state.user.user_id
+      state.adminKYCReview.reviewed_by_name = state.user.display_name || `${state.user.first_name} ${state.user.last_name}`
+      state.adminKYCReview.rejection_code = decision === 'reject' ? body.reason_code as AdminKYCReview['rejection_code'] : undefined
+      state.adminKYCReview.rejection_reason = decision === 'reject' ? String(body.details ?? '') : undefined
+      state.adminKYCAudit.unshift({event_type: decision === 'approve' ? 'kyc.verified' : 'kyc.rejected', created_at: state.adminKYCReview.reviewed_at, actor_id: state.user.user_id, actor_name: state.adminKYCReview.reviewed_by_name, actor_role: state.user.support_role, reason_code: state.adminKYCReview.rejection_code, details: state.adminKYCReview.rejection_reason})
+      return {}
     },
   },
   { method: 'post', pattern: /^\/v1\.0\/auth\/login$/, handle: () => ({ requires_mfa: false }) },

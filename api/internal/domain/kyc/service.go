@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
@@ -281,6 +282,17 @@ func (s *Service) evaluateRisk(ctx context.Context, userID, ip string) {
 // Review applies a human reviewer's decision to an Enhanced submission that
 // is currently under review.
 func (s *Service) Review(ctx context.Context, userID, decision, reason string) error {
+	code := ""
+	if decision == DecisionReject {
+		code = RejectionOther
+	}
+	return s.ReviewBy(ctx, userID, decision, code, reason, ReviewActor{ID: "cli", Name: "CLI"})
+}
+
+// ReviewBy applies a decision and persistently attributes it to the current
+// authenticated reviewer. Repository conditions guarantee only the first
+// concurrent decision can transition an Enhanced submission out of pending.
+func (s *Service) ReviewBy(ctx context.Context, userID, decision, reasonCode, details string, actor ReviewActor) error {
 	u, err := s.repo.GetUser(ctx, userID)
 	if err != nil {
 		return err
@@ -291,11 +303,15 @@ func (s *Service) Review(ctx context.Context, userID, decision, reason string) e
 
 	switch decision {
 	case DecisionApprove:
-		return s.repo.MarkVerified(ctx, userID, s.now().Format(TimeLayout))
+		return s.repo.MarkVerified(ctx, userID, s.now().Format(TimeLayout), actor)
 	case DecisionReject:
+		details = strings.TrimSpace(details)
+		if !IsValidRejectionCode(reasonCode) || utf8.RuneCountInString(details) > 255 || (reasonCode == RejectionOther && details == "") {
+			return ErrInvalidRejectionReason
+		}
 		docs := make([]Document, len(u.KYCDocuments))
 		copy(docs, u.KYCDocuments)
-		if err := s.repo.MarkRejected(ctx, userID, strings.TrimSpace(reason)); err != nil {
+		if err := s.repo.MarkRejected(ctx, userID, reasonCode, details, s.now().Format(TimeLayout), actor); err != nil {
 			return err
 		}
 		s.purgeRejectedObjects(ctx, docs)
@@ -303,6 +319,13 @@ func (s *Service) Review(ctx context.Context, userID, decision, reason string) e
 	default:
 		return ErrInvalidDecision
 	}
+}
+
+func (s *Service) ListKYCReviews(ctx context.Context, queue string) ([]*user.User, error) {
+	if queue != ReviewQueuePending && queue != ReviewQueueCompleted {
+		return nil, ErrInvalidDecision
+	}
+	return s.repo.ListKYCReviews(ctx, queue)
 }
 
 // ListPendingKYC returns every user whose Enhanced submission is currently
@@ -362,6 +385,7 @@ func (s *Service) Get(ctx context.Context, userID string) (*Status, error) {
 		BasicVerifiedAt: u.KYCBasicVerifiedAt,
 		Documents:       u.KYCDocuments,
 		RejectionReason: u.KYCRejectionReason,
+		RejectionCode:   u.KYCRejectionCode,
 		SubmittedAt:     u.KYCSubmittedAt,
 		ExpiresAt:       u.KYCExpiresAt,
 		VerifiedAt:      u.KYCVerifiedAt,
@@ -411,12 +435,13 @@ func (s *Service) purgeRejectedObjects(ctx context.Context, docs []Document) {
 	if !ok {
 		return
 	}
-	for _, d := range docs {
-		asyncCtx := context.WithoutCancel(ctx)
-		go func(key string) {
+	asyncCtx := context.WithoutCancel(ctx)
+	go func() {
+		for _, d := range docs {
+			key := d.Key
 			if err := deleter.DeleteObject(asyncCtx, key); err != nil {
 				observability.Error(asyncCtx, "kyc: failed to delete rejected document object", err, "object_key", key)
 			}
-		}(d.Key)
-	}
+		}
+	}()
 }
