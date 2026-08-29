@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {Geist, Geist_Mono} from 'next/font/google'
+import {IBM_Plex_Sans, IBM_Plex_Mono} from 'next/font/google'
 import {Toaster} from '@/components/ui/sonner'
 import {QueryProvider} from '@/providers/query-provider'
 import {I18nProvider} from '@/providers/i18n-provider'
@@ -7,15 +7,9 @@ import {RouteTitle} from '@/components/route-title'
 import './globals.css'
 import React from 'react'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-})
+const sans = IBM_Plex_Sans({subsets: ['latin'], variable: '--font-sans'});
+const mono = IBM_Plex_Mono({subsets: ['latin'], weight: ['400', '500', '600', '700',], variable: '--font-mono'});
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-})
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://accounts.aoctech.app'),
@@ -92,7 +86,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${sans.variable} ${mono.variable} h-full`}
       suppressHydrationWarning
     >
     <body className="min-h-screen bg-background text-foreground antialiased" suppressHydrationWarning>

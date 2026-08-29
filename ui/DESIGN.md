@@ -1,6 +1,6 @@
 ---
 name: CTech Account
-description: Identity console for the aoctech.app platform — secure, modern, approachable. One cobalt accent, flat tonal surfaces, Geist everywhere.
+description: Identity console for the aoctech.app platform — secure, modern, approachable. One cobalt accent, flat tonal surfaces, IBM Plex everywhere.
 colors:
   primary: "oklch(0.55 0.22 258)"
   primary-foreground: "oklch(0.99 0.01 255)"
@@ -31,31 +31,31 @@ colors:
   ring-dark: "oklch(0.68 0.18 258)"
 typography:
   display:
-    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "IBM Plex, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.25
     letterSpacing: "-0.02em"
   title:
-    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "IBM Plex, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 500
     lineHeight: 1.4
   body:
-    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "IBM Plex, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "IBM Plex, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 500
   caption:
-    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "IBM Plex, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.8rem"
     fontWeight: 500
   mono:
-    fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, monospace"
+    fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, monospace"
     fontSize: "0.875rem"
     fontWeight: 400
 rounded:
@@ -132,7 +132,7 @@ This system explicitly rejects the PRODUCT.md anti-references: **Generic pastel 
 **Key Characteristics:**
 - One saturated accent — CTech Cobalt — used sparingly for primary actions, current selection, and security state. Everything else is neutral.
 - Flat by default. Depth comes from 1px tonal rings and a faint blue backdrop, not drop shadows.
-- A single, well-tuned sans (Geist) carries the whole UI; Geist Mono reserves itself for secrets, tokens, and IDs.
+- A single, well-tuned sans (IBM Plex) carries the whole UI; IBM Plex Mono reserves itself for secrets, tokens, and IDs.
 - Security states (verified, pending, revoked, linked) are always icon + text, never color alone.
 - Bilingual (en / pt-BR); layout and copy hold both without truncation.
 
@@ -165,11 +165,11 @@ Dark mode mirrors the same roles against **Obsidian** (oklch(0.16 0.02 258)) bac
 
 ## 3. Typography
 
-**Display Font:** Geist (with ui-sans-serif, system-ui fallback)
-**Body Font:** Geist (same family)
-**Label/Mono Font:** Geist Mono (with ui-monospace fallback) — secrets, tokens, client IDs, CPF masks
+**Display Font:** IBM Plex (with ui-sans-serif, system-ui fallback)
+**Body Font:** IBM Plex (same family)
+**Label/Mono Font:** IBM Plex Mono (with ui-monospace fallback) — secrets, tokens, client IDs, CPF masks
 
-**Character:** One humanist sans, tuned tight. Geist carries headings, body, labels, and data with a single voice; the mono face is the only specialist, reserved for machine-readable strings so they never get mistaken for prose. No display/serif pairing — product UI earns familiarity through consistency, not contrast.
+**Character:** One humanist sans, tuned tight. IBM Plex carries headings, body, labels, and data with a single voice; the mono face is the only specialist, reserved for machine-readable strings so they never get mistaken for prose. No display/serif pairing — product UI earns familiarity through consistency, not contrast.
 
 ### Hierarchy
 - **Display** (600, 1.5rem / 24px, line-height 1.25, letter-spacing -0.02em): page and section titles (e.g. account area headers). Fixed rem, not fluid.
@@ -178,7 +178,7 @@ Dark mode mirrors the same roles against **Obsidian** (oklch(0.16 0.02 258)) bac
 - **Label** (500, 0.875rem / 14px): form labels, badges, tab triggers, button text.
 
 ### Named Rules
-**The One-Family Rule.** Geist everywhere; Geist Mono only for values a machine parses. Never introduce a second display face.
+**The One-Family Rule.** IBM Plex everywhere; IBM Plex Mono only for values a machine parses. Never introduce a second display face.
 
 **The Fixed-Scale Rule.** Sizes are fixed rem on a tight 1.125–1.2 ratio. No clamp() fluid headings — a sidebar title that shrinks looks broken, not responsive.
 
@@ -251,7 +251,7 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 ### Do:
 - Do keep CTech Cobalt to primary actions, the active selection, and security-affirming state (≤10% of screen).
 - Do convey security state with icon + text (Verified ✓, Pending, Revoked) — never color alone.
-- Do use Geist Mono for secrets, tokens, client IDs, and CPF masks.
+- Do use IBM Plex Mono for secrets, tokens, client IDs, and CPF masks.
 - Do respect the fixed rem type scale; let the sidebar and tables run dense when the task needs it.
 - Do keep the flat, ring-based elevation; use muted wells for hover/selected, not shadows.
 - Do hold ≥4.5:1 contrast for body and muted text; bump muted ink toward Ink if close.
@@ -263,7 +263,7 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 - Don't ship **Dense enterprise gray** — cramped, flat-gray, legacy back-office density. Neutrals are cool and quiet, not dead gray.
 - Don't go **Dark-mode hacker** — no terminal-only dark aesthetic that excludes non-technical users. Dark mode is a faithful twin of light, not the default.
 - Don't add drop shadows to cards, inputs, or tables at rest (The Flat-By-Default Rule).
-- Don't invent a second display font or pair Geist with a decorative face.
+- Don't invent a second display font or pair IBM Plex with a decorative face.
 - Don't use `border-left`/`border-right` >1px as a colored stripe on cards, list rows, or alerts.
 - Don't use gradient text or a colored gradient wash for the accent.
 - Don't reach for a modal as the first response — exhaust inline and progressive disclosure first.
