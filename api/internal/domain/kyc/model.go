@@ -125,11 +125,11 @@ func BuildDocumentKey(userID, documentID string) string {
 func ClaimLevel(level, status string) string {
 	switch {
 	case level == LevelEnhanced && status == StatusVerified:
-		return "verified"
+		return LevelEnhanced
 	case level == LevelBasic && status == StatusVerified:
-		return "basic"
+		return LevelBasic
 	case level == LevelEnhanced:
-		return "basic" // pending or rejected enhanced still keeps basic access
+		return LevelBasic // pending or rejected enhanced still keeps basic access
 	default:
 		return ""
 	}
