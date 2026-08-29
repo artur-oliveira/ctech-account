@@ -216,8 +216,15 @@ func newOrgTestApp(t *testing.T) *orgTestApp {
 		},
 	})
 	app.Use(recover.New())
-	v1 := app.Group("/v1.0", middleware.RequireAuth(base.jwtSvc))
-	handler.NewOrganizationHandler(svc, base.userSvc).Register(v1)
+	v1 := app.Group("/v1.0")
+	guard := middleware.RequireAuth(base.jwtSvc)
+	handler.NewOrganizationHandler(svc, base.userSvc).Register(
+		v1.Group("/organizations", guard),
+		v1.Group("/invitations", guard))
+	// Registered after the organization groups: a guard mounted on an
+	// empty-prefix group would swallow this route, which is how the internal
+	// scope-registry manifest started answering 403 in production.
+	v1.Get("/internal/probe", func(c fiber.Ctx) error { return c.SendString("open") })
 	return &orgTestApp{testApp: base, app: app, repo: repo, svc: svc}
 }
 
@@ -389,5 +396,15 @@ func TestTheInvitationFailuresStayMerged(t *testing.T) {
 	}
 	if a1.Detail != b1.Detail {
 		t.Fatalf("the two refusals read differently (%q vs %q), which is the same hint by another route", a1.Detail, b1.Detail)
+	}
+}
+
+// The first-party guard on the organization routes must not reach routes
+// registered after them.
+func TestOrganizationGuardDoesNotLeakToLaterRoutes(t *testing.T) {
+	app := newOrgTestApp(t)
+	resp := app.do(t, http.MethodGet, "/v1.0/internal/probe", "", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("later route guarded by the organization middleware: got %d, want 200", resp.StatusCode)
 	}
 }

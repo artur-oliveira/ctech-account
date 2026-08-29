@@ -26,24 +26,28 @@ func NewOrganizationHandler(svc *organization.Service, users *user.Service) *Org
 	return &OrganizationHandler{svc: svc, users: users}
 }
 
-// Register mounts the routes on a group that already carries RequireAuth and
+// Register mounts the routes on groups that already carry RequireAuth and
 // RequireClientID: managing who is in an organization is a first-party action,
 // not something a delegated token does on a user's behalf.
-func (h *OrganizationHandler) Register(r fiber.Router) {
-	r.Post("/organizations", h.create)
-	r.Get("/organizations", h.listMine)
-	r.Post("/invitations/accept", h.accept)
+//
+// The caller must pass groups with real path prefixes. Mounting the first-party
+// guard on an empty-prefix group applies it to every route registered after it —
+// that is what made the internal scope-registry manifest answer 403.
+func (h *OrganizationHandler) Register(orgs, invitations fiber.Router) {
+	orgs.Post("/", h.create)
+	orgs.Get("/", h.listMine)
+	invitations.Post("/accept", h.accept)
 
 	scoped := func(floor string) fiber.Handler { return middleware.RequireOrgRole(h.svc, floor) }
-	r.Get("/organizations/:id", scoped(organization.RoleViewer), h.get)
-	r.Patch("/organizations/:id", scoped(organization.RoleAdmin), h.rename)
-	r.Get("/organizations/:id/members", scoped(organization.RoleViewer), h.listMembers)
-	r.Patch("/organizations/:id/members/:user_id", scoped(organization.RoleAdmin), h.setRole)
-	r.Delete("/organizations/:id/members/:user_id", scoped(organization.RoleAdmin), h.removeMember)
-	r.Get("/organizations/:id/invitations", scoped(organization.RoleAdmin), h.listInvitations)
-	r.Post("/organizations/:id/invitations", scoped(organization.RoleAdmin), h.invite)
-	r.Delete("/organizations/:id/invitations/:email", scoped(organization.RoleAdmin), h.revokeInvitation)
-	r.Post("/organizations/:id/transfer", scoped(organization.RoleOwner), h.transfer)
+	orgs.Get("/:id", scoped(organization.RoleViewer), h.get)
+	orgs.Patch("/:id", scoped(organization.RoleAdmin), h.rename)
+	orgs.Get("/:id/members", scoped(organization.RoleViewer), h.listMembers)
+	orgs.Patch("/:id/members/:user_id", scoped(organization.RoleAdmin), h.setRole)
+	orgs.Delete("/:id/members/:user_id", scoped(organization.RoleAdmin), h.removeMember)
+	orgs.Get("/:id/invitations", scoped(organization.RoleAdmin), h.listInvitations)
+	orgs.Post("/:id/invitations", scoped(organization.RoleAdmin), h.invite)
+	orgs.Delete("/:id/invitations/:email", scoped(organization.RoleAdmin), h.revokeInvitation)
+	orgs.Post("/:id/transfer", scoped(organization.RoleOwner), h.transfer)
 }
 
 type organizationRequest struct {
