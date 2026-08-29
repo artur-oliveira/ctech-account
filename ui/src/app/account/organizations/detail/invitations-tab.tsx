@@ -238,7 +238,9 @@ function InviteDialog({ organization }: { organization: Organization }) {
                   asking a question with a wrong answer on it. */}
               <Select value={role} onValueChange={(v) => setRole(v as OrganizationRole)}>
                 <SelectTrigger id="invite-role">
-                  <SelectValue />
+                  <SelectValue>
+                    {role ? t(`organizations.roles.${role}`) : role}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {options.map((r) => (

@@ -1,32 +1,41 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import {Suspense, useEffect, useState} from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { QueryError } from '@/components/query-error'
-import { accessAdminKYCDocumentsAPI, decideAdminKYCReviewAPI } from '@/lib/mutations'
-import { fetchAdminKYCReview, fetchProfile } from '@/lib/queries'
-import { formatDate, formatDistanceToNow } from '@/lib/format'
-import { hasSupportRole } from '@/lib/support-role'
-import type { KYCRejectionCode } from '@/lib/types'
-import { ArrowLeft, ExternalLink, Eye, FileCheck2, ShieldAlert, XCircle } from 'lucide-react'
+import {useRouter, useSearchParams} from 'next/navigation'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {useTranslation} from 'react-i18next'
+import {toast} from 'sonner'
+import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
+import {Badge} from '@/components/ui/badge'
+import {Button} from '@/components/ui/button'
+import {ConfirmDialog} from '@/components/confirm-dialog'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import {QueryError} from '@/components/query-error'
+import {accessAdminKYCDocumentsAPI, decideAdminKYCReviewAPI} from '@/lib/mutations'
+import {fetchAdminKYCReview, fetchProfile} from '@/lib/queries'
+import {formatDate, formatDistanceToNow} from '@/lib/format'
+import {hasSupportRole} from '@/lib/support-role'
+import type {KYCRejectionCode} from '@/lib/types'
+import {ArrowLeft, ExternalLink, Eye, FileCheck2, ShieldAlert, XCircle} from 'lucide-react'
 
 function ReviewPageContent() {
-  const { t } = useTranslation()
+  const {t} = useTranslation()
   const router = useRouter()
   const params = useSearchParams()
   const userId = params.get('id') ?? ''
   const queryClient = useQueryClient()
-  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
+  const {data: profile} = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
   const allowed = !!profile && hasSupportRole(profile.support_role, 'manager')
 
   useEffect(() => {
@@ -40,40 +49,45 @@ function ReviewPageContent() {
   })
   const documents = useMutation({
     mutationFn: () => accessAdminKYCDocumentsAPI(userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'kyc', 'review', userId] }),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: ['admin', 'kyc', 'review', userId]}),
     onError: () => toast.error(t('adminKyc.documentsError')),
   })
   const decision = useMutation({
-    mutationFn: ({ value, reasonCode, details }: { value: 'approve' | 'reject'; reasonCode?: KYCRejectionCode; details?: string }) => decideAdminKYCReviewAPI(userId, value, reasonCode, details),
+    mutationFn: ({value, reasonCode, details}: {
+      value: 'approve' | 'reject';
+      reasonCode?: KYCRejectionCode;
+      details?: string
+    }) => decideAdminKYCReviewAPI(userId, value, reasonCode, details),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'kyc'] })
+      await queryClient.invalidateQueries({queryKey: ['admin', 'kyc']})
       toast.success(t('adminKyc.decisionSaved'))
       router.push('/admin/kyc')
     },
     onError: () => toast.error(t('adminKyc.decisionError')),
   })
 
-  if (!userId) return <QueryError error={new Error(t('adminKyc.missingId'))} onRetry={() => router.push('/admin/kyc')} />
+  if (!userId) return <QueryError error={new Error(t('adminKyc.missingId'))} onRetry={() => router.push('/admin/kyc')}/>
   if (!profile || !allowed || reviewQuery.isPending) {
-    return <div className="h-72 animate-pulse rounded-lg bg-muted" aria-label={t('common.loading')} />
+    return <div className="h-72 animate-pulse rounded-lg bg-muted" aria-label={t('common.loading')}/>
   }
-  if (reviewQuery.isError) return <QueryError error={reviewQuery.error} onRetry={() => reviewQuery.refetch()} />
+  if (reviewQuery.isError) return <QueryError error={reviewQuery.error} onRetry={() => reviewQuery.refetch()}/>
 
-  const { review, audit_log: auditLog } = reviewQuery.data
+  const {review, audit_log: auditLog} = reviewQuery.data
   const pending = review.status === 'pending'
 
   return (
     <div className="space-y-7">
       <div>
-        <Button variant="ghost" size="sm" className="-ml-2 mb-3" render={<Link href="/admin/kyc" />}>
-          <ArrowLeft className="size-4" /> {t('adminKyc.back')}
+        <Button variant="ghost" size="sm" className="-ml-2 mb-3" render={<Link href="/admin/kyc"/>}>
+          <ArrowLeft className="size-4"/> {t('adminKyc.back')}
         </Button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-balance">{review.legal_name}</h1>
             <p className="mt-1 font-mono text-xs text-muted-foreground">{review.user_id}</p>
           </div>
-          <Badge variant={review.status === 'rejected' ? 'destructive' : review.status === 'verified' ? 'default' : 'secondary'}>
+          <Badge
+            variant={review.status === 'rejected' ? 'destructive' : review.status === 'verified' ? 'default' : 'secondary'}>
             {t(`adminKyc.states.${review.status}`)}
           </Badge>
         </div>
@@ -96,7 +110,7 @@ function ReviewPageContent() {
         </dl>
         {review.risk_signals?.length > 0 && (
           <Alert>
-            <ShieldAlert className="size-4" />
+            <ShieldAlert className="size-4"/>
             <AlertTitle>{t('adminKyc.riskSignals')}</AlertTitle>
             <AlertDescription>{review.risk_signals.join(' · ')}</AlertDescription>
           </Alert>
@@ -109,8 +123,9 @@ function ReviewPageContent() {
             <h2 id="documents-heading" className="text-base font-semibold">{t('adminKyc.documents')}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">{t('adminKyc.documentsPrivacy')}</p>
           </div>
-          <Button variant="outline" onClick={() => documents.mutate()} disabled={documents.isPending || review.status === 'rejected'}>
-            <Eye className="size-4" /> {documents.isPending ? t('common.loading') : t('adminKyc.accessDocuments')}
+          <Button variant="outline" onClick={() => documents.mutate()}
+                  disabled={documents.isPending || review.status === 'rejected'}>
+            <Eye className="size-4"/> {documents.isPending ? t('common.loading') : t('adminKyc.accessDocuments')}
           </Button>
         </div>
         {documents.data && (
@@ -121,8 +136,9 @@ function ReviewPageContent() {
                   <p className="text-sm font-medium">{t(`adminKyc.documentTypes.${document.type}`)}</p>
                   <p className="text-xs text-muted-foreground">{formatDate(document.uploaded_at)}</p>
                 </div>
-                <Button variant="ghost" size="sm" render={<a href={document.url} target="_blank" rel="noopener noreferrer" />}>
-                  {t('adminKyc.openDocument')} <ExternalLink className="size-4" />
+                <Button variant="ghost" size="sm"
+                        render={<a href={document.url} target="_blank" rel="noopener noreferrer"/>}>
+                  {t('adminKyc.openDocument')} <ExternalLink className="size-4"/>
                 </Button>
               </li>
             ))}
@@ -138,14 +154,19 @@ function ReviewPageContent() {
           </div>
           <div className="flex flex-wrap gap-2">
             <ConfirmDialog
-              trigger={<Button disabled={decision.isPending}><FileCheck2 className="size-4" /> {t('adminKyc.approve')}</Button>}
+              trigger={<Button disabled={decision.isPending}><FileCheck2 className="size-4"/> {t('adminKyc.approve')}
+              </Button>}
               title={t('adminKyc.approveTitle')}
               description={t('adminKyc.approveDescription')}
               confirmLabel={t('adminKyc.approve')}
               variant="default"
-              onConfirm={() => decision.mutateAsync({ value: 'approve' }).catch(() => undefined)}
+              onConfirm={() => decision.mutateAsync({value: 'approve'}).catch(() => undefined)}
             />
-            <RejectReviewButton pending={decision.isPending} onReject={(reasonCode, details) => decision.mutateAsync({ value: 'reject', reasonCode, details })} />
+            <RejectReviewButton pending={decision.isPending} onReject={(reasonCode, details) => decision.mutateAsync({
+              value: 'reject',
+              reasonCode,
+              details
+            })}/>
           </div>
         </section>
       )}
@@ -156,11 +177,15 @@ function ReviewPageContent() {
           <ol className="space-y-3">
             {auditLog.map((event, index) => (
               <li key={`${event.created_at}-${index}`} className="flex gap-3 text-sm">
-                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"/>
                 <div>
-                  <p><span className="font-medium">{event.actor_name || event.actor_id || t('adminKyc.system')}</span> {t(`adminKyc.events.${event.event_type}`)}</p>
-                  <p className="text-xs text-muted-foreground">{formatDistanceToNow(event.created_at)} · {event.actor_role || '—'}</p>
-                  {event.reason_code && <p className="mt-1 text-muted-foreground">{t(`adminKyc.rejectionReasons.${event.reason_code}`)}{event.details ? ` — ${event.details}` : ''}</p>}
+                  <p><span
+                    className="font-medium">{event.actor_name || event.actor_id || t('adminKyc.system')}</span> {t(`adminKyc.events.${event.event_type}`)}
+                  </p>
+                  <p
+                    className="text-xs text-muted-foreground">{formatDistanceToNow(event.created_at)} · {event.actor_role || '—'}</p>
+                  {event.reason_code &&
+                      <p className="mt-1 text-muted-foreground">{t(`adminKyc.rejectionReasons.${event.reason_code}`)}{event.details ? ` — ${event.details}` : ''}</p>}
                 </div>
               </li>
             ))}
@@ -173,8 +198,11 @@ function ReviewPageContent() {
 
 const REJECTION_CODES: KYCRejectionCode[] = ['document_unreadable', 'document_incomplete', 'document_mismatch', 'selfie_mismatch', 'data_mismatch', 'suspected_fraud', 'other']
 
-function RejectReviewButton({ pending, onReject }: { pending: boolean; onReject: (reasonCode: KYCRejectionCode, details: string) => Promise<void> }) {
-  const { t } = useTranslation()
+function RejectReviewButton({pending, onReject}: {
+  pending: boolean;
+  onReject: (reasonCode: KYCRejectionCode, details: string) => Promise<void>
+}) {
+  const {t} = useTranslation()
   const [open, setOpen] = useState(false)
   const [reasonCode, setReasonCode] = useState<KYCRejectionCode | null>(null)
   const [details, setDetails] = useState('')
@@ -198,7 +226,9 @@ function RejectReviewButton({ pending, onReject }: { pending: boolean; onReject:
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
-      <DialogTrigger render={<Button variant="destructive" disabled={pending}><XCircle className="size-4" /> {t('adminKyc.reject')}</Button>} />
+      <DialogTrigger
+        render={<Button variant="destructive" disabled={pending}><XCircle className="size-4"/> {t('adminKyc.reject')}
+        </Button>}/>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t('adminKyc.rejectTitle')}</DialogTitle>
@@ -208,13 +238,17 @@ function RejectReviewButton({ pending, onReject }: { pending: boolean; onReject:
           <label htmlFor="kyc-rejection-code" className="text-sm font-medium">{t('adminKyc.rejectionReason')}</label>
           <Select value={reasonCode} onValueChange={(value) => setReasonCode(value as KYCRejectionCode)}>
             <SelectTrigger id="kyc-rejection-code" className="w-full" aria-invalid={!!error && !reasonCode}>
-              <SelectValue placeholder={t('adminKyc.rejectionReasonPlaceholder')} />
+              <SelectValue placeholder={t('adminKyc.rejectionReasonPlaceholder')}>
+                {reasonCode ? t(`adminKyc.rejectionReasons.${reasonCode}`) : reasonCode}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="start">
-              {REJECTION_CODES.map((code) => <SelectItem key={code} value={code}>{t(`adminKyc.rejectionReasons.${code}`)}</SelectItem>)}
+              {REJECTION_CODES.map((code) => <SelectItem key={code}
+                                                         value={code}>{t(`adminKyc.rejectionReasons.${code}`)}</SelectItem>)}
             </SelectContent>
           </Select>
-          <label htmlFor="kyc-rejection-details" className="text-sm font-medium">{t('adminKyc.rejectionDetails')}</label>
+          <label htmlFor="kyc-rejection-details"
+                 className="text-sm font-medium">{t('adminKyc.rejectionDetails')}</label>
           <textarea
             id="kyc-rejection-details"
             value={details}
@@ -229,8 +263,9 @@ function RejectReviewButton({ pending, onReject }: { pending: boolean; onReject:
           {error && <p id="kyc-rejection-error" className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter showCloseButton={false}>
-          <DialogClose render={<Button variant="outline" disabled={pending}>{t('dialog.cancel')}</Button>} />
-          <Button variant="destructive" onClick={submit} disabled={pending}>{pending ? t('dialog.processing') : t('adminKyc.reject')}</Button>
+          <DialogClose render={<Button variant="outline" disabled={pending}>{t('dialog.cancel')}</Button>}/>
+          <Button variant="destructive" onClick={submit}
+                  disabled={pending}>{pending ? t('dialog.processing') : t('adminKyc.reject')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -238,5 +273,5 @@ function RejectReviewButton({ pending, onReject }: { pending: boolean; onReject:
 }
 
 export default function AdminKYCReviewPage() {
-  return <Suspense fallback={<div className="h-72 animate-pulse rounded-lg bg-muted" />}><ReviewPageContent /></Suspense>
+  return <Suspense fallback={<div className="h-72 animate-pulse rounded-lg bg-muted"/>}><ReviewPageContent/></Suspense>
 }

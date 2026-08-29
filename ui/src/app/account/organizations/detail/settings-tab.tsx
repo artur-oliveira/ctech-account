@@ -1,35 +1,35 @@
 'use client'
 
-import { useState, type SyntheticEvent } from 'react'
-import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { fetchOrganizationMembers, fetchProfile } from '@/lib/queries'
-import { removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI } from '@/lib/mutations'
-import { isAxiosError } from '@/lib/axios'
-import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Organization } from '@/lib/types'
+import {type SyntheticEvent, useState} from 'react'
+import {useRouter} from 'next/navigation'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {useTranslation} from 'react-i18next'
+import {toast} from 'sonner'
+import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
+import {removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI} from '@/lib/mutations'
+import {isAxiosError} from '@/lib/axios'
+import {ConfirmDialog} from '@/components/confirm-dialog'
+import {Button} from '@/components/ui/button'
+import {Input} from '@/components/ui/input'
+import {Label} from '@/components/ui/label'
+import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import type {Organization} from '@/lib/types'
 
-export function SettingsTab({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+export function SettingsTab({organization}: { organization: Organization }) {
+  const {t} = useTranslation()
   const isOwner = organization.role === 'owner'
   const canManage = isOwner || organization.role === 'admin'
 
   return (
     <div className="space-y-8">
-      {canManage && <RenameSection organization={organization} />}
+      {canManage && <RenameSection organization={organization}/>}
 
       <section className="space-y-4">
         <h2 className="text-base font-medium">{t('organizations.settings.dangerTitle')}</h2>
         {isOwner ? (
           <>
-            <TransferSection organization={organization} />
+            <TransferSection organization={organization}/>
             {/* Not a disabled "leave" button: a dead control with no reason
                 given is a question the interface refuses to answer. */}
             <p className="max-w-prose text-sm text-muted-foreground">
@@ -37,22 +37,22 @@ export function SettingsTab({ organization }: { organization: Organization }) {
             </p>
           </>
         ) : (
-          <LeaveSection organization={organization} />
+          <LeaveSection organization={organization}/>
         )}
       </section>
     </div>
   )
 }
 
-function RenameSection({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+function RenameSection({organization}: { organization: Organization }) {
+  const {t} = useTranslation()
   const queryClient = useQueryClient()
 
-  const { mutate, isPending, error } = useMutation({
+  const {mutate, isPending, error} = useMutation({
     mutationFn: (displayName: string) => renameOrganizationAPI(organization.id, displayName),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization', organization.id] })
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
+      queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
+      queryClient.invalidateQueries({queryKey: ['organizations']})
       toast.success(t('toast.organizationRenamed'))
     },
     onError: (err) => {
@@ -108,12 +108,12 @@ function RenameSection({ organization }: { organization: Organization }) {
   )
 }
 
-function TransferSection({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+function TransferSection({organization}: { organization: Organization }) {
+  const {t} = useTranslation()
   const queryClient = useQueryClient()
   const [target, setTarget] = useState('')
 
-  const { data: members = [] } = useQuery({
+  const {data: members = []} = useQuery({
     queryKey: ['organization-members', organization.id],
     queryFn: () => fetchOrganizationMembers(organization.id),
   })
@@ -122,12 +122,12 @@ function TransferSection({ organization }: { organization: Organization }) {
   // typing an id is how an organization gets handed to a stranger.
   const candidates = members.filter((m) => m.role !== 'owner')
 
-  const { mutate, isPending } = useMutation({
+  const {mutate, isPending} = useMutation({
     mutationFn: (userId: string) => transferOwnershipAPI(organization.id, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization', organization.id] })
-      queryClient.invalidateQueries({ queryKey: ['organization-members', organization.id] })
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
+      void queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
+      void queryClient.invalidateQueries({queryKey: ['organization-members', organization.id]})
+      void queryClient.invalidateQueries({queryKey: ['organizations']})
       setTarget('')
       toast.success(t('toast.ownershipTransferred'))
     },
@@ -153,7 +153,9 @@ function TransferSection({ organization }: { organization: Organization }) {
             <Label htmlFor="transfer-target">{t('organizations.settings.transferSelect')}</Label>
             <Select value={target} onValueChange={(v) => setTarget(v ?? '')}>
               <SelectTrigger id="transfer-target" className="w-72">
-                <SelectValue placeholder={t('organizations.settings.transferSelect')} />
+                <SelectValue placeholder={t('organizations.settings.transferSelect')}>
+                  {candidates.find(it => it.user_id === target)?.name || target}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {candidates.map((m) => (
@@ -182,16 +184,16 @@ function TransferSection({ organization }: { organization: Organization }) {
   )
 }
 
-function LeaveSection({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+function LeaveSection({organization}: { organization: Organization }) {
+  const {t} = useTranslation()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
+  const {data: profile} = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
 
-  const { mutate } = useMutation({
+  const {mutate} = useMutation({
     mutationFn: (userId: string) => removeMemberAPI(organization.id, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
+      queryClient.invalidateQueries({queryKey: ['organizations']})
       router.push('/account/organizations')
     },
     onError: (err) => {

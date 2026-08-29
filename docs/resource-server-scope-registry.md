@@ -122,3 +122,16 @@ than rewriting history.
 The audience is deliberately absent: it is environment-specific and remains
 operator-owned. Resource APIs publish it at
 `/.well-known/oauth-protected-resource` according to RFC 9728.
+
+## Route mounting
+
+`/v1.0/internal/resource-servers/:id/manifest` is guarded by `RequireAuth` +
+`RequireInternalScope(internal:account:scope-registry:write)` only. It must never
+inherit `RequireClientID(SelfClientID)`: a publisher is not the first-party
+frontend, so that guard answers `403 "This endpoint is only accessible to this
+service's own frontend."` and the publish workflow fails.
+
+Fiber mounts a group's middleware on its prefix, so an empty-prefix group
+(`v1.Group("", guard)`) applies the guard to every route registered after it,
+including this one. Mount first-party guards on real prefixes
+(`v1.Group("/organizations", ...)`), never on `""`.
