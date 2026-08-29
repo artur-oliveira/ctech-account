@@ -47,6 +47,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
+	commonws "gopkg.aoctech.app/api-commons/ws"
 )
 
 func main() {
@@ -78,6 +79,16 @@ func main() {
 		log.Fatalf("VALKEY_URL is required in environment %q: OAuth codes, MFA tokens and rate limiting depend on Valkey", cfg.Environment)
 	}
 	valkeyRequired := cfg.Environment != "dev" && cfg.Environment != "development"
+	var supportWSRegistry commonws.Registry
+	if raw := valkeyClient.Raw(); raw != nil {
+		supportWSRegistry = commonws.NewRedisRegistry(raw)
+	} else {
+		supportWSRegistry = commonws.NewMemoryRegistry()
+	}
+	if err := supportWSRegistry.Start(ctx); err != nil {
+		log.Fatalf("starting support websocket registry: %v", err)
+	}
+	defer supportWSRegistry.Stop(context.Background())
 
 	sealer, err := crypto.NewSealer(cfg)
 
@@ -178,6 +189,7 @@ func main() {
 	// Services
 	userSvc := userDomain.NewService(userRepo)
 	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
+	supportSvc.SetNotifier(handler.NewSupportWSNotifier(supportWSRegistry))
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
 	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
@@ -316,6 +328,7 @@ func main() {
 	wellknownH.Register(app)
 
 	v1 := app.Group("/v1.0")
+	handler.RegisterSupportWS(v1, supportSvc, userSvc, jwtSvc, supportWSRegistry, allowedOrigins)
 	v1.Get("/health-check", healthHandler(db, database.TableName(cfg.TablePrefix, "account_users"), valkeyClient, cfg.AppVersion, valkeyRequired))
 
 	// Rate limiting (Valkey-backed; no-op when Valkey is disabled).

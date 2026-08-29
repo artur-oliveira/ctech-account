@@ -66,6 +66,10 @@ func (c *Client) Enabled() bool {
 	return c.enabled
 }
 
+// Raw exposes the fleet-shared client to infrastructure adapters such as the
+// api-commons WebSocket registry. It is nil for disabled/in-memory clients.
+func (c *Client) Raw() valkey.Client { return c.client }
+
 func (c *Client) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
 	if !c.enabled {
 		return nil

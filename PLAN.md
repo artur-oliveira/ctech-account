@@ -155,6 +155,11 @@ for the full spec and implementation plan.
 - [x] `cmd/api/main.go` — wire repository/service/handlers, mount `/v1.0/support`, `/v1.0/account/support`, `/v1.0/admin`
 - [x] Production error-observability audit — structured backend logging with request correlation,
       explicit logs for support-email/background failures, and sanitized frontend diagnostics
+- [x] Binary protobuf WebSocket at `/v1.0/support/tickets/:id/ws` — first-frame JWT/anonymous-token auth,
+      owner/agent authorization and Valkey fan-out across API instances
+- [x] Terminal closure semantics — closed threads reject replies, status changes, escalation and internal notes
+- [x] Agent collaboration — private notes and explicit specialist/engineering escalation
+- [x] `account_support_metrics` — transactional daily/monthly/yearly/all-time created/product and resolution aggregates
 
 ### Frontend (accounts.aoctech.app)
 
@@ -165,6 +170,8 @@ for the full spec and implementation plan.
 - [x] `lib/support-catalog.ts` — category/subcategory catalog merged into one `subject_other` string
 - [x] `lib/mock.ts` — seeded support-ticket scenarios (open/answered/closed/closed-with-NPS/anonymous) for `NEXT_PUBLIC_MOCK_API` dev mode
 - [x] `locales/en.json`, `locales/pt-BR.json` — `support` i18n namespace
+- [x] Agent support workspace — live connection state, irreversible-close confirmation, internal notes,
+      escalation controls and compact operational metrics
 
 ---
 

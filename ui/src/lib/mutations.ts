@@ -197,6 +197,8 @@ export async function replySupportTicketAPI(id: string, body: string, token = ''
 export async function submitSupportTicketNPSAPI(id: string, score: number, message: string, token = '') { await api.post(`/v1.0/support/tickets/${encodeURIComponent(id)}/nps${token ? `?token=${encodeURIComponent(token)}` : ''}`, { score, message }) }
 export async function replyAdminSupportTicketAPI(id: string, body: string) { await api.post(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/reply`, { body }) }
 export async function setAdminSupportTicketStatusAPI(id: string, status: string) { await api.put(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/status`, { status }) }
+export async function addAdminSupportInternalNoteAPI(id: string, body: string) { await api.post(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/notes`, {body}) }
+export async function setAdminSupportEscalationAPI(id: string, level: string) { await api.put(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}/escalation`, {level}) }
 
 export async function beginPasskeyAuthAPI() {
   const { data } = await api.post<{ session_token: string; options: string }>(

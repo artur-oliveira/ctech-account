@@ -47,12 +47,15 @@ jobs:
           if [ "$BRANCH" = "main" ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
             echo "NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_WS_URL=wss://accounts-api.aoctech.app" >> $GITHUB_ENV
           elif [ "$BRANCH" = "staging" ]; then
             echo "ENVIRONMENT=stage" >> $GITHUB_ENV
             echo "NEXT_PUBLIC_API_URL=https://accounts-stage-api.aoctech.app" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_WS_URL=wss://accounts-stage-api.aoctech.app" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
             echo "NEXT_PUBLIC_API_URL=https://accounts-dev-api.aoctech.app" >> $GITHUB_ENV
+            echo "NEXT_PUBLIC_WS_URL=wss://accounts-dev-api.aoctech.app" >> $GITHUB_ENV
           fi
 
       - name: Install dependencies
@@ -62,6 +65,7 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_WS_URL: ${{ env.NEXT_PUBLIC_WS_URL }}
 
       - name: Read stack outputs
         run: |

@@ -146,6 +146,27 @@ export class ApiStack extends cdk.Stack {
       ...(valkeyUrlSsmPath ? [`VALKEY_URL=${valkeyUrlSsmPath}`] : []),
     ];
 
+    // Preserve Upgrade/Connection headers and long-lived reads for the
+    // ticket-scoped binary protobuf WebSocket. setup-nginx includes this
+    // location file when it builds/reloads the main configuration.
+    userData.addCommands(
+      `cat > /etc/nginx/conf.d/location-support-ws.conf << 'SUPPORTWS'`,
+      `location ~ ^/v1\\.0/support/tickets/[^/]+/ws$ {`,
+      `    proxy_pass http://app;`,
+      `    proxy_http_version 1.1;`,
+      `    proxy_set_header Upgrade $http_upgrade;`,
+      `    proxy_set_header Connection $connection_upgrade;`,
+      `    proxy_set_header Host $host;`,
+      `    proxy_set_header X-Real-IP $remote_addr;`,
+      `    proxy_set_header X-Forwarded-For $remote_addr;`,
+      `    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;`,
+      `    proxy_read_timeout 3600s;`,
+      `    proxy_send_timeout 3600s;`,
+      `    proxy_buffering off;`,
+      `}`,
+      `SUPPORTWS`,
+    );
+
     if (isAlpine) {
       const quoted = ssmEnvArgs.map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(' ');
       userData.addCommands(`ctech_run setup-ssm-env.sh ${quoted}`);

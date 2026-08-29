@@ -12,6 +12,8 @@ import { QueryError } from '@/components/query-error'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { SupportMessage } from '@/lib/types'
+import Link from 'next/link'
+import {useSupportRealtime} from '@/lib/hooks/use-support-realtime'
 
 const STATUS_VARIANT = {
   open: 'default',
@@ -30,6 +32,7 @@ function TicketThread() {
   const search = useSearchParams()
   const id = search.get('id') ?? ''
   const token = search.get('token') ?? ''
+  const realtimeStatus = useSupportRealtime(id, token)
   const [body, setBody] = useState('')
   const [npsScore, setNpsScore] = useState(0)
   const [npsMessage, setNpsMessage] = useState('')
@@ -91,7 +94,14 @@ function TicketThread() {
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-12">
       <div className="space-y-1">
-        <p className="text-sm text-muted-foreground">#{ticket.ticket_number}</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>#{ticket.ticket_number}</span>
+          <span aria-hidden="true">·</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`size-2 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-600' : 'bg-muted-foreground'}`} />
+            {t(`support.ticket.realtime.${realtimeStatus}`)}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold">{ticket.subject_other || t(`support.categories.${ticket.subject_category}`)}</h1>
           <Badge variant={STATUS_VARIANT[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
@@ -127,6 +137,13 @@ function TicketThread() {
             {reply.isPending ? t('support.ticket.replying') : t('support.ticket.reply')}
           </Button>
         </form>
+      )}
+
+      {isClosed && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted p-4">
+          <p className="max-w-xl text-sm text-muted-foreground">{t('support.ticket.closedHelp')}</p>
+          <Button variant="outline" render={<Link href="/support"/>}>{t('support.mine.newTicket')}</Button>
+        </div>
       )}
 
       {isClosed && !hasNpsScore && (

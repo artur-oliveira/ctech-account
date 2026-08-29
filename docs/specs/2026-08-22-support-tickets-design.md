@@ -1,6 +1,24 @@
 # Support Tickets (E-mail via SES) — Design Spec
 
-**Date:** 2026-08-22 **Status:** Draft — pending user review **Cross-project impact:** None. No changes to JWT signing,
+## 2026-08-28 realtime and agent-workspace amendment
+
+The asynchronous v1 described below remains the durable HTTP/e-mail baseline. The following rules supersede its
+earlier reopen and WebSocket deferrals:
+
+- `GET /v1.0/support/tickets/:id/ws` uses binary `proto/support.proto` frames. The first frame authenticates with an
+  access JWT or the opaque anonymous ticket token; the service then verifies ticket ownership or the caller's live
+  `support_role`. Agents also subscribe to a separate internal channel. Valkey Pub/Sub fans events across ASG
+  instances; the HTTP thread remains authoritative after reconnect.
+- Closing is a terminal lifecycle transition. Users and agents cannot reply, change status, escalate, or add notes to
+  a closed ticket. A later question starts a new ticket. The admin UI uses an irreversible-action confirmation.
+- Internal notes are stored under the ticket's `NOTE_` sort-key namespace and are returned only by the admin detail
+  endpoint. Escalation is explicit: `none`, `specialist`, or `engineering`.
+- `{env}_account_support_metrics` stores pre-aggregated day/month/year/all-time buckets. Ticket creation atomically
+  increments created volume and its product counter; terminal closure atomically increments resolution count and
+  total resolution seconds. Product distribution therefore includes every created ticket, not only resolved ones.
+- New admin routes: `POST .../:id/notes`, `PUT .../:id/escalation`, and `GET /v1.0/admin/support/metrics`.
+
+**Date:** 2026-08-22 **Status:** Implemented (including the 2026-08-28 amendment) **Cross-project impact:** None. No changes to JWT signing,
 JWKS, OAuth flows, or token claims. `ctech-dfe` and `ctech-wallet` are unaffected. Purely additive within
 `ctech-account` (api + ui). No `ctech-cdk` shared-construct changes expected — this repo's own `cdk/` gets one new
 DynamoDB table + two SSM parameters.

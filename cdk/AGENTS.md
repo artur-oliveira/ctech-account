@@ -8,7 +8,7 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
+Defines and deploys all AWS infrastructure for the ctech-account service: **ten**
 DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**, S3 + CloudFront
 (frontend), IAM roles, GitHub Actions OIDC, a private KYC documents bucket, and the
 shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
@@ -62,9 +62,9 @@ cdk/
 
 | Environment | Removal Policy    | PITR   | Tables                          |
 |-------------|-------------------|--------|---------------------------------|
-| development | `DESTROY`         | No     | 8 × `{env}_account_*` / `_ctech_scopes` |
-| staging     | `RETAIN`          | No     | 8 × `{env}_account_*` / `_ctech_scopes` |
-| production  | `RETAIN`          | Yes    | 8 × `{env}_account_*` / `_ctech_scopes` |
+| development | `DESTROY`         | No     | 10 × `{env}_account_*` / `_ctech_scopes` |
+| staging     | `RETAIN`          | No     | 10 × `{env}_account_*` / `_ctech_scopes` |
+| production  | `RETAIN`          | Yes    | 10 × `{env}_account_*` / `_ctech_scopes` |
 
 Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no single
 `ctech-account-{environment}` table.

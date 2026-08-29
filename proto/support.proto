@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package support;
+
+option go_package = "gopkg.aoctech.app/account/api/internal/proto;supportproto";
+
+// The first client frame must authenticate. Later frames only keep the
+// connection alive; durable ticket mutations stay on the HTTP API.
+message ClientMessage {
+  string type = 1; // auth | ping
+  string token = 2;
+  string anonymous_token = 3;
+  string body = 4;
+  string action_id = 5;
+}
+
+message TicketEvent {
+  string ticket_id = 1;
+  string status = 2;
+  string escalation_level = 3;
+  string author_type = 4;
+  string body = 5;
+  string created_at = 6;
+}
+
+message ServerMessage {
+  string type = 1; // connected | ticket_updated | message | internal_note | pong | error
+  string code = 2;
+  string action_id = 3;
+  TicketEvent event = 4;
+}

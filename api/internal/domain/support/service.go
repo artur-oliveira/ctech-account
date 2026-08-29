@@ -14,6 +14,7 @@ var (
 	ErrForbidden    = errors.New("not authorized for this ticket")
 	ErrInvalidNPS   = errors.New("invalid NPS submission")
 	ErrInvalidInput = errors.New("invalid ticket input")
+	ErrTicketClosed = errors.New("closed tickets are immutable")
 )
 
 // Freetext bounds, per docs/specs/2026-08-22-support-tickets-design.md §3.5.
@@ -25,15 +26,25 @@ var (
 	// headers into the outbound SES message.
 	subjectOtherRule = validate.FreetextRule{Min: 3, Max: 120}
 	npsMessageRule   = validate.FreetextRule{Min: 15, Max: 1000, AllowNewlines: true}
+	internalNoteRule = validate.FreetextRule{Min: 3, Max: 4000, AllowNewlines: true}
 )
 
 type Service struct {
-	repo Repository
+	repo     Repository
+	notifier Notifier
+}
+
+type Event struct{ TicketID, Type, Status, EscalationLevel, AuthorType, Body, CreatedAt string }
+type Notifier interface {
+	Publish(ctx context.Context, event Event)
+	PublishInternal(ctx context.Context, event Event)
 }
 
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
+
+func (s *Service) SetNotifier(notifier Notifier) { s.notifier = notifier }
 
 type CreateTicketInput struct {
 	UserID          string // empty for anonymous submissions
@@ -91,6 +102,7 @@ func (s *Service) CreateTicket(ctx context.Context, in CreateTicketInput) (*Tick
 		SubjectOther:    in.SubjectOther,
 		Priority:        in.Priority,
 		Status:          StatusOpen,
+		EscalationLevel: EscalationNone,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		LastMessageAt:   now,
@@ -153,6 +165,18 @@ func (s *Service) GetTicketAdmin(ctx context.Context, id string) (*Ticket, []*Me
 	return ticket, messages, nil
 }
 
+func (s *Service) GetTicketAdminWithNotes(ctx context.Context, id string) (*Ticket, []*Message, []*InternalNote, error) {
+	ticket, messages, err := s.GetTicketAdmin(ctx, id)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	notes, err := s.repo.ListInternalNotes(ctx, id)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("listing internal notes: %w", err)
+	}
+	return ticket, messages, notes, nil
+}
+
 // RecordEmailMessageID persists mail-thread state after SES accepted a send.
 // SES returns a bare Message-ID (no angle brackets); RFC 5322's
 // In-Reply-To/References headers require the bracketed form, so it's wrapped
@@ -177,21 +201,15 @@ func (s *Service) ReplyAsUser(ctx context.Context, id, userID, anonToken, body s
 	if err != nil {
 		return err
 	}
+	if ticket.Status == StatusClosed {
+		return ErrTicketClosed
+	}
 	cleaned, err := validate.Freetext(body, bodyRule)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	if err := s.putMessage(ctx, id, AuthorUser, userID, cleaned); err != nil {
 		return err
-	}
-	if ticket.Status == StatusClosed {
-		if err := s.putSystemMessage(ctx, id, "Ticket reaberto pelo usuário."); err != nil {
-			return err
-		}
-		return s.repo.UpdateTicket(ctx, id, map[string]any{
-			"status":     StatusOpen,
-			"updated_at": time.Now().UTC().Format(time.RFC3339),
-		})
 	}
 	return nil
 }
@@ -204,20 +222,27 @@ func (s *Service) ReplyAsAgent(ctx context.Context, id, agentUserID, body string
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	if _, err := s.repo.GetTicket(ctx, id); err != nil {
+	ticket, err := s.repo.GetTicket(ctx, id)
+	if err != nil {
 		return nil, nil, err
+	}
+	if ticket.Status == StatusClosed {
+		return nil, nil, ErrTicketClosed
 	}
 	msg, err := s.putMessageReturning(ctx, id, AuthorAgent, agentUserID, cleaned)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.repo.UpdateTicket(ctx, id, map[string]any{
-		"status":     StatusAnswered,
-		"updated_at": time.Now().UTC().Format(time.RFC3339),
-	}); err != nil {
+	if err := s.repo.MarkAnswered(ctx, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		if current, getErr := s.repo.GetTicket(ctx, id); getErr == nil && current.Status == StatusClosed {
+			return nil, nil, ErrTicketClosed
+		}
 		return nil, nil, fmt.Errorf("updating ticket status: %w", err)
 	}
-	ticket, err := s.repo.GetTicket(ctx, id)
+	if s.notifier != nil {
+		s.notifier.Publish(ctx, Event{TicketID: id, Type: "ticket_updated", Status: StatusAnswered, EscalationLevel: ticket.EscalationLevel, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	}
+	ticket, err = s.repo.GetTicket(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -228,17 +253,93 @@ func (s *Service) SetStatus(ctx context.Context, id, status string) error {
 	if !contains(ValidStatuses, status) {
 		return fmt.Errorf("%w: unknown status %q", ErrInvalidInput, status)
 	}
-	if _, err := s.repo.GetTicket(ctx, id); err != nil {
+	ticket, err := s.repo.GetTicket(ctx, id)
+	if err != nil {
 		return err
+	}
+	if ticket.Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	if ticket.Status == status {
+		return nil
 	}
 	updates := map[string]any{"status": status, "updated_at": time.Now().UTC().Format(time.RFC3339)}
 	if status == StatusClosed {
-		updates["closed_at"] = time.Now().UTC().Format(time.RFC3339)
-	}
-	if err := s.repo.UpdateTicket(ctx, id, updates); err != nil {
+		closedAt := time.Now().UTC()
+		updates["closed_at"] = closedAt.Format(time.RFC3339)
+		createdAt, parseErr := time.Parse(time.RFC3339, ticket.CreatedAt)
+		if parseErr != nil {
+			return fmt.Errorf("parsing ticket created_at: %w", parseErr)
+		}
+		if err := s.repo.CloseTicket(ctx, id, closedAt, int64(closedAt.Sub(createdAt).Seconds())); err != nil {
+			return fmt.Errorf("closing ticket and recording support metrics: %w", err)
+		}
+	} else if err := s.repo.UpdateActiveStatus(ctx, id, status, updates["updated_at"].(string)); err != nil {
+		if current, getErr := s.repo.GetTicket(ctx, id); getErr == nil && current.Status == StatusClosed {
+			return ErrTicketClosed
+		}
 		return err
 	}
-	return s.putSystemMessage(ctx, id, fmt.Sprintf("Status alterado para %q.", status))
+	if err := s.putSystemMessage(ctx, id, fmt.Sprintf("Status alterado para %q.", status)); err != nil {
+		return err
+	}
+	if s.notifier != nil {
+		s.notifier.Publish(ctx, Event{TicketID: id, Type: "ticket_updated", Status: status, EscalationLevel: ticket.EscalationLevel, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	}
+	return nil
+}
+
+func (s *Service) AddInternalNote(ctx context.Context, id, agentUserID, body string) (*InternalNote, error) {
+	ticket, err := s.repo.GetTicket(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if ticket.Status == StatusClosed {
+		return nil, ErrTicketClosed
+	}
+	cleaned, err := validate.Freetext(body, internalNoteRule)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	note := &InternalNote{PK: id, AuthorID: agentUserID, Body: cleaned, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	if err := s.repo.PutInternalNote(ctx, note); err != nil {
+		if current, getErr := s.repo.GetTicket(ctx, id); getErr == nil && current.Status == StatusClosed {
+			return nil, ErrTicketClosed
+		}
+		return nil, fmt.Errorf("putting internal note: %w", err)
+	}
+	if s.notifier != nil {
+		s.notifier.PublishInternal(ctx, Event{TicketID: id, Type: "internal_note", AuthorType: AuthorAgent, Body: note.Body, CreatedAt: note.CreatedAt})
+	}
+	return note, nil
+}
+
+func (s *Service) SetEscalation(ctx context.Context, id, agentUserID, level string) error {
+	if !contains(ValidEscalations, level) {
+		return fmt.Errorf("%w: unknown escalation level %q", ErrInvalidInput, level)
+	}
+	ticket, err := s.repo.GetTicket(ctx, id)
+	if err != nil {
+		return err
+	}
+	if ticket.Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := s.repo.UpdateEscalation(ctx, id, level, agentUserID, now); err != nil {
+		if current, getErr := s.repo.GetTicket(ctx, id); getErr == nil && current.Status == StatusClosed {
+			return ErrTicketClosed
+		}
+		return err
+	}
+	if s.notifier != nil {
+		s.notifier.Publish(ctx, Event{TicketID: id, Type: "ticket_updated", Status: ticket.Status, EscalationLevel: level, CreatedAt: now})
+	}
+	return nil
+}
+
+func (s *Service) Metrics(ctx context.Context, now time.Time) ([]MetricBucket, error) {
+	return s.repo.GetMetrics(ctx, now.UTC())
 }
 
 func (s *Service) SubmitNPS(ctx context.Context, id, userID, anonToken string, score int, message string) error {
@@ -296,11 +397,17 @@ func (s *Service) putMessageReturning(ctx context.Context, ticketID, authorType,
 		Body:       body,
 		CreatedAt:  time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	if err := s.repo.PutMessage(ctx, msg); err != nil {
+	if err := s.repo.PutMessage(ctx, msg, authorType != AuthorSystem); err != nil {
+		if ticket, getErr := s.repo.GetTicket(ctx, ticketID); getErr == nil && ticket.Status == StatusClosed {
+			return nil, ErrTicketClosed
+		}
 		return nil, fmt.Errorf("putting message: %w", err)
 	}
 	if err := s.repo.UpdateTicket(ctx, ticketID, map[string]any{"last_message_at": msg.CreatedAt}); err != nil {
 		return nil, fmt.Errorf("updating last_message_at: %w", err)
+	}
+	if s.notifier != nil {
+		s.notifier.Publish(ctx, Event{TicketID: ticketID, Type: "message", AuthorType: authorType, Body: body, CreatedAt: msg.CreatedAt})
 	}
 	return msg, nil
 }

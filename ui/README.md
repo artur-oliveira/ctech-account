@@ -9,6 +9,13 @@ The browser calls the API **cross-origin** at `NEXT_PUBLIC_API_URL`
 CORS applies. `/.well-known/*` is served by the API host only. See
 [`CLAUDE.md`](CLAUDE.md) for why the auth cookies still work.
 
+Support threads use `@aoctech/ws-client` against the explicit `NEXT_PUBLIC_WS_URL` and exchange binary frames from
+`../proto/support.proto`. The socket's first frame carries the in-memory access JWT or anonymous ticket token; live
+events invalidate the authoritative TanStack Query thread. Deployed CSP must list the `wss://` origin explicitly.
+Regenerate Go from the repository root with
+`protoc --go_out=api --go_opt=module=gopkg.aoctech.app/account/api proto/support.proto`, then regenerate TypeScript
+with `npm run generate:support-proto` in `ui/`.
+
 ## Development and quality gates
 
 ```bash
@@ -17,6 +24,7 @@ npm run dev
 npm test
 npm run lint
 npm run build
+npm run generate:support-proto
 npm audit --omit=dev
 ```
 

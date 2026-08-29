@@ -1,5 +1,5 @@
 import { api, isAxiosError } from './axios'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportMessage, SupportTicket } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -81,7 +81,12 @@ export async function fetchAdminSupportTickets(status = 'open'): Promise<{ ticke
   return { tickets: data.tickets ?? [], next_cursor: data.next_cursor ?? '' }
 }
 
-export async function fetchAdminSupportTicket(id: string): Promise<{ ticket: SupportTicket; messages: SupportMessage[] }> {
+export async function fetchAdminSupportTicket(id: string): Promise<{ ticket: SupportTicket; messages: SupportMessage[]; internal_notes: SupportInternalNote[] }> {
   const { data } = await api.get(`/v1.0/admin/support/tickets/${encodeURIComponent(id)}`)
-  return { ticket: data.ticket, messages: data.messages ?? [] }
+  return { ticket: data.ticket, messages: data.messages ?? [], internal_notes: data.internal_notes ?? [] }
+}
+
+export async function fetchAdminSupportMetrics(): Promise<{buckets: SupportMetricBucket[]}> {
+  const {data} = await api.get('/v1.0/admin/support/metrics')
+  return {buckets: data.buckets ?? []}
 }

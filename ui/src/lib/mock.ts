@@ -189,11 +189,11 @@ const state = {
   // anonymous submission (no user_id) that only the admin queue — not "my
   // tickets" — should surface.
   supportTickets: [
-    { id: 'TICKET_supp_open', ticket_number: 101, user_id: 'mock_user', subject_category: 'account', subject_other: 'Conta e login — Não consigo fazer login', priority: 'high', status: 'open', created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), last_message_at: new Date(Date.now() - 2 * 3_600_000).toISOString() },
-    { id: 'TICKET_supp_answered', ticket_number: 102, user_id: 'mock_user', subject_category: 'wallet', subject_other: 'Wallet — Problema com depósito', priority: 'medium', status: 'answered', created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 3_600_000).toISOString() },
-    { id: 'TICKET_supp_closed_no_nps', ticket_number: 103, user_id: 'mock_user', subject_category: 'kyc', subject_other: 'KYC e verificação — Documentos reprovados', priority: 'low', status: 'closed', created_at: new Date(Date.now() - 6 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 5 * 86_400_000).toISOString() },
-    { id: 'TICKET_supp_closed_with_nps', ticket_number: 104, user_id: 'mock_user', subject_category: 'billing', subject_other: 'Billing — Cobrança indevida', priority: 'urgent', status: 'closed', created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), nps_score: 5 },
-    { id: 'TICKET_supp_anon', ticket_number: 105, subject_category: 'other', subject_other: 'Problema não listado no catálogo', priority: 'critical', status: 'open', created_at: new Date(Date.now() - 30 * 60_000).toISOString(), last_message_at: new Date(Date.now() - 30 * 60_000).toISOString() },
+    { id: 'TICKET_supp_open', ticket_number: 101, user_id: 'mock_user', subject_category: 'account', subject_other: 'Conta e login — Não consigo fazer login', priority: 'high', status: 'open', escalation_level: 'none', created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), last_message_at: new Date(Date.now() - 2 * 3_600_000).toISOString() },
+    { id: 'TICKET_supp_answered', ticket_number: 102, user_id: 'mock_user', subject_category: 'wallet', subject_other: 'Wallet — Problema com depósito', priority: 'medium', status: 'answered', escalation_level: 'specialist', created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 3_600_000).toISOString() },
+    { id: 'TICKET_supp_closed_no_nps', ticket_number: 103, user_id: 'mock_user', subject_category: 'kyc', subject_other: 'KYC e verificação — Documentos reprovados', priority: 'low', status: 'closed', escalation_level: 'none', created_at: new Date(Date.now() - 6 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 5 * 86_400_000).toISOString() },
+    { id: 'TICKET_supp_closed_with_nps', ticket_number: 104, user_id: 'mock_user', subject_category: 'billing', subject_other: 'Billing — Cobrança indevida', priority: 'urgent', status: 'closed', escalation_level: 'none', created_at: new Date(Date.now() - 10 * 86_400_000).toISOString(), last_message_at: new Date(Date.now() - 9 * 86_400_000).toISOString(), nps_score: 5 },
+    { id: 'TICKET_supp_anon', ticket_number: 105, subject_category: 'other', subject_other: 'Problema não listado no catálogo', priority: 'critical', status: 'open', escalation_level: 'engineering', created_at: new Date(Date.now() - 30 * 60_000).toISOString(), last_message_at: new Date(Date.now() - 30 * 60_000).toISOString() },
   ] as SupportTicket[],
   supportMessages: {
     TICKET_supp_open: [
@@ -223,6 +223,7 @@ const state = {
       mockSupportMessage({ author_type: 'user', body: 'Não encontrei uma categoria para o meu problema na lista.', created_at: new Date(Date.now() - 30 * 60_000 + 1000).toISOString() }),
     ],
   } as Record<string, SupportMessage[]>,
+  supportInternalNotes: {} as Record<string, Array<{id: string; author_id: string; body: string; created_at: string}>>,
 }
 
 function ok<T>(data: T, config: InternalAxiosRequestConfig): AxiosResponse<T> {
@@ -306,7 +307,7 @@ const routes: Route[] = [
     handle: (m, _b, config) => {
       const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
       if (!ticket) fail(404, { detail: 'Ticket not found' }, config)
-      return { ticket, messages: state.supportMessages[ticket.id] ?? [] }
+      return { ticket, messages: state.supportMessages[ticket.id] ?? [], internal_notes: state.supportInternalNotes[ticket.id] ?? [] }
     },
   },
   {
@@ -333,6 +334,7 @@ const routes: Route[] = [
         subject_other: body.subject_other ? String(body.subject_other) : undefined,
         priority: (body.priority as SupportTicket['priority']) ?? 'low',
         status: 'open',
+        escalation_level: 'none',
         created_at: new Date().toISOString(),
         last_message_at: new Date().toISOString(),
       }
@@ -354,8 +356,19 @@ const routes: Route[] = [
       const now = new Date().toISOString()
       state.supportMessages[ticket.id] = [...(state.supportMessages[ticket.id] ?? []), mockSupportMessage({ author_type: 'user', body: String(body.body ?? ''), created_at: now })]
       ticket.last_message_at = now
-      if (ticket.status === 'closed') ticket.status = 'open'
+      if (ticket.status === 'closed') fail(422, {detail: 'Closed tickets are immutable'}, config)
       return {}
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)\/notes$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, {detail: 'Ticket not found'}, config)
+      const note = {id: mockId('NOTE'), author_id: state.user.user_id, body: String(body.body ?? ''), created_at: new Date().toISOString()}
+      state.supportInternalNotes[ticket.id] = [...(state.supportInternalNotes[ticket.id] ?? []), note]
+      return note
     },
   },
   {
@@ -516,6 +529,23 @@ const routes: Route[] = [
     },
   },
 
+  {
+    method: 'get', pattern: /^\/v1\.0\/admin\/support\/metrics$/,
+    handle: () => ({buckets: [
+      {period: `day#${new Date().toISOString().slice(0, 10)}`, created_count: 6, resolved_count: 4, average_resolution_seconds: 5400, tickets_by_product: {account: 3, wallet: 2, kyc: 1}},
+      {period: 'all', created_count: 151, resolved_count: 128, average_resolution_seconds: 8100, tickets_by_product: {account: 49, wallet: 36, kyc: 28, billing: 20, dfe: 10, poker: 8}},
+    ]}),
+  },
+  {
+    method: 'put',
+    pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)\/escalation$/,
+    handle: (m, body, config) => {
+      const ticket = state.supportTickets.find((t) => t.id.replace('TICKET_', '') === m[1])
+      if (!ticket) fail(404, {detail: 'Ticket not found'}, config)
+      ticket.escalation_level = String(body.level ?? 'none') as SupportTicket['escalation_level']
+      return {}
+    },
+  },
   {
     method: 'put',
     pattern: /^\/v1\.0\/admin\/support\/tickets\/([^/]+)\/status$/,

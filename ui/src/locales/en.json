@@ -661,6 +661,14 @@
       "replyPlaceholder": "Write a reply",
       "reply": "Reply",
       "replying": "Sending…",
+      "closedHelp": "This request is closed and preserved as history. If you need more help, open a new ticket.",
+      "realtime": {
+        "connected": "Live updates",
+        "connecting": "Connecting…",
+        "reconnecting": "Reconnecting…",
+        "disconnected": "Manual updates",
+        "error": "Live updates unavailable"
+      },
       "status": {
         "open": "Open",
         "answered": "Answered",
@@ -695,7 +703,37 @@
       "replyPlaceholder": "Write a reply to the customer",
       "replying": "Sending…",
       "statusLabel": "Status",
-      "back": "Back to queue"
+      "back": "Back to queue",
+      "close": "Close",
+      "closeTitle": "Close this ticket?",
+      "closeDescription": "Closing is final: neither the customer nor agents can reply, change status, escalate, or add notes. A new question requires a new ticket.",
+      "closeConfirm": "Close permanently",
+      "closedImmutable": "Closed ticket. The conversation, status, notes, and escalation are now read-only.",
+      "internalTools": "Internal tools",
+      "internalNote": "Internal note",
+      "internalNotePlaceholder": "Leave context for other agents. The customer cannot see this note.",
+      "saveNote": "Save note",
+      "escalationLabel": "Escalation",
+      "escalation": {
+        "none": "No escalation",
+        "specialist": "Product specialist",
+        "engineering": "Engineering"
+      },
+      "metrics": {
+        "title": "Support health",
+        "subtitle": "Created volume and permanent-resolution performance.",
+        "period": "Period",
+        "created": "Created",
+        "resolved": "Resolved",
+        "average": "Average time",
+        "leadingProduct": "Highest-volume product",
+        "day": "Today",
+        "month": "This month",
+        "year": "This year",
+        "all": "All time",
+        "minutes": "{{count}} min",
+        "hours": "{{count}} hr"
+      }
     }
   }
 }

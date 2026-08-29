@@ -39,6 +39,14 @@ test('user data stays well under the EC2 limit', () => {
   expect(Buffer.byteLength(userDataText(), 'utf8')).toBeLessThan(USER_DATA_LIMIT_BYTES)
 })
 
+test('nginx forwards the support websocket upgrade', () => {
+  const text = userDataText()
+  expect(text).toContain('location-support-ws.conf')
+  expect(text).toContain('support/tickets/[^/]+/ws')
+  expect(text).toContain('proxy_set_header Upgrade $http_upgrade')
+  expect(text).toContain('proxy_read_timeout 3600s')
+})
+
 test('no secret value is written into the launch template', () => {
   // The instance reads secrets from SSM at service start, using its own role.
   const text = userDataText()

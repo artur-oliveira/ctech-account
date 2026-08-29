@@ -25,16 +25,19 @@ jobs:
       prod-workers-dev: false
       build-env-dev: |
         NEXT_PUBLIC_API_URL=https://accounts-dev-api.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://accounts-dev-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_DEV }}
       build-env-stage: |
         NEXT_PUBLIC_API_URL=https://accounts-stage-api.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://accounts-stage-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_STAGE }}
       build-env-prod: |
         NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://accounts-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_PROD }}
       # The reusable workflow derives connect-src from the API origins above;
       # add Turnstile through its dedicated extension point.
-      extra-connect-src: https://challenges.cloudflare.com
+      extra-connect-src: https://challenges.cloudflare.com wss://accounts-dev-api.aoctech.app wss://accounts-stage-api.aoctech.app wss://accounts-api.aoctech.app
       # blob: for the KYC document capture preview, media-src for its camera
       # stream. Ported from contentSecurityPolicyDirectives in
       # cdk/lib/frontend-stack.ts:41-51.

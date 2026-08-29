@@ -661,6 +661,14 @@
       "replyPlaceholder": "Escreva uma resposta",
       "reply": "Responder",
       "replying": "Enviando…",
+      "closedHelp": "Este atendimento foi encerrado e preservado como histórico. Se precisar de mais ajuda, abra um novo ticket.",
+      "realtime": {
+        "connected": "Atualizações em tempo real",
+        "connecting": "Conectando…",
+        "reconnecting": "Reconectando…",
+        "disconnected": "Atualização manual",
+        "error": "Tempo real indisponível"
+      },
       "status": {
         "open": "Aberto",
         "answered": "Respondido",
@@ -695,7 +703,37 @@
       "replyPlaceholder": "Escreva uma resposta para o cliente",
       "replying": "Enviando…",
       "statusLabel": "Status",
-      "back": "Voltar para a fila"
+      "back": "Voltar para a fila",
+      "close": "Encerrar",
+      "closeTitle": "Encerrar este ticket?",
+      "closeDescription": "O encerramento é definitivo: cliente e agentes não poderão responder, alterar o status, escalar ou adicionar notas. Uma nova dúvida exigirá outro ticket.",
+      "closeConfirm": "Encerrar definitivamente",
+      "closedImmutable": "Ticket encerrado. A conversa, o status, as notas e o escalonamento agora são somente leitura.",
+      "internalTools": "Ferramentas internas",
+      "internalNote": "Anotação interna",
+      "internalNotePlaceholder": "Registre contexto para outros agentes. O cliente não verá esta anotação.",
+      "saveNote": "Salvar anotação",
+      "escalationLabel": "Escalonamento",
+      "escalation": {
+        "none": "Sem escalonamento",
+        "specialist": "Especialista do produto",
+        "engineering": "Engenharia"
+      },
+      "metrics": {
+        "title": "Saúde do suporte",
+        "subtitle": "Volume criado e desempenho dos fechamentos definitivos.",
+        "period": "Período",
+        "created": "Criados",
+        "resolved": "Resolvidos",
+        "average": "Tempo médio",
+        "leadingProduct": "Produto com maior volume",
+        "day": "Hoje",
+        "month": "Este mês",
+        "year": "Este ano",
+        "all": "Desde o início",
+        "minutes": "{{count}} min",
+        "hours": "{{count}} h"
+      }
     }
   }
 }

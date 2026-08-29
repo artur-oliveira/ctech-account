@@ -3,6 +3,7 @@ package support
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 // newTestService is local to this file — an in-memory Repository good enough
@@ -10,11 +11,13 @@ import (
 type memRepo struct {
 	tickets  map[string]*Ticket
 	messages map[string][]*Message
+	notes    map[string][]*InternalNote
+	metrics  []MetricBucket
 	counter  int64
 }
 
 func newMemRepo() *memRepo {
-	return &memRepo{tickets: map[string]*Ticket{}, messages: map[string][]*Message{}}
+	return &memRepo{tickets: map[string]*Ticket{}, messages: map[string][]*Message{}, notes: map[string][]*InternalNote{}}
 }
 
 func (m *memRepo) NextTicketNumber(ctx context.Context) (int64, error) {
@@ -74,12 +77,72 @@ func (m *memRepo) UpdateTicket(ctx context.Context, id string, updates map[strin
 			t.NPSMessage = v.(string)
 		case "nps_requested_at":
 			t.NPSRequestedAt = v.(string)
+		case "escalation_level":
+			t.EscalationLevel = v.(string)
+		case "escalated_at":
+			t.EscalatedAt = v.(string)
+		case "escalated_by":
+			t.EscalatedBy = v.(string)
 		}
 	}
 	return nil
 }
-func (m *memRepo) PutMessage(ctx context.Context, msg *Message) error {
+func (m *memRepo) UpdateActiveStatus(_ context.Context, id, status, updatedAt string) error {
+	if m.tickets[id].Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	m.tickets[id].Status = status
+	m.tickets[id].UpdatedAt = updatedAt
+	return nil
+}
+func (m *memRepo) MarkAnswered(_ context.Context, id, updatedAt string) error {
+	if m.tickets[id].Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	m.tickets[id].Status = StatusAnswered
+	m.tickets[id].UpdatedAt = updatedAt
+	return nil
+}
+func (m *memRepo) UpdateEscalation(_ context.Context, id, level, agentUserID, updatedAt string) error {
+	if m.tickets[id].Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	m.tickets[id].EscalationLevel = level
+	m.tickets[id].EscalatedBy = agentUserID
+	if level == EscalationNone {
+		m.tickets[id].EscalatedAt = ""
+	} else {
+		m.tickets[id].EscalatedAt = updatedAt
+	}
+	return nil
+}
+func (m *memRepo) PutInternalNote(_ context.Context, note *InternalNote) error {
+	id := note.PK
+	if m.tickets[id].Status == StatusClosed {
+		return ErrTicketClosed
+	}
+	note.PK = BuildPK(id)
+	note.SK = BuildNoteSK(note.CreatedAt)
+	m.notes[id] = append(m.notes[id], note)
+	return nil
+}
+func (m *memRepo) ListInternalNotes(_ context.Context, id string) ([]*InternalNote, error) {
+	return m.notes[id], nil
+}
+func (m *memRepo) CloseTicket(_ context.Context, id string, closedAt time.Time, seconds int64) error {
+	m.tickets[id].Status = StatusClosed
+	m.tickets[id].ClosedAt = closedAt.Format(time.RFC3339)
+	m.metrics = []MetricBucket{{Period: "all", ResolvedCount: 1, AverageResolutionSecs: float64(seconds)}}
+	return nil
+}
+func (m *memRepo) GetMetrics(_ context.Context, _ time.Time) ([]MetricBucket, error) {
+	return m.metrics, nil
+}
+func (m *memRepo) PutMessage(ctx context.Context, msg *Message, requireOpen bool) error {
 	ticketID := msg.PK
+	if requireOpen && m.tickets[ticketID].Status == StatusClosed {
+		return ErrTicketClosed
+	}
 	msg.PK = BuildPK(ticketID)
 	msg.SK = BuildMessageSK(msg.CreatedAt)
 	m.messages[ticketID] = append(m.messages[ticketID], msg)
@@ -188,7 +251,7 @@ func TestReplyAsAgent_SetsAnsweredAndThreadsMessageID(t *testing.T) {
 	}
 }
 
-func TestReplyAsUser_ReopensClosedTicket(t *testing.T) {
+func TestReplyAsUser_RejectsClosedTicket(t *testing.T) {
 	repo := newMemRepo()
 	svc := NewService(repo)
 	ticket, _ := svc.CreateTicket(context.Background(), CreateTicketInput{
@@ -198,16 +261,43 @@ func TestReplyAsUser_ReopensClosedTicket(t *testing.T) {
 		t.Fatalf("SetStatus: %v", err)
 	}
 
-	if err := svc.ReplyAsUser(context.Background(), ticket.ID(), "user-1", "", "Voltou a acontecer o mesmo problema de antes."); err != nil {
-		t.Fatalf("ReplyAsUser: %v", err)
+	if err := svc.ReplyAsUser(context.Background(), ticket.ID(), "user-1", "", "Voltou a acontecer o mesmo problema de antes."); err != ErrTicketClosed {
+		t.Fatalf("got %v, want ErrTicketClosed", err)
 	}
+}
 
-	got, err := repo.GetTicket(context.Background(), ticket.ID())
-	if err != nil {
-		t.Fatalf("GetTicket: %v", err)
+func TestClosedTicketRejectsAgentReplyAndStatusChange(t *testing.T) {
+	repo := newMemRepo()
+	svc := NewService(repo)
+	ticket, _ := svc.CreateTicket(context.Background(), CreateTicketInput{UserID: "user-1", SubjectCategory: CategoryAccount, Body: "Preciso resolver um problema persistente na conta."})
+	if err := svc.SetStatus(context.Background(), ticket.ID(), StatusClosed); err != nil {
+		t.Fatal(err)
 	}
-	if got.Status != StatusOpen {
-		t.Fatalf("got status %q after reply on closed ticket, want %q (reopen)", got.Status, StatusOpen)
+	if _, _, err := svc.ReplyAsAgent(context.Background(), ticket.ID(), "agent-1", "Tentativa tardia de resposta interna."); err != ErrTicketClosed {
+		t.Fatalf("reply got %v", err)
+	}
+	if err := svc.SetStatus(context.Background(), ticket.ID(), StatusOpen); err != ErrTicketClosed {
+		t.Fatalf("status got %v", err)
+	}
+}
+
+func TestInternalNotesStaySeparateAndCannotChangeClosedTicket(t *testing.T) {
+	repo := newMemRepo()
+	svc := NewService(repo)
+	ticket, _ := svc.CreateTicket(context.Background(), CreateTicketInput{UserID: "user-1", SubjectCategory: CategoryWallet, Body: "Meu saldo ainda não foi atualizado depois do depósito."})
+	note, err := svc.AddInternalNote(context.Background(), ticket.ID(), "agent-1", "Escalar para conciliação da Wallet.")
+	if err != nil || note.AuthorID != "agent-1" {
+		t.Fatalf("note: %#v %v", note, err)
+	}
+	_, messages, err := svc.GetTicketForCaller(context.Background(), ticket.ID(), "user-1", "")
+	if err != nil || len(messages) != 2 {
+		t.Fatalf("public messages leaked or failed: %d %v", len(messages), err)
+	}
+	if err := svc.SetStatus(context.Background(), ticket.ID(), StatusClosed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddInternalNote(context.Background(), ticket.ID(), "agent-1", "Nota depois do encerramento."); err != ErrTicketClosed {
+		t.Fatalf("got %v", err)
 	}
 }
 

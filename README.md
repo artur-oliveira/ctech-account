@@ -19,8 +19,8 @@ Gateway.
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)
 - **RFC 7807 Problem Details** — All error responses use `application/problem+json`
 - **RFC Health Check** — `GET /v1.0/health-check` responds with `application/health+json`
-- **DynamoDB** — Nine tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
-  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `ctech_scopes`
+- **DynamoDB** — Ten tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
+  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `account_support_metrics`, `ctech_scopes`
 - **Valkey** — Required in non-dev (see §Configuration): OAuth codes, MFA/passkey challenges, recovery tokens and rate
   limiting live in Valkey with no DynamoDB fallback; the API refuses to boot without it outside dev
 
@@ -135,13 +135,17 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `DELETE` | `/v1.0/account/mfa/passkeys/:id`                    | `account:mfa:write` + step-up           | Remove a passkey                                                                                                                                                                                    |
 | `POST`   | `/v1.0/support/tickets`                             | Optional session + Turnstile             | Create a public or signed-in support ticket; anonymous callers must provide email and receive a portal token                                                               |
 | `GET`    | `/v1.0/support/tickets/:id`                          | Owner bearer or anonymous token          | Read a ticket and its thread                                                                                                  |
-| `POST`   | `/v1.0/support/tickets/:id/reply`                    | Owner bearer or anonymous token          | Append a user reply; a closed ticket reopens                                                                                |
+| `POST`   | `/v1.0/support/tickets/:id/reply`                    | Owner bearer or anonymous token          | Append a user reply; closed tickets are immutable and reject replies                                                        |
+| `GET`    | `/v1.0/support/tickets/:id/ws`                       | First-frame owner JWT, agent JWT or anonymous token | Binary protobuf real-time stream; access is revalidated against the ticket, with Valkey fleet fan-out                       |
 | `POST`   | `/v1.0/support/tickets/:id/nps`                      | Owner bearer or anonymous token          | Submit a 1–5 NPS score after closure                                                                                        |
 | `GET`    | `/v1.0/account/support/tickets`                      | `account:profile:read`                   | List the caller's tickets                                                                                                    |
 | `GET`    | `/v1.0/admin/support/tickets`                        | Support role                             | List the support queue                                                                                                       |
-| `GET`    | `/v1.0/admin/support/tickets/:id`                    | Support role                             | Read any ticket thread                                                                                                       |
+| `GET`    | `/v1.0/admin/support/tickets/:id`                    | Support role                             | Read any ticket thread plus agent-only internal notes                                                                        |
 | `POST`   | `/v1.0/admin/support/tickets/:id/reply`              | Support role                             | Add an agent reply                                                                                                           |
-| `PUT`    | `/v1.0/admin/support/tickets/:id/status`             | Support role                             | Change open, answered or closed status                                                                                       |
+| `POST`   | `/v1.0/admin/support/tickets/:id/notes`              | Support role                             | Add an agent-only internal note                                                                                              |
+| `PUT`    | `/v1.0/admin/support/tickets/:id/escalation`         | Support role                             | Set `none`, `specialist`, or `engineering` escalation                                                                        |
+| `PUT`    | `/v1.0/admin/support/tickets/:id/status`             | Support role                             | Change an active ticket; `closed` is terminal and is recorded atomically with metrics                                        |
+| `GET`    | `/v1.0/admin/support/metrics`                        | Support role                             | Daily, monthly, yearly, and all-time created/resolved counts, resolution average, and created-ticket product distribution     |
 | `GET`    | `/.well-known/openid-configuration`                 | —                                      | OIDC Discovery document                                                                                                                                                                             |
 | `GET`    | `/.well-known/jwks.json`                            | —                                      | JSON Web Key Set                                                                                                                                                                                    |
 | `GET`    | `/.well-known/oauth-protected-resource`             | —                                      | RFC 9728 metadata for the Account Resource Server                                                                                                                                                   |
@@ -685,6 +689,7 @@ grants receive the new explicit `account:*` permissions on their next rotation.
 ```bash
 # Nothing proxies /v1.0/* at the edge: the SPA calls the API host directly and CORS applies.
 NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app
+NEXT_PUBLIC_WS_URL=wss://accounts-api.aoctech.app # explicit because CSP is scheme-exact
 OAUTH_CLIENT_ID=accounts-ui
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=... # public site key only; supplied by GitHub Actions vars
 ```
@@ -693,6 +698,10 @@ These live in `.github/workflows/frontend.yml`'s `build-env-*`, which the reusab
 `ctech-cdk` bakes into the export and derives the CSP's `connect-src` from. Every external origin the
 SPA talks to must appear there as a literal, or the generated `connect-src` blocks it. There is no
 Vercel or ECS runtime.
+
+Support ticket threads connect to `NEXT_PUBLIC_WS_URL` with binary protobuf frames. The workflow lists every
+environment's `wss://` origin in `extra-connect-src`; deriving it only at runtime from the HTTPS API URL would leave
+the socket blocked by CSP.
 
 The support form uses Cloudflare Turnstile. Its public `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is shared
 with Poker through the environment-specific `TURNSTILE_SITE_KEY_DEV`, `_STAGE`, and `_PROD` GitHub

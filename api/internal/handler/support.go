@@ -178,7 +178,7 @@ func supportProblem(c fiber.Ctx, err error) error {
 		return apierror.NotFound("Ticket", c.Path()).Send(c)
 	case errors.Is(err, support.ErrForbidden):
 		return apierror.Forbidden("Not authorized for this ticket.", c.Path()).Send(c)
-	case errors.Is(err, support.ErrInvalidInput), errors.Is(err, support.ErrInvalidNPS):
+	case errors.Is(err, support.ErrInvalidInput), errors.Is(err, support.ErrInvalidNPS), errors.Is(err, support.ErrTicketClosed):
 		return apierror.ValidationFailed(err.Error(), c.Path()).Send(c)
 	default:
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)

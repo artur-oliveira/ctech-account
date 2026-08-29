@@ -172,6 +172,22 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_support_tickets', supportTicketsTable);
 
+    // Pre-aggregated support KPIs. One item per day/month/year plus an all-time
+    // bucket keeps the agent dashboard O(1) and avoids table scans.
+    const supportMetricsTable = new dynamodb.TableV2(this, 'SupportMetricsTableV2', {
+      tableName: `${environment}_account_support_metrics`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+    });
+    this.tables.set('account_support_metrics', supportMetricsTable);
+
     // Stores TOTP secrets (sk=TOTP_default) and PassKey credentials (sk=PASSKEY_{id})
     const mfaTable = new dynamodb.TableV2(this, 'MFATableV2', {
       tableName: `${environment}_account_mfa`,

@@ -623,6 +623,8 @@ func (m *memUserRepo) Update(_ context.Context, userID string, updates map[strin
 			u.PrivacyVersion, _ = v.(string)
 		case "privacy_accepted_at":
 			u.PrivacyAcceptedAt, _ = v.(string)
+		case "support_role":
+			u.SupportRole, _ = v.(string)
 		}
 	}
 	return nil
@@ -871,6 +873,7 @@ func (m *memPasskeyRepo) Delete(_ context.Context, userID, credentialSK string) 
 type mockSupportRepo struct {
 	tickets  map[string]*supportDomain.Ticket
 	messages map[string][]*supportDomain.Message
+	notes    map[string][]*supportDomain.InternalNote
 	counter  int64
 }
 
@@ -878,6 +881,7 @@ func newMockSupportRepo() *mockSupportRepo {
 	return &mockSupportRepo{
 		tickets:  make(map[string]*supportDomain.Ticket),
 		messages: make(map[string][]*supportDomain.Message),
+		notes:    make(map[string][]*supportDomain.InternalNote),
 	}
 }
 
@@ -942,13 +946,75 @@ func (m *mockSupportRepo) UpdateTicket(_ context.Context, id string, updates map
 			t.NPSMessage = v.(string)
 		case "nps_requested_at":
 			t.NPSRequestedAt = v.(string)
+		case "escalation_level":
+			t.EscalationLevel = v.(string)
+		case "escalated_at":
+			t.EscalatedAt = v.(string)
+		case "escalated_by":
+			t.EscalatedBy = v.(string)
 		}
 	}
 	return nil
 }
 
-func (m *mockSupportRepo) PutMessage(_ context.Context, msg *supportDomain.Message) error {
+func (m *mockSupportRepo) UpdateActiveStatus(_ context.Context, id, status, updatedAt string) error {
+	if m.tickets[id].Status == supportDomain.StatusClosed {
+		return supportDomain.ErrTicketClosed
+	}
+	m.tickets[id].Status = status
+	m.tickets[id].UpdatedAt = updatedAt
+	return nil
+}
+
+func (m *mockSupportRepo) MarkAnswered(_ context.Context, id, updatedAt string) error {
+	if m.tickets[id].Status == supportDomain.StatusClosed {
+		return supportDomain.ErrTicketClosed
+	}
+	m.tickets[id].Status = supportDomain.StatusAnswered
+	m.tickets[id].UpdatedAt = updatedAt
+	return nil
+}
+func (m *mockSupportRepo) UpdateEscalation(_ context.Context, id, level, agentUserID, updatedAt string) error {
+	if m.tickets[id].Status == supportDomain.StatusClosed {
+		return supportDomain.ErrTicketClosed
+	}
+	m.tickets[id].EscalationLevel = level
+	m.tickets[id].EscalatedBy = agentUserID
+	if level == supportDomain.EscalationNone {
+		m.tickets[id].EscalatedAt = ""
+	} else {
+		m.tickets[id].EscalatedAt = updatedAt
+	}
+	return nil
+}
+
+func (m *mockSupportRepo) PutInternalNote(_ context.Context, note *supportDomain.InternalNote) error {
+	id := note.PK
+	if m.tickets[id].Status == supportDomain.StatusClosed {
+		return supportDomain.ErrTicketClosed
+	}
+	note.PK = supportDomain.BuildPK(id)
+	note.SK = supportDomain.BuildNoteSK(note.CreatedAt)
+	m.notes[id] = append(m.notes[id], note)
+	return nil
+}
+func (m *mockSupportRepo) ListInternalNotes(_ context.Context, id string) ([]*supportDomain.InternalNote, error) {
+	return m.notes[id], nil
+}
+func (m *mockSupportRepo) CloseTicket(_ context.Context, id string, closedAt time.Time, _ int64) error {
+	m.tickets[id].Status = supportDomain.StatusClosed
+	m.tickets[id].ClosedAt = closedAt.Format(time.RFC3339)
+	return nil
+}
+func (m *mockSupportRepo) GetMetrics(_ context.Context, _ time.Time) ([]supportDomain.MetricBucket, error) {
+	return []supportDomain.MetricBucket{}, nil
+}
+
+func (m *mockSupportRepo) PutMessage(_ context.Context, msg *supportDomain.Message, requireOpen bool) error {
 	ticketID := msg.PK
+	if requireOpen && m.tickets[ticketID].Status == supportDomain.StatusClosed {
+		return supportDomain.ErrTicketClosed
+	}
 	msg.PK = supportDomain.BuildPK(ticketID)
 	msg.SK = supportDomain.BuildMessageSK(msg.CreatedAt)
 	m.messages[ticketID] = append(m.messages[ticketID], msg)

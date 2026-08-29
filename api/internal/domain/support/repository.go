@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -17,13 +18,14 @@ import (
 var ErrNotFound = errors.New("ticket not found")
 
 const (
-	tableSuffix       = "account_support_tickets"
-	counterPK         = "COUNTER"
-	counterSK         = "TICKET_NUMBER"
-	statusIndex       = "status-index"
-	userIndex         = "user-index"
-	anonTokenIndex    = "anon-token-index"
-	ticketNumberIndex = "ticket-number-index"
+	tableSuffix        = "account_support_tickets"
+	metricsTableSuffix = "account_support_metrics"
+	counterPK          = "COUNTER"
+	counterSK          = "TICKET_NUMBER"
+	statusIndex        = "status-index"
+	userIndex          = "user-index"
+	anonTokenIndex     = "anon-token-index"
+	ticketNumberIndex  = "ticket-number-index"
 )
 
 // Repository is the data-access interface for support tickets and their
@@ -35,25 +37,147 @@ type Repository interface {
 	GetTicketByAnonToken(ctx context.Context, token string) (*Ticket, error)
 	GetTicketByNumber(ctx context.Context, number int64) (*Ticket, error)
 	UpdateTicket(ctx context.Context, id string, updates map[string]any) error
-	PutMessage(ctx context.Context, m *Message) error
+	UpdateActiveStatus(ctx context.Context, id, status, updatedAt string) error
+	MarkAnswered(ctx context.Context, id, updatedAt string) error
+	UpdateEscalation(ctx context.Context, id, level, agentUserID, updatedAt string) error
+	PutMessage(ctx context.Context, m *Message, requireOpen bool) error
 	ListMessages(ctx context.Context, ticketID string) ([]*Message, error)
+	PutInternalNote(ctx context.Context, note *InternalNote) error
+	ListInternalNotes(ctx context.Context, ticketID string) ([]*InternalNote, error)
 	ListByUser(ctx context.Context, userID, cursor string, limit int32) ([]*Ticket, string, error)
 	ListByStatus(ctx context.Context, status, cursor string, limit int32) ([]*Ticket, string, error)
+	CloseTicket(ctx context.Context, id string, closedAt time.Time, resolutionSeconds int64) error
+	GetMetrics(ctx context.Context, now time.Time) ([]MetricBucket, error)
 }
 
 type dynamoRepository struct {
-	table     database.Base
-	db        *dynamodb.Client
-	tableName string
+	table            database.Base
+	db               *dynamodb.Client
+	tableName        string
+	metricsTableName string
 }
 
 // NewRepository returns a DynamoDB-backed Repository.
 func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
 	return &dynamoRepository{
-		table:     database.NewBase(db, tablePrefix, tableSuffix),
-		db:        db,
-		tableName: database.TableName(tablePrefix, tableSuffix),
+		table:            database.NewBase(db, tablePrefix, tableSuffix),
+		db:               db,
+		tableName:        database.TableName(tablePrefix, tableSuffix),
+		metricsTableName: database.TableName(tablePrefix, metricsTableSuffix),
 	}
+}
+
+func (r *dynamoRepository) PutInternalNote(ctx context.Context, note *InternalNote) error {
+	ticketID := note.PK
+	note.PK = BuildPK(ticketID)
+	note.SK = BuildNoteSK(note.CreatedAt)
+	item, err := attributevalue.MarshalMap(note)
+	if err != nil {
+		return fmt.Errorf("marshaling internal note: %w", err)
+	}
+	_, err = r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{
+		{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.tableName), Key: map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(ticketID)}, "sk": &types.AttributeValueMemberS{Value: metaSK}}, ConditionExpression: aws.String("#status <> :closed"), ExpressionAttributeNames: map[string]string{"#status": "status"}, ExpressionAttributeValues: map[string]types.AttributeValue{":closed": &types.AttributeValueMemberS{Value: StatusClosed}}}},
+		{Put: &types.Put{TableName: aws.String(r.tableName), Item: item}},
+	}})
+	return err
+}
+
+func (r *dynamoRepository) ListInternalNotes(ctx context.Context, ticketID string) ([]*InternalNote, error) {
+	res, err := r.table.Query(ctx, database.QueryOpts{PK: BuildPK(ticketID), SKPrefix: noteSKPrefix})
+	if err != nil {
+		return nil, fmt.Errorf("querying internal notes: %w", err)
+	}
+	notes := make([]*InternalNote, 0, len(res.Items))
+	for _, item := range res.Items {
+		var note InternalNote
+		if err := attributevalue.UnmarshalMap(item, &note); err != nil {
+			return nil, fmt.Errorf("unmarshaling internal note: %w", err)
+		}
+		notes = append(notes, &note)
+	}
+	return notes, nil
+}
+
+func metricPeriods(now time.Time) []string {
+	return []string{"day#" + now.Format("2006-01-02"), "month#" + now.Format("2006-01"), "year#" + now.Format("2006"), "all"}
+}
+
+func (r *dynamoRepository) CloseTicket(ctx context.Context, id string, closedAt time.Time, resolutionSeconds int64) error {
+	if resolutionSeconds < 0 {
+		resolutionSeconds = 0
+	}
+	items := make([]types.TransactWriteItem, 0, 5)
+	items = append(items, types.TransactWriteItem{Update: &types.Update{
+		TableName:                aws.String(r.tableName),
+		Key:                      map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(id)}, "sk": &types.AttributeValueMemberS{Value: metaSK}},
+		UpdateExpression:         aws.String("SET #status = :closed, updated_at = :updated, closed_at = :updated"),
+		ConditionExpression:      aws.String("attribute_exists(pk) AND #status <> :closed"),
+		ExpressionAttributeNames: map[string]string{"#status": "status"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":closed":  &types.AttributeValueMemberS{Value: StatusClosed},
+			":updated": &types.AttributeValueMemberS{Value: closedAt.UTC().Format(time.RFC3339)},
+		},
+	}})
+	for _, period := range metricPeriods(closedAt.UTC()) {
+		items = append(items, types.TransactWriteItem{Update: &types.Update{
+			TableName:        aws.String(r.metricsTableName),
+			Key:              map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: period}},
+			UpdateExpression: aws.String("ADD resolved_count :one, resolution_seconds_total :seconds SET updated_at = :updated"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":one":     &types.AttributeValueMemberN{Value: "1"},
+				":seconds": &types.AttributeValueMemberN{Value: strconv.FormatInt(resolutionSeconds, 10)},
+				":updated": &types.AttributeValueMemberS{Value: closedAt.UTC().Format(time.RFC3339)},
+			},
+		}})
+	}
+	_, err := r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	return err
+}
+
+func (r *dynamoRepository) GetMetrics(ctx context.Context, now time.Time) ([]MetricBucket, error) {
+	periods := metricPeriods(now.UTC())
+	keys := make([]map[string]types.AttributeValue, 0, len(periods))
+	for _, period := range periods {
+		keys = append(keys, map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: period}})
+	}
+	out, err := r.db.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{RequestItems: map[string]types.KeysAndAttributes{r.metricsTableName: {Keys: keys}}})
+	if err != nil {
+		return nil, fmt.Errorf("reading support metrics: %w", err)
+	}
+	type metricItem struct {
+		PK                     string `dynamodbav:"pk"`
+		CreatedCount           int64  `dynamodbav:"created_count"`
+		ResolvedCount          int64  `dynamodbav:"resolved_count"`
+		ResolutionSecondsTotal int64  `dynamodbav:"resolution_seconds_total"`
+		ProductAccount         int64  `dynamodbav:"product_account"`
+		ProductKYC             int64  `dynamodbav:"product_kyc"`
+		ProductWallet          int64  `dynamodbav:"product_wallet"`
+		ProductDFe             int64  `dynamodbav:"product_dfe"`
+		ProductBilling         int64  `dynamodbav:"product_billing"`
+		ProductPoker           int64  `dynamodbav:"product_poker"`
+		ProductOther           int64  `dynamodbav:"product_other"`
+	}
+	byPeriod := make(map[string]metricItem)
+	for _, item := range out.Responses[r.metricsTableName] {
+		var value metricItem
+		if err := attributevalue.UnmarshalMap(item, &value); err != nil {
+			return nil, fmt.Errorf("unmarshaling support metric: %w", err)
+		}
+		byPeriod[value.PK] = value
+	}
+	result := make([]MetricBucket, 0, len(periods))
+	for _, period := range periods {
+		value := byPeriod[period]
+		average := float64(0)
+		if value.ResolvedCount > 0 {
+			average = float64(value.ResolutionSecondsTotal) / float64(value.ResolvedCount)
+		}
+		result = append(result, MetricBucket{Period: period, CreatedCount: value.CreatedCount, ResolvedCount: value.ResolvedCount, AverageResolutionSecs: average, TicketsByProduct: map[string]int64{
+			CategoryAccount: value.ProductAccount, CategoryKYC: value.ProductKYC, CategoryWallet: value.ProductWallet,
+			CategoryDFe: value.ProductDFe, CategoryBilling: value.ProductBilling, CategoryPoker: value.ProductPoker, CategoryOther: value.ProductOther,
+		}})
+	}
+	return result, nil
 }
 
 // NextTicketNumber atomically increments the single counter item and returns
@@ -89,7 +213,29 @@ func (r *dynamoRepository) CreateTicket(ctx context.Context, t *Ticket) error {
 	if err != nil {
 		return fmt.Errorf("marshaling ticket: %w", err)
 	}
-	return r.table.PutItem(ctx, item)
+	createdAt, err := time.Parse(time.RFC3339, t.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("parsing ticket created_at: %w", err)
+	}
+	items := []types.TransactWriteItem{{Put: &types.Put{
+		TableName:           aws.String(r.tableName),
+		Item:                item,
+		ConditionExpression: aws.String("attribute_not_exists(pk)"),
+	}}}
+	for _, period := range metricPeriods(createdAt.UTC()) {
+		items = append(items, types.TransactWriteItem{Update: &types.Update{
+			TableName:                aws.String(r.metricsTableName),
+			Key:                      map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: period}},
+			UpdateExpression:         aws.String("ADD created_count :one, #product :one SET updated_at = :updated"),
+			ExpressionAttributeNames: map[string]string{"#product": "product_" + t.SubjectCategory},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":one":     &types.AttributeValueMemberN{Value: "1"},
+				":updated": &types.AttributeValueMemberS{Value: createdAt.UTC().Format(time.RFC3339)},
+			},
+		}})
+	}
+	_, err = r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	return err
 }
 
 func (r *dynamoRepository) GetTicket(ctx context.Context, id string) (*Ticket, error) {
@@ -158,9 +304,42 @@ func (r *dynamoRepository) UpdateTicket(ctx context.Context, id string, updates 
 	return err
 }
 
+func (r *dynamoRepository) UpdateActiveStatus(ctx context.Context, id, status, updatedAt string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.tableName),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: BuildPK(id)},
+			"sk": &types.AttributeValueMemberS{Value: metaSK},
+		},
+		UpdateExpression:         aws.String("SET #status = :status, updated_at = :updated"),
+		ConditionExpression:      aws.String("attribute_exists(pk) AND #status <> :closed"),
+		ExpressionAttributeNames: map[string]string{"#status": "status"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":status":  &types.AttributeValueMemberS{Value: status},
+			":closed":  &types.AttributeValueMemberS{Value: StatusClosed},
+			":updated": &types.AttributeValueMemberS{Value: updatedAt},
+		},
+	})
+	return err
+}
+
+func (r *dynamoRepository) MarkAnswered(ctx context.Context, id, updatedAt string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{TableName: aws.String(r.tableName), Key: map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(id)}, "sk": &types.AttributeValueMemberS{Value: metaSK}}, UpdateExpression: aws.String("SET #status = :answered, updated_at = :updated"), ConditionExpression: aws.String("#status <> :closed"), ExpressionAttributeNames: map[string]string{"#status": "status"}, ExpressionAttributeValues: map[string]types.AttributeValue{":answered": &types.AttributeValueMemberS{Value: StatusAnswered}, ":closed": &types.AttributeValueMemberS{Value: StatusClosed}, ":updated": &types.AttributeValueMemberS{Value: updatedAt}}})
+	return err
+}
+
+func (r *dynamoRepository) UpdateEscalation(ctx context.Context, id, level, agentUserID, updatedAt string) error {
+	updateExpression := "SET escalation_level = :level, escalated_by = :agent, escalated_at = :updated, updated_at = :updated"
+	if level == EscalationNone {
+		updateExpression = "SET escalation_level = :level, escalated_by = :agent, updated_at = :updated REMOVE escalated_at"
+	}
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{TableName: aws.String(r.tableName), Key: map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(id)}, "sk": &types.AttributeValueMemberS{Value: metaSK}}, UpdateExpression: aws.String(updateExpression), ConditionExpression: aws.String("#status <> :closed"), ExpressionAttributeNames: map[string]string{"#status": "status"}, ExpressionAttributeValues: map[string]types.AttributeValue{":level": &types.AttributeValueMemberS{Value: level}, ":agent": &types.AttributeValueMemberS{Value: agentUserID}, ":updated": &types.AttributeValueMemberS{Value: updatedAt}, ":closed": &types.AttributeValueMemberS{Value: StatusClosed}}})
+	return err
+}
+
 // PutMessage builds both PK and SK from the ticket ID the caller passes in
 // m.PK — callers never pre-build the TICKET_ prefix themselves.
-func (r *dynamoRepository) PutMessage(ctx context.Context, m *Message) error {
+func (r *dynamoRepository) PutMessage(ctx context.Context, m *Message, requireOpen bool) error {
 	ticketID := m.PK
 	m.PK = BuildPK(ticketID)
 	m.SK = BuildMessageSK(m.CreatedAt)
@@ -168,7 +347,20 @@ func (r *dynamoRepository) PutMessage(ctx context.Context, m *Message) error {
 	if err != nil {
 		return fmt.Errorf("marshaling message: %w", err)
 	}
-	return r.table.PutItem(ctx, item)
+	if !requireOpen {
+		return r.table.PutItem(ctx, item)
+	}
+	_, err = r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{
+		{ConditionCheck: &types.ConditionCheck{
+			TableName:                 aws.String(r.tableName),
+			Key:                       map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(ticketID)}, "sk": &types.AttributeValueMemberS{Value: metaSK}},
+			ConditionExpression:       aws.String("attribute_exists(pk) AND #status <> :closed"),
+			ExpressionAttributeNames:  map[string]string{"#status": "status"},
+			ExpressionAttributeValues: map[string]types.AttributeValue{":closed": &types.AttributeValueMemberS{Value: StatusClosed}},
+		}},
+		{Put: &types.Put{TableName: aws.String(r.tableName), Item: item}},
+	}})
+	return err
 }
 
 func (r *dynamoRepository) ListMessages(ctx context.Context, ticketID string) ([]*Message, error) {

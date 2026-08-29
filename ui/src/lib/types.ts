@@ -21,8 +21,10 @@ export type User = {
   terms_pending: TermsPending
 }
 
-export type SupportTicket = { id: string; ticket_number: number; user_id?: string; subject_category: string; subject_other?: string; priority: 'low'|'medium'|'high'|'urgent'|'critical'; status: 'open'|'answered'|'closed'; created_at: string; last_message_at: string; nps_score?: number }
+export type SupportTicket = { id: string; ticket_number: number; user_id?: string; subject_category: string; subject_other?: string; priority: 'low'|'medium'|'high'|'urgent'|'critical'; status: 'open'|'answered'|'closed'; escalation_level: 'none'|'specialist'|'engineering'; escalated_at?: string; created_at: string; closed_at?: string; last_message_at: string; nps_score?: number }
 export type SupportMessage = { author_type: 'user'|'agent'|'system'; body: string; created_at: string }
+export type SupportInternalNote = { id: string; author_id: string; body: string; created_at: string }
+export type SupportMetricBucket = { period: string; created_count: number; resolved_count: number; average_resolution_seconds: number; tickets_by_product: Record<string, number> }
 
 export type Session = {
   session_id: string

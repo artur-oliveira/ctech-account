@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/api-commons/observability"
+	"time"
 )
 
 type SupportAdminHandler struct {
@@ -24,7 +25,10 @@ func (h *SupportAdminHandler) Register(r fiber.Router) {
 	r.Get("/support/tickets", h.list)
 	r.Get("/support/tickets/:id", h.get)
 	r.Post("/support/tickets/:id/reply", h.reply)
+	r.Post("/support/tickets/:id/notes", h.note)
+	r.Put("/support/tickets/:id/escalation", h.escalation)
 	r.Put("/support/tickets/:id/status", h.status)
+	r.Get("/support/metrics", h.metrics)
 }
 func (h *SupportAdminHandler) list(c fiber.Ctx) error {
 	status := c.Query("status", support.StatusOpen)
@@ -35,11 +39,50 @@ func (h *SupportAdminHandler) list(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
 func (h *SupportAdminHandler) get(c fiber.Ctx) error {
-	t, m, e := h.svc.GetTicketAdmin(c.Context(), c.Params("id"))
+	t, m, notes, e := h.svc.GetTicketAdminWithNotes(c.Context(), c.Params("id"))
 	if e != nil {
 		return supportProblem(c, e)
 	}
-	return c.JSON(fiber.Map{"ticket": t, "messages": m})
+	return c.JSON(fiber.Map{"ticket": t, "messages": m, "internal_notes": notes})
+}
+
+type adminInternalNoteRequest struct {
+	Body string `json:"body" validate:"required,max=4200"`
+}
+
+func (h *SupportAdminHandler) note(c fiber.Ctx) error {
+	var req adminInternalNoteRequest
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+	note, err := h.svc.AddInternalNote(c.Context(), c.Params("id"), middleware.GetUserID(c), req.Body)
+	if err != nil {
+		return supportProblem(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(note)
+}
+
+type adminEscalationRequest struct {
+	Level string `json:"level" validate:"required,oneof=none specialist engineering"`
+}
+
+func (h *SupportAdminHandler) escalation(c fiber.Ctx) error {
+	var req adminEscalationRequest
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+	if err := h.svc.SetEscalation(c.Context(), c.Params("id"), middleware.GetUserID(c), req.Level); err != nil {
+		return supportProblem(c, err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *SupportAdminHandler) metrics(c fiber.Ctx) error {
+	buckets, err := h.svc.Metrics(c.Context(), time.Now())
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	return c.JSON(fiber.Map{"buckets": buckets})
 }
 
 type adminTicketReplyRequest struct {
