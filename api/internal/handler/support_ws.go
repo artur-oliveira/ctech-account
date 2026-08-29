@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"uuid"
+
 	fws "github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v3"
-	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 	goproto "google.golang.org/protobuf/proto"
 	"gopkg.aoctech.app/account/api/internal/crypto"

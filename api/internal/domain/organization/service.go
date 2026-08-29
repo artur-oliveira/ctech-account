@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 var (
@@ -61,13 +61,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID, displayName string) (
 	if strings.TrimSpace(ownerUserID) == "" {
 		return nil, ErrNotAMember
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("minting organization id: %w", err)
-	}
 	now := s.now().UTC()
 	org := &Organization{
-		ID:          id.String(),
+		ID:          uuid.NewV7().String(),
 		DisplayName: name,
 		OwnerUserID: ownerUserID,
 		CreatedAt:   now,

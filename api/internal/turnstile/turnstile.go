@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
+
 	"gopkg.aoctech.app/api-commons/observability"
 )
 
@@ -86,7 +87,7 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 	body := url.Values{
 		"secret":          {s.secret},
 		"response":        {token},
-		"idempotency_key": {uuid.NewString()},
+		"idempotency_key": {uuid.New().String()},
 	}
 	if remoteIP = strings.TrimSpace(remoteIP); remoteIP != "" {
 		body.Set("remoteip", remoteIP)

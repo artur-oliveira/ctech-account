@@ -7,7 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
+	"uuid"
+
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/api-commons/observability"
@@ -143,7 +144,7 @@ func (s *Service) PresignDocument(ctx context.Context, userID, docType, contentT
 		return "", "", ErrTooManyDocuments
 	}
 
-	documentID = uuid.NewString()
+	documentID = uuid.New().String()
 	if err := s.repo.SavePendingDocument(ctx, userID, documentID, docType, contentType); err != nil {
 		return "", "", err
 	}

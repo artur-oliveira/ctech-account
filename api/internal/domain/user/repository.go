@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"uuid"
+
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/google/uuid"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
 	"gopkg.aoctech.app/api-commons/observability"

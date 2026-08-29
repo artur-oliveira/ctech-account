@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
+
 	"gopkg.aoctech.app/account/api/internal/validate"
 )
 
