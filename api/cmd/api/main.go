@@ -26,6 +26,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/database"
 	apikeyDomain "gopkg.aoctech.app/account/api/internal/domain/apikey"
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
+	companyDomain "gopkg.aoctech.app/account/api/internal/domain/company"
+	"gopkg.aoctech.app/account/api/internal/domain/company/registry"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
 	passKeyDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	totpDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
@@ -191,6 +193,7 @@ func main() {
 	userSvc := userDomain.NewService(userRepo)
 	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
 	orgSvc := orgDomain.NewService(orgDomain.NewRepository(db, cfg.TablePrefix), time.Now)
+	companySvc := companyDomain.NewService(companyDomain.NewRepository(db, cfg.TablePrefix), time.Now)
 	supportSvc.SetNotifier(handler.NewSupportWSNotifier(supportWSRegistry))
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
@@ -417,10 +420,15 @@ func main() {
 		middleware.RequireAuth(jwtSvc),
 		middleware.RequireClientID(cfg.SelfClientID),
 	}
+	// Hoisted: the company routes mount on this same group, so both handlers
+	// sit behind one RequireAuth + RequireClientID rather than two groups that
+	// could drift apart.
+	orgsGroup := v1.Group("/organizations", adminAuth[0], adminAuth[1])
 	handler.NewOrganizationHandler(orgSvc, userSvc).Register(
-		v1.Group("/organizations", adminAuth[0], adminAuth[1]),
+		orgsGroup,
 		v1.Group("/invitations", adminAuth[0], adminAuth[1]),
 	)
+	handler.NewCompanyHandler(companySvc, orgSvc, userSvc, registry.NewCNPJA(nil)).Register(orgsGroup)
 	supportAdminH.Register(v1.Group("/admin", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
