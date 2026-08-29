@@ -75,6 +75,15 @@ type organizationDTO struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// workspaceDTO is one organization as its member sees it.
+type workspaceDTO struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	OwnerUserID string `json:"owner_user_id"`
+	Role        string `json:"role"`
+	JoinedAt    string `json:"joined_at"`
+}
+
 type membershipDTO struct {
 	OrganizationID string `json:"organization_id"`
 	UserID         string `json:"user_id"`
@@ -104,19 +113,20 @@ func (h *OrganizationHandler) create(c fiber.Ctx) error {
 	})
 }
 
-// listMine is what a console calls on sign-in. It returns memberships rather
-// than organizations because the role is the half that decides what the UI may
-// even offer.
+// listMine is what the switcher and the organizations screen both call on
+// sign-in. It carries the name and the caller's role together: a list of ids
+// cannot be rendered, a list of names cannot decide what to offer, and
+// fetching the halves separately turns one sign-in into N requests.
 func (h *OrganizationHandler) listMine(c fiber.Ctx) error {
-	memberships, err := h.svc.ListForUser(c.Context(), middleware.GetUserID(c))
+	workspaces, err := h.svc.ListWorkspaces(c.Context(), middleware.GetUserID(c))
 	if err != nil {
 		return organizationProblem(c, err)
 	}
-	out := make([]membershipDTO, 0, len(memberships))
-	for _, m := range memberships {
-		out = append(out, membershipDTO{
-			OrganizationID: m.OrganizationID, UserID: m.UserID,
-			Role: m.Role, CreatedAt: m.CreatedAt.Format(time.RFC3339),
+	out := make([]workspaceDTO, 0, len(workspaces))
+	for _, w := range workspaces {
+		out = append(out, workspaceDTO{
+			ID: w.ID, DisplayName: w.DisplayName, OwnerUserID: w.OwnerUserID,
+			Role: w.Role, JoinedAt: w.JoinedAt.Format(time.RFC3339),
 		})
 	}
 	return c.JSON(fiber.Map{"organizations": out})

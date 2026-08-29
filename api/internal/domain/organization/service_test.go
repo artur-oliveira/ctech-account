@@ -424,3 +424,65 @@ func TestInviteRequiresAdmin(t *testing.T) {
 		t.Fatal("a viewer invited somebody")
 	}
 }
+
+// The list a person sees has to carry the name: a switcher showing three ids is
+// a switcher nobody can use, and making the client fetch each organization to
+// find out turns one sign-in into N requests.
+func TestListWorkspacesCarriesTheName(t *testing.T) {
+	svc := NewService(newFakeRepo(), fixedClock)
+	ctx := context.Background()
+	created, _ := svc.Create(ctx, "usr_1", "CTech")
+
+	got, err := svc.ListWorkspaces(ctx, "usr_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("workspaces = %d, want 1", len(got))
+	}
+	if got[0].DisplayName != "CTech" {
+		t.Fatalf("display_name = %q, want CTech", got[0].DisplayName)
+	}
+	if got[0].ID != created.ID || got[0].Role != RoleOwner {
+		t.Fatalf("workspace = %+v", got[0])
+	}
+}
+
+// A membership whose organization is gone is not shown. Rendering a row that
+// leads to a 403 is worse than not rendering it.
+func TestListWorkspacesSkipsAMembershipWithNoOrganization(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo, fixedClock)
+	ctx := context.Background()
+	if err := repo.PutMembership(ctx, &Membership{
+		OrganizationID: "org_gone", UserID: "usr_1", Role: RoleMember, CreatedAt: fixedClock(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.ListWorkspaces(ctx, "usr_1")
+	if err != nil {
+		t.Fatalf("a dangling membership must not fail the whole list: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("workspaces = %+v, want none", got)
+	}
+}
+
+// Stable order, or the switcher reshuffles between renders and people click the
+// wrong workspace.
+func TestListWorkspacesIsOrdered(t *testing.T) {
+	svc := NewService(newFakeRepo(), fixedClock)
+	ctx := context.Background()
+	for _, name := range []string{"Zeta", "Alfa", "Meio"} {
+		if _, err := svc.Create(ctx, "usr_1", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := svc.ListWorkspaces(ctx, "usr_1")
+	if len(got) != 3 {
+		t.Fatalf("workspaces = %d", len(got))
+	}
+	if got[0].DisplayName != "Alfa" || got[2].DisplayName != "Zeta" {
+		t.Fatalf("order = %q, %q, %q", got[0].DisplayName, got[1].DisplayName, got[2].DisplayName)
+	}
+}

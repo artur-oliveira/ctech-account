@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -323,4 +324,57 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgID, actorUserID, emai
 		return err
 	}
 	return s.repo.DeleteInvitation(ctx, orgID, email)
+}
+
+// Workspace is one organization as the person who belongs to it sees it: the
+// organization, plus their own standing in it.
+//
+// It exists because the two halves are always wanted together — a list of ids
+// without names cannot be rendered, and a list of names without roles cannot
+// decide what to offer — and fetching them separately makes one sign-in into as
+// many requests as the person has workspaces.
+type Workspace struct {
+	ID          string
+	DisplayName string
+	OwnerUserID string
+	Role        string
+	JoinedAt    time.Time
+}
+
+// ListWorkspaces answers what the switcher and the organizations screen both
+// need. Empty is a legitimate answer: a new account belongs to nothing.
+func (s *Service) ListWorkspaces(ctx context.Context, userID string) ([]Workspace, error) {
+	memberships, err := s.repo.ListForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Workspace, 0, len(memberships))
+	for _, m := range memberships {
+		org, err := s.repo.Get(ctx, m.OrganizationID)
+		if errors.Is(err, ErrNotFound) {
+			// A membership pointing at an organization that is gone. Skipped
+			// rather than surfaced: a row that leads to a 403 is worse than no
+			// row, and one dangling membership must not empty the whole list.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Workspace{
+			ID:          org.ID,
+			DisplayName: org.DisplayName,
+			OwnerUserID: org.OwnerUserID,
+			Role:        m.Role,
+			JoinedAt:    m.CreatedAt,
+		})
+	}
+	// By name, so the list does not reshuffle between renders — a switcher that
+	// reorders itself is a switcher people misclick.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].DisplayName == out[j].DisplayName {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].DisplayName < out[j].DisplayName
+	})
+	return out, nil
 }
