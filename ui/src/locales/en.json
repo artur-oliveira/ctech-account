@@ -938,6 +938,18 @@
       "taxId": "CNPJ or CPF",
       "legalName": "Legal name",
       "empty": "No companies yet. Add the CNPJ you issue documents for."
+    },
+    "new": {
+      "title": "New organization",
+      "body": "A workspace for your team, and the company it issues documents for.",
+      "name": "Organization name",
+      "taxIdOptional": "CNPJ or CPF (optional)",
+      "submit": "Create organization",
+      "failed": "Could not create the organization.",
+      "handoffBanner": "Creating an organization for {{product}}. You will be returned there when you are done.",
+      "handoffInvalidTitle": "This link is not valid",
+      "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create an organization from your account.",
+      "goToOrganizations": "Go to my organizations"
     }
   }
 }

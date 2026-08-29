@@ -134,7 +134,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
   // a CNPJ says nothing about whether it is real.
   async function fillFromRegister() {
     if (!taxID.trim() || legalName.trim()) return
-    const names = await lookupTaxID(organizationID, taxID)
+    const names = await lookupTaxID(taxID)
     if (!names) return
     setLegalName(names.legal_name)
     if (names.trade_name) setTradeName(names.trade_name)

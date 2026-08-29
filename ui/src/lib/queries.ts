@@ -143,18 +143,41 @@ export async function fetchCompanyActors(id: string, companyID: string): Promise
  * Fills the names for a CNPJ. Never throws and never rejects: every failure —
  * an outage, a register that has not heard of this CNPJ — means the same thing
  * to the form, which is that the person types the names.
+ *
+ * Not scoped to an organization: it reads a public register, and the create
+ * screen needs it before an organization exists.
  */
 export async function lookupTaxID(
-  id: string,
   taxID: string,
 ): Promise<{ legal_name: string; trade_name: string } | null> {
   try {
     const { data } = await api.get<{ found: boolean; legal_name?: string; trade_name?: string }>(
-      `/v1.0/organizations/${encodeURIComponent(id)}/companies/lookup`,
+      '/v1.0/companies/lookup',
       { params: { tax_id: taxID } },
     )
     return data.found ? { legal_name: data.legal_name ?? '', trade_name: data.trade_name ?? '' } : null
   } catch {
     return null
   }
+}
+
+/**
+ * Validates a product's handoff and names it.
+ *
+ * The check is the server's, not this function's: a static export cannot decide
+ * whether a `return_to` is registered, and a check written here is one an
+ * attacker skips by not running it. The `return_to` that comes back is the one
+ * the browser must follow — whatever was validated, rather than whatever was in
+ * the address bar.
+ */
+export async function fetchHandoff(
+  clientID: string,
+  returnTo: string,
+  state: string,
+): Promise<{ client_name: string; return_to: string }> {
+  const { data } = await api.get<{ client_name: string; return_to: string }>(
+    '/v1.0/organizations/handoff',
+    { params: { client_id: clientID, return_to: returnTo, state } },
+  )
+  return data
 }

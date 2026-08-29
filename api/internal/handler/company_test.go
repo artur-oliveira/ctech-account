@@ -186,8 +186,9 @@ func newCompanyTestApp(t *testing.T) *companyTestApp {
 	})
 	app.Use(recover.New())
 	v1 := app.Group("/v1.0")
-	handler.NewCompanyHandler(svc, orgSvc, base.userSvc, lookup).
-		Register(v1.Group("/organizations", middleware.RequireAuth(base.jwtSvc)))
+	companyH := handler.NewCompanyHandler(svc, orgSvc, base.userSvc, lookup)
+	companyH.Register(v1.Group("/organizations", middleware.RequireAuth(base.jwtSvc)))
+	companyH.RegisterLookup(v1.Group("/companies", middleware.RequireAuth(base.jwtSvc)))
 	return &companyTestApp{testApp: base, app: app, orgRepo: orgRepo, orgSvc: orgSvc, repo: repo, lookup: lookup}
 }
 
@@ -339,15 +340,16 @@ func TestTheSameTaxIDTwiceIsAConflict(t *testing.T) {
 	}
 }
 
-// "lookup" must reach its own route. Registered after /:company_id it would be
-// captured as a company id and answer 403 instead.
-func TestLookupIsARouteAndNotACompanyID(t *testing.T) {
+// The lookup reads a public register, not organization data, and the create
+// screen needs it before an organization exists — so it lives outside the
+// organization scope, where no /:company_id can capture it.
+func TestTheLookupNeedsNoOrganization(t *testing.T) {
 	a := newCompanyTestApp(t)
-	orgID, _, token := a.seedOrg(t, "dono-cmp7@example.com")
+	_, _, token := a.seedOrg(t, "dono-cmp7@example.com")
 	a.lookup.names = registry.Names{LegalName: "ACME COMERCIO LTDA", TradeName: "Acme"}
 	a.lookup.found = true
 
-	resp := a.do(t, http.MethodGet, "/v1.0/organizations/"+orgID+"/companies/lookup?tax_id=11222333000181", token, "")
+	resp := a.do(t, http.MethodGet, "/v1.0/companies/lookup?tax_id=11222333000181", token, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", resp.StatusCode, bodyString(resp))
 	}
@@ -368,10 +370,10 @@ func TestLookupIsARouteAndNotACompanyID(t *testing.T) {
 // is valid — the register simply has not heard of it.
 func TestAnUnknownCNPJIsNotAnError(t *testing.T) {
 	a := newCompanyTestApp(t)
-	orgID, _, token := a.seedOrg(t, "dono-cmp8@example.com")
+	_, _, token := a.seedOrg(t, "dono-cmp8@example.com")
 	a.lookup.found = false
 
-	resp := a.do(t, http.MethodGet, "/v1.0/organizations/"+orgID+"/companies/lookup?tax_id=11222333000181", token, "")
+	resp := a.do(t, http.MethodGet, "/v1.0/companies/lookup?tax_id=11222333000181", token, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", resp.StatusCode, bodyString(resp))
 	}
@@ -388,11 +390,11 @@ func TestAnUnknownCNPJIsNotAnError(t *testing.T) {
 // register, and the route must not quietly try.
 func TestACPFIsNeverLookedUp(t *testing.T) {
 	a := newCompanyTestApp(t)
-	orgID, _, token := a.seedOrg(t, "dono-cmp9@example.com")
+	_, _, token := a.seedOrg(t, "dono-cmp9@example.com")
 	a.lookup.names = registry.Names{LegalName: "SHOULD NOT APPEAR"}
 	a.lookup.found = true
 
-	resp := a.do(t, http.MethodGet, "/v1.0/organizations/"+orgID+"/companies/lookup?tax_id=52998224725", token, "")
+	resp := a.do(t, http.MethodGet, "/v1.0/companies/lookup?tax_id=52998224725", token, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}

@@ -151,6 +151,11 @@ A new route, `/account/organizations/new`. The create dialog on
 `/account/organizations` stays exactly as it is: that is the path for somebody already
 in their account, and it has no return trip to make.
 
+The screen collects the organization name and the company in one pass, so the person
+types the CNPJ once. Without handoff parameters the company is optional: somebody
+creating a workspace from their own account is not necessarily registering a company
+yet, and forcing one would make the direct route worse to serve the handoff.
+
 **What is different from the dialog:**
 
 - **A banner naming the sender**, above the form: *"Criando uma organização para o

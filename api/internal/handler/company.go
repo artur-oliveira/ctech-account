@@ -29,6 +29,16 @@ func NewCompanyHandler(svc *company.Service, orgs *organization.Service, users *
 	return &CompanyHandler{svc: svc, orgs: orgs, users: users, lookup: lookup}
 }
 
+// RegisterLookup mounts the registry lookup outside the organization scope.
+//
+// It reads a public register, not organization data, and the create screen
+// needs it before an organization exists. Scoping it to one bought nothing and
+// blocked the caller that most needs it. It stays behind RequireAuth so it is
+// not an open proxy onto a third party.
+func (h *CompanyHandler) RegisterLookup(companies fiber.Router) {
+	companies.Get("/lookup", h.lookupTaxID)
+}
+
 // Register mounts the routes on the organizations group, which already carries
 // RequireAuth and RequireClientID: a company is a first-party action, not
 // something a delegated token does on a user's behalf.
@@ -36,8 +46,6 @@ func (h *CompanyHandler) Register(orgs fiber.Router) {
 	scoped := func(floor string) fiber.Handler { return middleware.RequireOrgRole(h.orgs, floor) }
 	orgs.Get("/:id/companies", scoped(organization.RoleViewer), h.list)
 	orgs.Post("/:id/companies", scoped(organization.RoleAdmin), h.register)
-	// Before /:company_id, or Fiber captures "lookup" as a company id.
-	orgs.Get("/:id/companies/lookup", scoped(organization.RoleAdmin), h.lookupTaxID)
 	orgs.Get("/:id/companies/:company_id", scoped(organization.RoleViewer), h.get)
 	orgs.Patch("/:id/companies/:company_id", scoped(organization.RoleAdmin), h.rename)
 	orgs.Get("/:id/companies/:company_id/actors", scoped(organization.RoleViewer), h.listActors)

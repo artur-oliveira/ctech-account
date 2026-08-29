@@ -938,6 +938,18 @@
       "taxId": "CNPJ ou CPF",
       "legalName": "Razão social",
       "empty": "Nenhuma empresa ainda. Adicione o CNPJ para o qual você emite documentos."
+    },
+    "new": {
+      "title": "Nova organização",
+      "body": "Um espaço para sua equipe, e a empresa para a qual ela emite documentos.",
+      "name": "Nome da organização",
+      "taxIdOptional": "CNPJ ou CPF (opcional)",
+      "submit": "Criar organização",
+      "failed": "Não foi possível criar a organização.",
+      "handoffBanner": "Criando uma organização para o {{product}}. Você volta para lá ao terminar.",
+      "handoffInvalidTitle": "Este link não é válido",
+      "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar uma organização pela sua conta.",
+      "goToOrganizations": "Ir para minhas organizações"
     }
   }
 }

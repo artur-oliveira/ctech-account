@@ -195,6 +195,10 @@ Three rules:
 - **Called from the server, not the browser.** A static export calling a third party
   directly hands that party the customer's IP and leaves no audit trail. It also means
   one place to cache.
+- **Not scoped to an organization.** `GET /v1.0/companies/lookup`, behind `RequireAuth`
+  so it is not an open proxy, but outside `RequireOrgRole`. It reads a public register,
+  not organization data, and the create screen needs it *before* an organization
+  exists — scoping it to one bought nothing and blocked the caller that needs it most.
 - **A failed lookup is not an invalid CNPJ.** The check digit is verified locally; the
   lookup only fills names. Conflating them rejects a valid, newly-issued CNPJ.
 

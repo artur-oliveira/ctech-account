@@ -439,11 +439,10 @@ const routes: Route[] = [
     handle: (m) => ({ companies: state.companies[m[1]] ?? [] }),
   },
   {
-    // Before the /:company_id route below, exactly as the server registers it —
-    // otherwise "lookup" is captured as a company id here too, and mock mode
-    // would disagree with production about a route that exists.
+    // Outside the organization scope, exactly as the server mounts it: the
+    // create screen needs a lookup before an organization exists.
     method: 'get',
-    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies\/lookup$/,
+    pattern: /^\/v1\.0\/companies\/lookup$/,
     handle: (_m, _body, config) => {
       const raw = new URL(config.url ?? '', 'http://mock').searchParams.get('tax_id') ?? ''
       const canonical = raw.replace(/[^0-9A-Za-z]/g, '').toUpperCase()

@@ -432,7 +432,9 @@ func main() {
 		orgsGroup,
 		v1.Group("/invitations", adminAuth[0], adminAuth[1]),
 	)
-	handler.NewCompanyHandler(companySvc, orgSvc, userSvc, registry.NewCNPJA(nil)).Register(orgsGroup)
+	companyH := handler.NewCompanyHandler(companySvc, orgSvc, userSvc, registry.NewCNPJA(nil))
+	companyH.Register(orgsGroup)
+	companyH.RegisterLookup(v1.Group("/companies", adminAuth[0], adminAuth[1]))
 	supportAdminH.Register(v1.Group("/admin", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
