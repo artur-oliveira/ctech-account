@@ -31,8 +31,25 @@ func NewS3(ctx context.Context, region, bucket string) (*S3, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading aws config: %w", err)
 	}
+	return newS3FromConfig(cfg, bucket), nil
+}
+
+func newS3FromConfig(cfg aws.Config, bucket string) *S3 {
 	client := s3.NewFromConfig(cfg)
-	return &S3{client: client, presign: s3.NewPresignClient(client), bucket: bucket}, nil
+	return &S3{client: client, presign: s3.NewPresignClient(client), bucket: bucket}
+}
+
+func browserGetPresignOptions(ttl time.Duration) func(*s3.PresignOptions) {
+	return func(options *s3.PresignOptions) {
+		options.Expires = ttl
+		options.ClientOptions = append(options.ClientOptions, func(client *s3.Options) {
+			// A new browser tab cannot attach the SDK's optional
+			// x-amz-checksum-mode header. If it is signed, S3 rejects the
+			// navigation with SignatureDoesNotMatch. GetObject does not require
+			// response-checksum negotiation, so disable it only for this presign.
+			client.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		})
+	}
 }
 
 // buildPutObjectInput constructs the PUT request the presigned URL signs. It
@@ -65,7 +82,7 @@ func (s *S3) PresignGet(ctx context.Context, key string, ttl time.Duration) (str
 	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
-	}, s3.WithPresignExpires(ttl))
+	}, browserGetPresignOptions(ttl))
 	if err != nil {
 		return "", fmt.Errorf("presigning get %s: %w", key, err)
 	}

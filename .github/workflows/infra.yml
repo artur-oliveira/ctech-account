@@ -146,10 +146,13 @@ jobs:
 
       - name: CDK Deploy
         working-directory: cdk
-        # CtechAccount-Global-OIDC is intentionally excluded by the env-scoped glob
-        # (CtechAccount-Prod-*). CDK has no --exclude flag; the global stack owns the
-        # very role this job assumes, so it is deployed manually when the roles change.
-        run: npx cdk deploy "CtechAccount-Prod-*" --require-approval never
+        # The global stack owns the CI roles and must be applied before the
+        # environment stacks when their policies change. This job is already
+        # authenticated with the separate gha-infra role, so updating the API
+        # deploy role does not interrupt the active session.
+        run: |
+          npx cdk deploy CtechAccount-Global-OIDC --require-approval never
+          npx cdk deploy "CtechAccount-Prod-*" --require-approval never
         env:
           ENVIRONMENT: ${{ env.ENVIRONMENT }}
           CTECH_VPC_ID: ${{ env.CTECH_VPC_ID }}

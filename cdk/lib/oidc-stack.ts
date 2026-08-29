@@ -59,8 +59,33 @@ export class OidcStack extends cdk.Stack {
       resources: ['arn:aws:ssm:*:*:parameter/ctech/*'],
     }));
 
-    // ASG — deploy by replacing the instances. The SSM agent is disabled on
-    // them, so an instance refresh is the deploy mechanism, not a fallback.
+    // SSM Run Command — the shared deploy-backend action invokes only the
+    // managed instances owned by this project and only through AWS's shell
+    // document. The instance wildcard is unavoidable because ASG instance IDs
+    // are ephemeral; the project tag is the authorization boundary.
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ssm:SendCommand'],
+      resources: [
+        `arn:${cdk.Aws.PARTITION}:ssm:${this.region}::document/AWS-RunShellScript`,
+      ],
+    }));
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ssm:SendCommand'],
+      resources: [
+        `arn:${cdk.Aws.PARTITION}:ec2:${this.region}:${this.account}:instance/*`,
+      ],
+      conditions: {
+        StringEquals: {'ssm:resourceTag/Project': 'ctech-account'},
+      },
+    }));
+    // GetCommandInvocation does not support resource-level permissions.
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetCommandInvocation'],
+      resources: ['*'],
+    }));
+
+    // ASG/EC2 discovery is used to resolve the current InService instances;
+    // refresh actions remain available as the operational fallback.
     deployRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         'autoscaling:DescribeAutoScalingGroups',

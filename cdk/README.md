@@ -192,8 +192,9 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 - **GitHub OIDC provider** is owned by `py-dfe-cdk` and imported by ARN
   (`oidc-stack.ts:17`). Trust matches both legacy and immutable-ID `sub` formats.
 - `ctech-account-github-deploy-role`: S3 (artifacts + frontend), SSM `GetParameter`
-  on `/ctech/*`, ASG/EC2 describe, `autoscaling:StartInstanceRefresh` +
-  `DescribeInstanceRefreshes` + `CancelInstanceRefresh` (the deploy mechanism),
+  on `/ctech/*`, `SendCommand` restricted to `AWS-RunShellScript` and EC2 instances tagged
+  `Project=ctech-account`, `GetCommandInvocation`, ASG/EC2 describe, `autoscaling:StartInstanceRefresh` +
+  `DescribeInstanceRefreshes` + `CancelInstanceRefresh` (operational fallback),
   `cloudfront:CreateInvalidation`, KeyValueStore update, and `cloudformation:*` +
   `sts:AssumeRole` (CDK deploy).
 - `ctech-account-gha-infra`: **`AdministratorAccess`** — used only by
@@ -215,10 +216,15 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
   (`bin/ctech-account.ts:17`).
 - Order matters: deploy `DynamoDB` + `KYC` first, then `IAM`, then `Compute`
   (depends on IAM), then `Frontend`. `OidcStack` is global (deploy once).
+- The infrastructure workflow deploys `CtechAccount-Global-OIDC` before the environment-scoped stacks, using the
+  separate `ctech-account-gha-infra` role. After a CI-role policy fix, rerun the API stage only after this infrastructure
+  stage succeeds. For manual recovery, use
+  `ENVIRONMENT=prod npx cdk deploy CtechAccount-Global-OIDC --require-approval never` with infrastructure credentials.
 - EC2 user-data pulls the release from `ctech-account/current.zip` in the deployments
-  bucket. A deploy overwrites that object and starts an **ASG instance refresh**, so every
-  instance re-bootstraps it; nothing is executed on the box remotely (the SSM agent is off).
-  `MinHealthyPercentage: 0` means the service is down while the refresh runs.
+  bucket. A normal API deploy overwrites that object and invokes `/opt/app/deploy.sh` through
+  **SSM Run Command** on each InService instance; the SSM agent is enabled. ASG instance refresh
+  permissions remain available as an operational fallback.
+  If that fallback is used, `MinHealthyPercentage: 0` means the service is down while the refresh runs.
 - The ASG only runs between **11:55** and **13:15** America/Sao_Paulo. A deploy outside that
   window exits early and the next scheduled instance picks the artifact up at boot.
 - **There are no `cdk` snapshot/jest tests in this repo** (the `test: jest` script

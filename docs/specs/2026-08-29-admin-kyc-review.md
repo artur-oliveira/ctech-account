@@ -30,6 +30,9 @@ state can reveal UI chrome only; it cannot reveal KYC data.
 - S3 remains private. `POST .../documents/access` is an explicit auditable action that returns ten-minute presigned GET
   URLs. The API records `kyc.documents_viewed` against the subject with reviewer ID/name/role, request IP and user-agent.
 - URLs are bearer capabilities: the UI never persists them and opens them with `noopener noreferrer`.
+- Reviewer GET URLs support direct browser navigation and sign only `host`. Optional S3 response-checksum negotiation is
+  disabled for these presigns because a new browser tab cannot attach `x-amz-checksum-mode`; integrity and authorization
+  remain protected by HTTPS, SigV4, the private bucket policy and the ten-minute expiration.
 - Rejection accepts one fixed code (`document_unreadable`, `document_incomplete`, `document_mismatch`, `selfie_mismatch`,
   `data_mismatch`, `suspected_fraud`, `other`) plus optional details capped at 255 characters. `other` requires details.
 - Approve/reject records `kyc.verified` or `kyc.rejected`. The latest reviewer ID/name, decision and timestamp are also
