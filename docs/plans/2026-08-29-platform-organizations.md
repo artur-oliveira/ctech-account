@@ -801,7 +801,10 @@ git commit -m "feat(cdk): organization, membership and invitation tables"
 1. **One dfe organization becomes one platform organization.** Not "one per owner": two CNPJs owned by the same person are two workspaces until a human merges them, because merging is irreversible and splitting is not.
 2. **The new organization id is a fresh UUIDv7**, and the dfe key is recorded as `source_ref`. Reusing `CNPJ_…` as an id would put a tax id in the partition key of every billing row forever.
 3. **A membership whose user no longer exists in `account_users` is skipped and reported**, never written. A membership pointing at nobody is an access grant that cannot be audited.
-4. **An organization whose `owner_user_id` is empty gets no owner membership and is reported.** Inventing one from the oldest `OWNER` row would be guessing who owns a company.
+4. **An organization whose `owner_user_id` is empty gets no owner membership and is reported.** Inventing one from the oldest `OWNER` row would be guessing who owns a company — which is exactly what dfe's own repair path does (`services/billing.go:990`), and exactly why this one must not.
+5. **A membership carrying extra dfe `permissions` is reported, never imported.** Each dfe membership holds a `permissions` list of grants *on top of* the role (`repositories/organization_users.go:56`). This model has no permissions, deliberately. Importing one silently deletes access somebody was explicitly given, and nobody notices until a screen is gone.
+
+**What the dfe tables turned out to be** (mapped 2026-08-29, and it changed two things above): `organizations` has **no GSI at all**, so the read side is a `Scan`, not a `Query` — acceptable because the table holds a handful of rows and runs once. There is **no `status` and no soft delete** on either table, so every row present is live and nothing needs filtering out. `organization_users` keys are `pk={org pk}`, `sk=USER_{sub}`, with the bare sub also in `user_id`.
 
 - [ ] **Step 1: Write the failing test**
 
