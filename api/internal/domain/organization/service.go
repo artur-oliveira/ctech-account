@@ -139,3 +139,70 @@ func (s *Service) require(ctx context.Context, orgID, actorUserID, floor string)
 	}
 	return nil
 }
+
+// SetRole changes a member's role. Admin and above may call it; owner is not a
+// role it can write, and the owner's own row is not a row it can touch.
+func (s *Service) SetRole(ctx context.Context, orgID, actorUserID, targetUserID, role string) error {
+	if !IsGrantableRole(role) {
+		return ErrNotGrantable
+	}
+	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+		return err
+	}
+	current, err := s.RoleOf(ctx, orgID, targetUserID)
+	if err != nil {
+		return err
+	}
+	// The repository refuses this too. The check is here as well so the caller
+	// gets an error that says what happened rather than a condition failure
+	// that reads as "not found".
+	if current == RoleOwner {
+		return ErrNotGrantable
+	}
+	return s.repo.SetRole(ctx, orgID, targetUserID, role)
+}
+
+// Remove takes a member out of the organization.
+//
+// The owner is not removable — not by an admin, and not by themselves. An
+// organization whose owner walked out has nobody who can invite, rename or
+// transfer it, and no support path short of a database edit. Leaving is
+// Transfer followed by Remove, in that order, deliberately.
+func (s *Service) Remove(ctx context.Context, orgID, actorUserID, targetUserID string) error {
+	// Leaving on your own account needs no admin role; removing somebody else
+	// does.
+	if actorUserID != targetUserID {
+		if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+			return err
+		}
+	}
+	role, err := s.RoleOf(ctx, orgID, targetUserID)
+	if err != nil {
+		return err
+	}
+	if role == RoleOwner {
+		return ErrForbidden
+	}
+	return s.repo.RemoveMembership(ctx, orgID, targetUserID)
+}
+
+// Transfer hands the organization to another member. Only the owner may do it,
+// and only to somebody who already accepted a membership — handing a workspace
+// to an address that never agreed to it is how an organization ends up owned by
+// a stranger who cannot be reached.
+func (s *Service) Transfer(ctx context.Context, orgID, actorUserID, toUserID string) error {
+	role, err := s.RoleOf(ctx, orgID, actorUserID)
+	if err != nil {
+		return err
+	}
+	if role != RoleOwner {
+		return ErrForbidden
+	}
+	if actorUserID == toUserID {
+		return ErrForbidden
+	}
+	if _, err := s.RoleOf(ctx, orgID, toUserID); err != nil {
+		return err
+	}
+	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, s.now().UTC())
+}

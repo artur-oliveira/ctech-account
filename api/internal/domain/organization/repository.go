@@ -71,6 +71,7 @@ type Repository interface {
 	PutMembership(ctx context.Context, m *Membership) error
 	SetRole(ctx context.Context, orgID, userID, role string) error
 	RemoveMembership(ctx context.Context, orgID, userID string) error
+	TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID string, now time.Time) error
 	PutInvitation(ctx context.Context, inv *Invitation) error
 	GetInvitationByToken(ctx context.Context, tokenHash string) (*Invitation, error)
 	ListInvitations(ctx context.Context, orgID string) ([]*Invitation, error)
@@ -289,6 +290,46 @@ func (r *repo) RemoveMembership(ctx context.Context, orgID, userID string) error
 	}
 	if err != nil {
 		return fmt.Errorf("removing membership: %w", err)
+	}
+	return nil
+}
+
+// TransferOwnership demotes the old owner, promotes the new one and repoints
+// the organization's owner_user_id — three writes, one transaction.
+//
+// Every item carries the condition that describes the state it expects to
+// replace, so two transfers racing each other cannot both commit: the second
+// finds a role it did not expect and the whole transaction is rejected. Doing
+// this as three sequential writes would have two failure windows, and both
+// leave an organization with either two owners or none.
+func (r *repo) TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID string, now time.Time) error {
+	ownerVal := map[string]types.AttributeValue{":owner": &types.AttributeValueMemberS{Value: RoleOwner}}
+	demote := map[string]types.AttributeValue{
+		":owner": &types.AttributeValueMemberS{Value: RoleOwner},
+		":admin": &types.AttributeValueMemberS{Value: RoleAdmin},
+	}
+	roleName := map[string]string{"#role": "role"}
+
+	err := r.memberships.TransactWrite(ctx, []types.TransactWriteItem{
+		// The outgoing owner becomes an admin, not a stranger: taking away the
+		// workspace they built as a side effect of handing it over is a
+		// surprise nobody asked for.
+		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(fromUserID)),
+			"SET #role = :admin", "attribute_exists(pk) AND #role = :owner", roleName, demote),
+		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(toUserID)),
+			"SET #role = :owner", "attribute_exists(pk) AND #role <> :owner", roleName, ownerVal),
+		r.orgs.BuildRawUpdateTxItem(orgPK(orgID), aws.String(metaSK),
+			"SET owner_user_id = :to, updated_at = :now", "attribute_exists(pk)", nil,
+			map[string]types.AttributeValue{
+				":to":  &types.AttributeValueMemberS{Value: toUserID},
+				":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+			}),
+	})
+	if database.IsConditionFailed(err) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("transferring ownership: %w", err)
 	}
 	return nil
 }

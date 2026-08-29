@@ -119,6 +119,21 @@ func (f *fakeRepo) RemoveMembership(_ context.Context, orgID, userID string) err
 	return nil
 }
 
+func (f *fakeRepo) TransferOwnership(_ context.Context, orgID, fromUserID, toUserID string, now time.Time) error {
+	from, okFrom := f.memberships[orgID][fromUserID]
+	to, okTo := f.memberships[orgID][toUserID]
+	if !okFrom || !okTo || from.Role != RoleOwner || to.Role == RoleOwner {
+		return ErrNotFound
+	}
+	from.Role = RoleAdmin
+	to.Role = RoleOwner
+	if org, ok := f.orgs[orgID]; ok {
+		org.OwnerUserID = toUserID
+		org.UpdatedAt = now
+	}
+	return nil
+}
+
 func (f *fakeRepo) PutInvitation(_ context.Context, inv *Invitation) error {
 	if f.invitations[inv.OrganizationID] == nil {
 		f.invitations[inv.OrganizationID] = map[string]*Invitation{}
@@ -211,5 +226,95 @@ func TestGetRefusesANonMember(t *testing.T) {
 	org, _ := svc.Create(ctx, "usr_1", "CTech")
 	if _, err := svc.Get(ctx, org.ID, "usr_stranger"); err == nil {
 		t.Fatal("a non-member read the organization")
+	}
+}
+
+// seedOrg builds an organization owned by ownerID, plus a second member the
+// role tests can move around.
+func seedOrg(t *testing.T, ownerID string) (*Service, *Organization) {
+	t.Helper()
+	repo := newFakeRepo()
+	svc := NewService(repo, fixedClock)
+	org, err := svc.Create(context.Background(), ownerID, "CTech")
+	if err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	return svc, org
+}
+
+func join(t *testing.T, svc *Service, orgID, userID, role string) {
+	t.Helper()
+	if err := svc.repo.PutMembership(context.Background(), &Membership{
+		OrganizationID: orgID, UserID: userID, Role: role, CreatedAt: fixedClock(),
+	}); err != nil {
+		t.Fatalf("joining %s: %v", userID, err)
+	}
+}
+
+func TestOwnerCannotBeGrantedThroughSetRole(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_2", RoleViewer)
+	if err := svc.SetRole(ctx, org.ID, "usr_owner", "usr_2", RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetRole(ctx, org.ID, "usr_owner", "usr_2", RoleOwner); err == nil {
+		t.Fatal("owner was handed out through member management")
+	}
+}
+
+// The last owner leaving is an organization nobody can administer, and it is
+// reachable by one careless click.
+func TestTheLastOwnerCannotBeRemoved(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	if err := svc.Remove(context.Background(), org.ID, "usr_owner", "usr_owner"); err == nil {
+		t.Fatal("removed the only owner")
+	}
+}
+
+// Transfer moves the single owner. It never adds a second, and it never leaves
+// zero — the demotion and the promotion are one write.
+func TestTransferMovesOwnershipAtomically(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_2", RoleAdmin)
+	if err := svc.Transfer(ctx, org.ID, "usr_owner", "usr_2"); err != nil {
+		t.Fatalf("Transfer: %v", err)
+	}
+	if role, _ := svc.RoleOf(ctx, org.ID, "usr_2"); role != RoleOwner {
+		t.Fatalf("new owner role = %q", role)
+	}
+	if role, _ := svc.RoleOf(ctx, org.ID, "usr_owner"); role != RoleAdmin {
+		t.Fatalf("old owner role = %q, want admin — demoted, not removed", role)
+	}
+}
+
+// Transferring to a stranger is how an organization is handed to somebody who
+// never accepted it.
+func TestTransferRequiresAnExistingMember(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	if err := svc.Transfer(context.Background(), org.ID, "usr_owner", "usr_stranger"); err == nil {
+		t.Fatal("transferred to somebody who is not a member")
+	}
+}
+
+// An admin may manage members. Only the owner may hand the organization away.
+func TestOnlyTheOwnerMayTransfer(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_admin", RoleAdmin)
+	if err := svc.Transfer(ctx, org.ID, "usr_admin", "usr_admin"); err == nil {
+		t.Fatal("an admin transferred ownership")
+	}
+}
+
+// A member must not be able to promote themselves out of the role they were
+// given — the actor's floor is checked, not the target's.
+func TestAMemberCannotChangeRoles(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_2", RoleMember)
+	if err := svc.SetRole(ctx, org.ID, "usr_2", "usr_2", RoleAdmin); err == nil {
+		t.Fatal("a member promoted themselves")
 	}
 }
