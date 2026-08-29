@@ -36,7 +36,7 @@ func TestUserInfoReportsVerifiedKYCLevel(t *testing.T) {
 	resp := ta.doWithToken(http.MethodGet, "/v1.0/userinfo", nil, token)
 	var body map[string]any
 	readJSON(t, resp, &body)
-	if body["kyc_level"] != "verified" {
+	if body["kyc_level"] != "enhanced" {
 		t.Fatalf("kyc_level = %v, want verified", body["kyc_level"])
 	}
 }

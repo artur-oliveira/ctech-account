@@ -32,7 +32,7 @@ func TestClaimLevel(t *testing.T) {
 		{LevelBasic, StatusVerified, "basic"},
 		{LevelEnhanced, StatusPending, "basic"},
 		{LevelEnhanced, StatusRejected, "basic"},
-		{LevelEnhanced, StatusVerified, "verified"},
+		{LevelEnhanced, StatusVerified, "enhanced"},
 	}
 	for _, tc := range cases {
 		if got := ClaimLevel(tc.level, tc.status); got != tc.want {

@@ -558,7 +558,7 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 	var body map[string]any
 	readJSON(t, resp, &body)
 	claims := decodeJWTPayload(t, body["access_token"].(string))
-	if claims["kyc_level"] != "verified" {
+	if claims["kyc_level"] != "enhanced" {
 		t.Fatalf("kyc_level = %v", claims["kyc_level"])
 	}
 }
