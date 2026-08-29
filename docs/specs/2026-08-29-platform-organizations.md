@@ -187,6 +187,27 @@ enabled costs nothing, which is what makes ten CNPJs and one DF-e seat expressib
 
 Nested organizations, per-action permissions, SSO domain capture, a company shared between
 organizations as one record, and automatic verification from the QSA. The first four are named in
-ADR 0021's reopen conditions; the last is a `ctech-rfb` question — it proves a CNPJ is active, which
-is not the same as proving who may act for it, and the difference is the whole reason claims are
-reviewed by a person.
+ADR 0021's reopen conditions; the last needs the paragraph below.
+
+## On CNPJ lookup, and why it is not verification
+
+`ctech-dfe` already looks a CNPJ up — [cnpja](https://open.cnpja.com)'s open endpoint, with a SEFAZ
+fallback (`ui/src/lib/hooks/useCnpjLookup.ts`). It fills a form in: name, address, status. That is a
+convenience and it should stay one.
+
+Two reasons it is not evidence for a claim, and they are independent:
+
+- **It is called from the browser.** A response that reached the server through the page that asked
+  for it is a response the page could have written. Anything a review decision rests on has to be
+  fetched server-side, from the server's own credential.
+- **It proves the wrong thing.** A lookup says this CNPJ exists and is active. Whether *this person*
+  may act for it is a different question, and public registry data cannot answer it — which is the
+  whole reason a claim is reviewed by a person rather than resolved by an API.
+
+So a server-side lookup is worth having, later, and worth being honest about what it buys: it
+pre-fills the reviewer's screen and catches an inactive or non-existent CNPJ before a human spends
+time on it. It shortens the queue; it does not replace it. When it is added it is one more piece of
+evidence attached to the claim, alongside the documents, with the source and the fetch timestamp
+recorded — never a field that decides the outcome.
+
+`ctech-rfb` is not the path here: it is not in production and is not planned for it soon.
