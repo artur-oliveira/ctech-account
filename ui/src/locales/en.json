@@ -17,7 +17,8 @@
     "identity": "Identity",
     "support": "Support",
     "menu": "Menu",
-    "organizations": "Organizations"
+    "organizations": "Organizations",
+    "admin": "Admin workspace"
   },
   "common": {
     "loading": "Loading…",

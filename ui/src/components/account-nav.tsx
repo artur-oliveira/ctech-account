@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { fetchProfile } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -17,13 +19,29 @@ import {
   Building2,
   IdCard,
   LifeBuoy,
+  ShieldCheck,
 } from 'lucide-react'
+
+type NavItem = {
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  exact?: boolean
+  children?: { href: string; label: string }[]
+  /** Sits below a rule: this link leaves the account section. */
+  separated?: boolean
+}
 
 export function AccountNav() {
   const { t } = useTranslation()
   const pathname = usePathname()
 
-  const navItems = [
+  // The layout already fetched this under the same key, so the nav reads the
+  // cache rather than the network — and rather than threading a prop through
+  // AccountMobileNav, which renders AccountNav wholesale.
+  const { data: user } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
+
+  const navItems: NavItem[] = [
     { href: '/account', label: t('nav.dashboard'), icon: LayoutDashboard, exact: true },
     { href: '/account/profile', label: t('nav.profile'), icon: User },
     {
@@ -45,13 +63,24 @@ export function AccountNav() {
     { href: '/account/connected-apps', label: t('nav.connectedApps'), icon: Blocks },
   ]
 
+  // The operator console is a different shell, not an account page — it sits
+  // below a rule so it reads as leaving this section, not as one more setting.
+  if (user?.support_role) {
+    navItems.push({
+      href: '/admin/support',
+      label: t('nav.admin'),
+      icon: ShieldCheck,
+      separated: true,
+    })
+  }
+
   return (
     <nav className="space-y-0.5">
       {navItems.map((item) => {
         const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
         const Icon = item.icon
         return (
-          <div key={item.href}>
+          <div key={item.href} className={cn(item.separated && 'mt-2 border-t pt-2')}>
             <Link
               href={item.href}
               className={cn(
