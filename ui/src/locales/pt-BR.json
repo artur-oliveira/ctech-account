@@ -16,7 +16,8 @@
     "activity": "Atividade",
     "identity": "Identidade",
     "support": "Suporte",
-    "menu": "Menu"
+    "menu": "Menu",
+    "organizations": "Organizações"
   },
   "common": {
     "loading": "Carregando…",
@@ -393,7 +394,21 @@
     "clientSaveFailed": "Não foi possível salvar a aplicação",
     "clientDeleteFailed": "Não foi possível excluir a aplicação",
     "consentRevoked": "Acesso revogado",
-    "consentRevokeFailed": "Não foi possível revogar o acesso"
+    "consentRevokeFailed": "Não foi possível revogar o acesso",
+    "createOrganizationFailed": "Não foi possível criar a organização.",
+    "renameOrganizationFailed": "Não foi possível renomear a organização.",
+    "inviteFailed": "Não foi possível criar o convite.",
+    "revokeInvitationFailed": "Não foi possível revogar o convite.",
+    "setRoleFailed": "Não foi possível alterar o papel.",
+    "removeMemberFailed": "Não foi possível remover o membro.",
+    "transferFailed": "Não foi possível transferir a organização.",
+    "leaveFailed": "Não foi possível sair da organização.",
+    "inviteLinkCopied": "Link do convite copiado.",
+    "roleChanged": "Papel atualizado.",
+    "memberRemoved": "Membro removido.",
+    "invitationRevoked": "Convite revogado.",
+    "ownershipTransferred": "Organização transferida.",
+    "organizationRenamed": "Organização renomeada."
   },
   "consent": {
     "title": "{{app}} está solicitando acesso",
@@ -658,8 +673,16 @@
     "audit": "Trilha de auditoria",
     "noAudit": "Nenhuma ação de revisor registrada.",
     "system": "Sistema",
-    "states": { "pending": "Pendente", "verified": "Aprovado", "rejected": "Rejeitado" },
-    "documentTypes": { "id_front": "Documento — frente", "id_back": "Documento — verso", "selfie_with_document": "Selfie com documento" },
+    "states": {
+      "pending": "Pendente",
+      "verified": "Aprovado",
+      "rejected": "Rejeitado"
+    },
+    "documentTypes": {
+      "id_front": "Documento — frente",
+      "id_back": "Documento — verso",
+      "selfie_with_document": "Selfie com documento"
+    },
     "events": {
       "kyc": {
         "documents_viewed": "acessou os documentos protegidos",
@@ -805,6 +828,100 @@
         "minutes": "{{count}} min",
         "hours": "{{count}} h"
       }
+    }
+  },
+  "organizations": {
+    "title": "Organizações",
+    "subtitle": "Espaços de trabalho que você divide com outras pessoas.",
+    "role": "Papel",
+    "joined": "Entrou em",
+    "name": "Nome",
+    "roles": {
+      "owner": "Dono",
+      "admin": "Administrador",
+      "member": "Membro",
+      "viewer": "Leitor"
+    },
+    "empty": {
+      "title": "Você ainda não está em nenhuma organização",
+      "body": "Uma organização é um espaço compartilhado: convide colegas, defina o papel de cada um e receba uma cobrança só. Crie uma para começar."
+    },
+    "create": {
+      "action": "Nova organização",
+      "title": "Criar uma organização",
+      "description": "Use o nome da empresa ou do time que ela representa. Dá para renomear depois.",
+      "nameLabel": "Nome",
+      "namePlaceholder": "Acme Contabilidade",
+      "submit": "Criar",
+      "submitting": "Criando…"
+    },
+    "detail": {
+      "back": "Todas as organizações",
+      "members": "Membros",
+      "invitations": "Convites",
+      "settings": "Configurações",
+      "noAccess": "Você não tem acesso a esta organização."
+    },
+    "members": {
+      "user": "Usuário",
+      "empty": "Nenhum membro ainda.",
+      "changeRole": "Alterar papel",
+      "remove": "Remover",
+      "removeTitle": "Remover este membro?",
+      "removeBody": "Ele perde o acesso a esta organização na hora. Você pode convidá-lo de novo depois."
+    },
+    "invitations": {
+      "email": "E-mail",
+      "expires": "Expira em",
+      "empty": "Nenhum convite pendente.",
+      "invite": "Convidar alguém",
+      "inviteTitle": "Convidar alguém",
+      "inviteDescription": "A pessoa aceita por um link. Nada é enviado por e-mail — você mesmo manda o link.",
+      "emailLabel": "Endereço de e-mail",
+      "roleLabel": "Papel",
+      "submit": "Criar convite",
+      "submitting": "Criando…",
+      "linkTitle": "Envie este link",
+      "linkWarning": "Este link aparece uma vez só. Ao fechar esta janela ele se perde de vez — você teria que convidar a pessoa outra vez.",
+      "copy": "Copiar link",
+      "done": "Pronto",
+      "revoke": "Revogar",
+      "revokeTitle": "Revogar este convite?",
+      "revokeBody": "O link para de funcionar. Se a pessoa já aceitou, isto não muda nada."
+    },
+    "settings": {
+      "nameTitle": "Nome",
+      "nameDescription": "É por ele que todo mundo se orienta.",
+      "save": "Salvar",
+      "saving": "Salvando…",
+      "dangerTitle": "Passar adiante e sair",
+      "transfer": "Transferir a organização",
+      "transferDescription": "Entregue esta organização a outro membro. Você continua como administrador.",
+      "transferSelect": "Novo dono",
+      "transferConfirmTitle": "Transferir para {{name}}?",
+      "transferConfirmBody": "Essa pessoa passa a ser a dona e você vira administrador. Só ela pode devolver.",
+      "leave": "Sair da organização",
+      "leaveDescription": "Você perde o acesso. Alguém com permissão de administrador precisa convidá-lo de volta.",
+      "leaveConfirmTitle": "Sair desta organização?",
+      "leaveConfirmBody": "Você perde o acesso na hora e não consegue voltar sozinho.",
+      "ownerCannotLeave": "Você é o dono desta organização, então não pode sair dela. Transfira-a antes para outro membro — uma organização sem dono não tem quem convide, renomeie ou a repasse.",
+      "noOtherMembers": "Não há mais ninguém aqui para receber. Convide alguém antes."
+    },
+    "invite": {
+      "title": "Você tem um convite",
+      "signedOut": "Entre ou crie uma conta para aceitar. Trazemos você direto de volta para cá.",
+      "signIn": "Entrar",
+      "register": "Criar uma conta",
+      "accept": "Aceitar convite",
+      "accepting": "Aceitando…",
+      "open": "Abrir",
+      "missingToken": "Este link está incompleto. Peça um novo a quem convidou você.",
+      "invalid": "Este convite não vale mais. Ele pode ter expirado, já ter sido usado ou ter sido enviado para outro endereço. Peça um novo a quem convidou você.",
+      "unverified": "Verifique seu endereço de e-mail primeiro. Mandamos um link quando você se cadastrou — abra o link e volte para esta página.",
+      "resend": "Reenviar e-mail de verificação",
+      "resent": "E-mail de verificação enviado.",
+      "retry": "Tentar de novo",
+      "already": "Você já é membro desta organização."
     }
   }
 }

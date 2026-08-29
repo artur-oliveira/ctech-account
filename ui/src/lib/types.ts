@@ -223,3 +223,34 @@ export interface AdminKYCAuditEvent {
 export interface AdminKYCDocument extends KYCDocument {
   url: string
 }
+
+/** The organization role ladder. `owner` is never assignable through member management. */
+export type OrganizationRole = 'owner' | 'admin' | 'member' | 'viewer'
+
+/** Roles the invite and role-change controls may offer. Owner moves only through transfer. */
+export const GRANTABLE_ROLES: OrganizationRole[] = ['admin', 'member', 'viewer']
+
+/** One organization as the person who belongs to it sees it. */
+export interface Organization {
+  id: string
+  display_name: string
+  owner_user_id: string
+  /** The caller's own role. Read fresh from every response — never cached past it. */
+  role: OrganizationRole
+  joined_at: string
+}
+
+export interface OrganizationMember {
+  organization_id: string
+  user_id: string
+  role: OrganizationRole
+  created_at: string
+}
+
+/** A pending invitation. The token is never here — only the admin who created it saw it. */
+export interface OrganizationInvitation {
+  email: string
+  role: OrganizationRole
+  invited_by: string
+  expires_at: string
+}

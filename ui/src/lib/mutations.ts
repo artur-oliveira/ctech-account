@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationMember, OrganizationRole } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -280,4 +280,58 @@ export async function uploadKYCDocumentAPI(file: File, type: KYCDocumentType): P
   })
 
   return confirmKYCDocumentAPI(presigned.document_id, type)
+}
+
+export async function createOrganizationAPI(displayName: string) {
+  const { data } = await api.post<Organization>('/v1.0/organizations', { display_name: displayName })
+  return data
+}
+
+export async function renameOrganizationAPI(id: string, displayName: string) {
+  await api.patch(`/v1.0/organizations/${encodeURIComponent(id)}`, { display_name: displayName })
+}
+
+/**
+ * Returns the invitation token exactly once. Nothing stores it and nothing
+ * e-mails it: if the caller loses this value the invitation has to be reissued.
+ */
+export async function inviteMemberAPI(id: string, email: string, role: OrganizationRole) {
+  const { data } = await api.post<{ token: string; email: string; role: OrganizationRole }>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/invitations`,
+    { email, role },
+  )
+  return data
+}
+
+export async function revokeInvitationAPI(id: string, email: string) {
+  await api.delete(
+    `/v1.0/organizations/${encodeURIComponent(id)}/invitations/${encodeURIComponent(email)}`,
+  )
+}
+
+export async function setMemberRoleAPI(id: string, userId: string, role: OrganizationRole) {
+  await api.patch(
+    `/v1.0/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    { role },
+  )
+}
+
+export async function removeMemberAPI(id: string, userId: string) {
+  await api.delete(
+    `/v1.0/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+  )
+}
+
+export async function transferOwnershipAPI(id: string, userId: string) {
+  await api.post(`/v1.0/organizations/${encodeURIComponent(id)}/transfer`, { user_id: userId })
+}
+
+/**
+ * The token travels alone. The address the invitation is checked against is
+ * read from the account record server-side — sending one here would make the
+ * token a bearer capability anybody who found the link could spend.
+ */
+export async function acceptInvitationAPI(token: string) {
+  const { data } = await api.post<OrganizationMember>('/v1.0/invitations/accept', { token })
+  return data
 }

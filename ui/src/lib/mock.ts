@@ -13,6 +13,10 @@ import type {
   KYCDocumentType,
   KYCStatus,
   OAuthClient,
+  Organization,
+  OrganizationInvitation,
+  OrganizationMember,
+  OrganizationRole,
   Passkey,
   PresignedUpload,
   ScopeService,
@@ -25,6 +29,11 @@ import type {
 export const USE_MOCK = process.env.NEXT_PUBLIC_MOCK_API === 'true'
 
 export const MOCK_ACCESS_TOKEN = 'mock.access.token'
+
+/** The token the mock accepts; anything else is refused. */
+const MOCK_VALID_INVITE_TOKEN = 'mock-valid-invitation'
+/** The token that reproduces the unverified-e-mail gate. */
+const MOCK_UNVERIFIED_INVITE_TOKEN = 'mock-unverified-invitation'
 
 function mockId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -87,6 +96,46 @@ function mockSupportRole(): '' | 'agent' | 'manager' | 'admin' {
   return raw === 'agent' || raw === 'manager' || raw === 'admin' ? raw : ''
 }
 
+/**
+ * Organization scenario, read at request time so QA can switch states from the
+ * console without restarting the module.
+ *
+ *   localStorage.mock_organizations_seed = '{"count":0}'              // the empty state
+ *   localStorage.mock_organizations_seed = '{"count":1,"role":"owner"}'
+ *   localStorage.mock_organizations_seed = '{"count":1,"role":"viewer"}' // read-only roster
+ *   localStorage.mock_organizations_seed = '{"count":3}'              // mixed roles
+ */
+function mockOrganizationSeed(): { count: number; role: OrganizationRole } {
+  const fallback = { count: 1, role: 'owner' as OrganizationRole }
+  if (typeof window === 'undefined' || !USE_MOCK) return fallback
+  try {
+    const raw = window.localStorage.getItem('mock_organizations_seed')
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as Partial<{ count: number; role: OrganizationRole }>
+    return {
+      count: typeof parsed.count === 'number' ? parsed.count : fallback.count,
+      role: parsed.role ?? fallback.role,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+/** Roles handed out across a multi-organization seed, so the list is not uniform. */
+const MOCK_ROLE_CYCLE: OrganizationRole[] = ['owner', 'admin', 'viewer']
+
+function seedOrganizations(): Organization[] {
+  const { count, role } = mockOrganizationSeed()
+  const names = ['CTech', 'Contabilidade Silva', 'Transportes Souza']
+  return Array.from({ length: count }, (_, i) => ({
+    id: `org_mock_${i + 1}`,
+    display_name: names[i] ?? `Organização ${i + 1}`,
+    owner_user_id: i === 0 ? 'mock_user' : 'mock_other',
+    role: count === 1 ? role : MOCK_ROLE_CYCLE[i % MOCK_ROLE_CYCLE.length],
+    joined_at: new Date(Date.now() - (i + 1) * 30 * 86_400_000).toISOString(),
+  }))
+}
+
 function mockSupportMessage(overrides: Partial<SupportMessage>): SupportMessage {
   return {
     author_type: 'user',
@@ -127,6 +176,9 @@ const state = {
     created_at: new Date('2026-01-01').toISOString(),
     terms_pending: { tos: false, privacy: false },
   } as User,
+  organizations: [] as Organization[],
+  members: {} as Record<string, OrganizationMember[]>,
+  invitations: {} as Record<string, OrganizationInvitation[]>,
   sessions: [
     mockSession({ is_current: true, device_name: 'Chrome on macOS' }),
     mockSession({ device_name: 'Safari on iPhone', geo_city: 'Rio de Janeiro', geo_region: 'RJ' }),
@@ -288,6 +340,188 @@ type Route = {
 }
 
 const routes: Route[] = [
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations$/,
+    handle: () => {
+      // Re-seeded per request so a scenario change in localStorage takes
+      // effect on the next refresh, like the support role above.
+      state.organizations = seedOrganizations()
+      for (const org of state.organizations) {
+        if (!state.members[org.id]) {
+          state.members[org.id] = [
+            {
+              organization_id: org.id,
+              user_id: org.owner_user_id,
+              role: 'owner',
+              created_at: org.joined_at,
+            },
+          ]
+          if (org.owner_user_id !== 'mock_user') {
+            state.members[org.id].push({
+              organization_id: org.id,
+              user_id: 'mock_user',
+              role: org.role,
+              created_at: org.joined_at,
+            })
+          }
+        }
+        state.invitations[org.id] ??= []
+      }
+      return { organizations: state.organizations }
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/organizations$/,
+    handle: (_m, body) => {
+      const org: Organization = {
+        id: mockId('org'),
+        display_name: String(body.display_name ?? 'Nova organização'),
+        owner_user_id: 'mock_user',
+        role: 'owner',
+        joined_at: new Date().toISOString(),
+      }
+      state.organizations.unshift(org)
+      state.members[org.id] = [
+        { organization_id: org.id, user_id: 'mock_user', role: 'owner', created_at: org.joined_at },
+      ]
+      state.invitations[org.id] = []
+      return org
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)$/,
+    handle: (m, _b, config) => {
+      const org = state.organizations.find((o) => o.id === m[1])
+      // One answer for "not a member" and "no such organization", exactly as
+      // the API gives — the mock must not be more forthcoming than production.
+      if (!org) {
+        return fail(403, { type: 'https://accounts.aoctech.app/problems/forbidden', status: 403 }, config)
+      }
+      return org
+    },
+  },
+  {
+    method: 'patch',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)$/,
+    handle: (m, body) => {
+      const org = state.organizations.find((o) => o.id === m[1])
+      if (org) org.display_name = String(body.display_name ?? org.display_name)
+      return {}
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/members$/,
+    handle: (m) => ({ members: state.members[m[1]] ?? [] }),
+  },
+  {
+    method: 'patch',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/members\/([^/]+)$/,
+    handle: (m, body) => {
+      const member = (state.members[m[1]] ?? []).find((x) => x.user_id === decodeURIComponent(m[2]))
+      if (member && member.role !== 'owner') member.role = body.role as OrganizationRole
+      return {}
+    },
+  },
+  {
+    method: 'delete',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/members\/([^/]+)$/,
+    handle: (m) => {
+      const userId = decodeURIComponent(m[2])
+      state.members[m[1]] = (state.members[m[1]] ?? []).filter(
+        (x) => x.user_id !== userId || x.role === 'owner',
+      )
+      if (userId === 'mock_user') {
+        state.organizations = state.organizations.filter((o) => o.id !== m[1])
+      }
+      return {}
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/invitations$/,
+    handle: (m) => ({ invitations: state.invitations[m[1]] ?? [] }),
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/invitations$/,
+    handle: (m, body) => {
+      const invitation: OrganizationInvitation = {
+        email: String(body.email ?? '').toLowerCase(),
+        role: (body.role as OrganizationRole) ?? 'member',
+        invited_by: 'mock_user',
+        expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      }
+      state.invitations[m[1]] = [
+        ...(state.invitations[m[1]] ?? []).filter((i) => i.email !== invitation.email),
+        invitation,
+      ]
+      return { ...invitation, token: MOCK_VALID_INVITE_TOKEN }
+    },
+  },
+  {
+    method: 'delete',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/invitations\/([^/]+)$/,
+    handle: (m) => {
+      const email = decodeURIComponent(m[2]).toLowerCase()
+      state.invitations[m[1]] = (state.invitations[m[1]] ?? []).filter((i) => i.email !== email)
+      return {}
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/transfer$/,
+    handle: (m, body) => {
+      const members = state.members[m[1]] ?? []
+      const from = members.find((x) => x.role === 'owner')
+      const to = members.find((x) => x.user_id === String(body.user_id))
+      if (from && to) {
+        from.role = 'admin'
+        to.role = 'owner'
+        const org = state.organizations.find((o) => o.id === m[1])
+        if (org) {
+          org.owner_user_id = to.user_id
+          if (from.user_id === 'mock_user') org.role = 'admin'
+          if (to.user_id === 'mock_user') org.role = 'owner'
+        }
+      }
+      return {}
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/invitations\/accept$/,
+    // All three branches of /invite are reachable from the browser: one token
+    // succeeds, one hits the verification gate, anything else is refused the
+    // way an expired or stranger's invitation is.
+    handle: (_m, body, config) => {
+      const token = String(body.token ?? '')
+      if (token === MOCK_UNVERIFIED_INVITE_TOKEN) {
+        return fail(
+          403,
+          { type: 'https://accounts.aoctech.app/problems/email-not-verified', status: 403 },
+          config,
+        )
+      }
+      if (token !== MOCK_VALID_INVITE_TOKEN) {
+        return fail(
+          403,
+          { type: 'https://accounts.aoctech.app/problems/forbidden', status: 403 },
+          config,
+        )
+      }
+      const org = state.organizations[0] ?? seedOrganizations()[0]
+      return {
+        organization_id: org?.id ?? 'org_mock_1',
+        user_id: 'mock_user',
+        role: 'member',
+        created_at: new Date().toISOString(),
+      }
+    },
+  },
   {
     method: 'get',
     pattern: /^\/v1\.0\/account\/profile$/,

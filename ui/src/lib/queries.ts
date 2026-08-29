@@ -1,5 +1,5 @@
 import { api, isAxiosError } from './axios'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -99,4 +99,28 @@ export async function fetchAdminKYCReviews(status: KYCReviewQueue): Promise<Admi
 export async function fetchAdminKYCReview(userId: string): Promise<{ review: AdminKYCReview; audit_log: AdminKYCAuditEvent[] }> {
   const { data } = await api.get<{ review: AdminKYCReview; audit_log: AdminKYCAuditEvent[] }>(`/v1.0/admin/kyc/reviews/${encodeURIComponent(userId)}`)
   return { review: data.review, audit_log: data.audit_log ?? [] }
+}
+
+export async function fetchOrganizations(): Promise<Organization[]> {
+  const { data } = await api.get<{ organizations: Organization[] }>('/v1.0/organizations')
+  return data.organizations ?? []
+}
+
+export async function fetchOrganization(id: string): Promise<Organization> {
+  const { data } = await api.get<Organization>(`/v1.0/organizations/${encodeURIComponent(id)}`)
+  return data
+}
+
+export async function fetchOrganizationMembers(id: string): Promise<OrganizationMember[]> {
+  const { data } = await api.get<{ members: OrganizationMember[] }>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/members`,
+  )
+  return data.members ?? []
+}
+
+export async function fetchOrganizationInvitations(id: string): Promise<OrganizationInvitation[]> {
+  const { data } = await api.get<{ invitations: OrganizationInvitation[] }>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/invitations`,
+  )
+  return data.invitations ?? []
 }

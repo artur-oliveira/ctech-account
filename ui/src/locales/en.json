@@ -16,7 +16,8 @@
     "activity": "Activity",
     "identity": "Identity",
     "support": "Support",
-    "menu": "Menu"
+    "menu": "Menu",
+    "organizations": "Organizations"
   },
   "common": {
     "loading": "Loading…",
@@ -393,7 +394,21 @@
     "clientSaveFailed": "Could not save the application",
     "clientDeleteFailed": "Could not delete the application",
     "consentRevoked": "Access revoked",
-    "consentRevokeFailed": "Could not revoke access"
+    "consentRevokeFailed": "Could not revoke access",
+    "createOrganizationFailed": "Could not create the organization.",
+    "renameOrganizationFailed": "Could not rename the organization.",
+    "inviteFailed": "Could not create the invitation.",
+    "revokeInvitationFailed": "Could not revoke the invitation.",
+    "setRoleFailed": "Could not change the role.",
+    "removeMemberFailed": "Could not remove the member.",
+    "transferFailed": "Could not transfer ownership.",
+    "leaveFailed": "Could not leave the organization.",
+    "inviteLinkCopied": "Invitation link copied.",
+    "roleChanged": "Role updated.",
+    "memberRemoved": "Member removed.",
+    "invitationRevoked": "Invitation revoked.",
+    "ownershipTransferred": "Ownership transferred.",
+    "organizationRenamed": "Organization renamed."
   },
   "consent": {
     "title": "{{app}} is requesting access",
@@ -658,8 +673,16 @@
     "audit": "Audit trail",
     "noAudit": "No reviewer actions recorded yet.",
     "system": "System",
-    "states": { "pending": "Pending", "verified": "Approved", "rejected": "Rejected" },
-    "documentTypes": { "id_front": "ID — front", "id_back": "ID — back", "selfie_with_document": "Selfie with ID" },
+    "states": {
+      "pending": "Pending",
+      "verified": "Approved",
+      "rejected": "Rejected"
+    },
+    "documentTypes": {
+      "id_front": "ID — front",
+      "id_back": "ID — back",
+      "selfie_with_document": "Selfie with ID"
+    },
     "events": {
       "kyc": {
         "documents_viewed": "accessed the protected documents",
@@ -805,6 +828,100 @@
         "minutes": "{{count}} min",
         "hours": "{{count}} hr"
       }
+    }
+  },
+  "organizations": {
+    "title": "Organizations",
+    "subtitle": "Workspaces you share with other people.",
+    "role": "Role",
+    "joined": "Joined",
+    "name": "Name",
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member",
+      "viewer": "Viewer"
+    },
+    "empty": {
+      "title": "You are not in any organization yet",
+      "body": "An organization is a shared workspace: invite colleagues, give them a role, and bill it as one. Create one to get started."
+    },
+    "create": {
+      "action": "New organization",
+      "title": "Create an organization",
+      "description": "Name it after the company or team it stands for. You can rename it later.",
+      "nameLabel": "Name",
+      "namePlaceholder": "Acme Contabilidade",
+      "submit": "Create",
+      "submitting": "Creating…"
+    },
+    "detail": {
+      "back": "All organizations",
+      "members": "Members",
+      "invitations": "Invitations",
+      "settings": "Settings",
+      "noAccess": "You do not have access to this organization."
+    },
+    "members": {
+      "user": "User",
+      "empty": "No members yet.",
+      "changeRole": "Change role",
+      "remove": "Remove",
+      "removeTitle": "Remove this member?",
+      "removeBody": "They lose access to this organization immediately. You can invite them again later."
+    },
+    "invitations": {
+      "email": "E-mail",
+      "expires": "Expires",
+      "empty": "No pending invitations.",
+      "invite": "Invite someone",
+      "inviteTitle": "Invite someone",
+      "inviteDescription": "They accept with a link. Nothing is e-mailed — you send the link yourself.",
+      "emailLabel": "E-mail address",
+      "roleLabel": "Role",
+      "submit": "Create invitation",
+      "submitting": "Creating…",
+      "linkTitle": "Send this link",
+      "linkWarning": "This link is shown once. Close this dialog and it is gone for good — you would have to invite them again.",
+      "copy": "Copy link",
+      "done": "Done",
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke this invitation?",
+      "revokeBody": "The link stops working. If they already accepted, this changes nothing."
+    },
+    "settings": {
+      "nameTitle": "Name",
+      "nameDescription": "What everybody navigates by.",
+      "save": "Save",
+      "saving": "Saving…",
+      "dangerTitle": "Handing it over and stepping away",
+      "transfer": "Transfer ownership",
+      "transferDescription": "Give this organization to another member. You stay on as an admin.",
+      "transferSelect": "New owner",
+      "transferConfirmTitle": "Transfer to {{name}}?",
+      "transferConfirmBody": "They become the owner and you become an admin. Only they can transfer it back.",
+      "leave": "Leave organization",
+      "leaveDescription": "You lose access. Somebody with admin rights has to invite you back.",
+      "leaveConfirmTitle": "Leave this organization?",
+      "leaveConfirmBody": "You lose access immediately and cannot let yourself back in.",
+      "ownerCannotLeave": "You own this organization, so you cannot leave it. Transfer it to another member first — an organization with no owner has nobody who can invite, rename or hand it on.",
+      "noOtherMembers": "There is nobody else here to hand it to. Invite somebody first."
+    },
+    "invite": {
+      "title": "You have an invitation",
+      "signedOut": "Sign in or create an account to accept it. We will bring you straight back here.",
+      "signIn": "Sign in",
+      "register": "Create an account",
+      "accept": "Accept invitation",
+      "accepting": "Accepting…",
+      "open": "Open it",
+      "missingToken": "This link is incomplete. Ask whoever invited you for a new one.",
+      "invalid": "This invitation is no longer valid. It may have expired, been used already, or been sent to a different address. Ask whoever invited you for a new one.",
+      "unverified": "Verify your e-mail address first. We sent you a link when you signed up — open it, then come back to this page.",
+      "resend": "Resend verification e-mail",
+      "resent": "Verification e-mail sent.",
+      "retry": "Try again",
+      "already": "You are already a member of this organization."
     }
   }
 }
