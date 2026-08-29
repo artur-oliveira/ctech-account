@@ -3,9 +3,9 @@
 ## Outcome
 
 A person using `ctech-dfe` who needs a company that does not exist yet is sent to
-`ctech-account` to create the organization, and comes straight back to where they
-were, with the new `organization_id` in hand. The DF-e never writes an organization;
-`ctech-account` stays the only writer of tenancy.
+`ctech-account` to create it, and comes straight back to where they were with the new
+`organization_id` and `company_id` in hand. The DF-e never writes either;
+`ctech-account` stays the only writer of tenancy and of company identity.
 
 This extends [platform organizations](2026-08-29-platform-organizations.md) and the
 [organizations UI](2026-08-29-organizations-ui.md), which covered the past (the
@@ -29,21 +29,27 @@ for renaming, transfer, and "the owner left the company", and the second answer
 always drifts. The migration just finished collapsing two organization models into
 one; this would start a third.
 
-## The organization stays thin
+## The organization stays thin, and so does the company
 
-`ctech-account` stores an organization's **name, its owner, and its people**. Nothing
-fiscal. The DF-e keeps CNPJ, razão social, inscrição estadual, certificates and notes
-in its own tables, keyed by `organization_id`.
+> **Amended 2026-08-29.** The first version of this spec said creating an organization
+> was *not* creating a company, and that the handoff returned an `organization_id` and
+> nothing else. [ADR 0022](../../../ctech-billing/docs/adr/0022-company-identity-in-account.md)
+> moved company *identity* into `ctech-account`, so that is no longer true: the handoff
+> creates both and returns both. The security rules below are unchanged.
+
+`ctech-account` stores an organization's **name, its owner, and its people**, and a
+company's **tax id and names**. Nothing fiscal. The DF-e keeps inscrição estadual, the
+regime, the fiscal address, série and numbering and the A1 certificate, keyed by
+`company_id`.
 
 The reason is not size, it is ownership. Inscrição Estadual is a fiscal-domain concept
 with fiscal-domain rules, and `ctech-account` has no business validating it or holding
-it correct over time. `ctech-billing` will key off the same `organization_id` and must
-not inherit fiscal rules to do so.
+it correct over time. `ctech-billing` keys off the same `organization_id` and must not
+inherit fiscal rules to do so.
 
-**The consequence, stated plainly:** creating an organization is *not* creating a
-company. The handoff returns an `organization_id` and nothing else; the DF-e still has
-its own "dados da empresa" step afterwards. The flow must not read as if the accounts
-screen finished the job.
+**The consequence, stated plainly:** the person types the CNPJ once, here, and the DF-e
+asks only for what is its own. The accounts screen does not finish the DF-e's job — it
+finishes the part that is not the DF-e's.
 
 ## The flow
 
@@ -55,11 +61,13 @@ DF-e     user has no company, taps "Nova empresa"
                      &state=<opaque, DF-e's own>
 
 Accounts GET /v1.0/organizations/handoff?client_id&return_to   (validates, names)
-         screen: create, with a banner naming the DF-e
-         on success → return_to?organization_id=org_xxx&state=<echoed>
+         screen: create the organization and its first company, with a
+                 banner naming the DF-e
+         on success → return_to?organization_id=org_xxx
+                              &company_id=cmp_xxx&state=<echoed>
          on cancel  → return_to?cancelled=1&state=<echoed>
 
-DF-e     reads organization_id, links it, continues its own flow
+DF-e     reads both ids, links them, asks for what is its own
 ```
 
 ### Parameters
@@ -70,6 +78,7 @@ DF-e     reads organization_id, links it, continues its own flow
 | `return_to` | in | must share scheme+host with one of that client's `redirect_uris` |
 | `state` | in, echoed | opaque to accounts; never parsed, never logged, capped at 512 bytes |
 | `organization_id` | out | the new organization, on success only |
+| `company_id` | out | the company created alongside it, on success only |
 | `cancelled` | out | `1`, when the person backed out |
 
 `state` is echoed rather than invented because the DF-e already has to survive the
@@ -79,6 +88,13 @@ second session store for one screen.
 ## The security rules
 
 These three are the whole reason this is not an open redirect. Each gets a test.
+
+None of them changed when `company_id` was added to the redirect, and saying so is
+worth a line: adding a parameter to a redirect is exactly the change that quietly
+relaxes its validation, because the validation is written for the URL and the new
+parameter arrives afterwards. `return_to` is still matched against the client's
+registered origins, still first-party only, and still carries no token — one id more
+is still not a credential.
 
 **1. `return_to` is validated against the client's registered origins.** Not a new
 allowlist — the existing `redirect_uris` on `OAuthClient`. The comparison is
@@ -98,9 +114,9 @@ self-service API (`model.go:20`). A third-party client sending a user to create
 organizations is not a flow we have designed, so it is refused rather than
 half-supported.
 
-**3. No token, ever, travels on `return_to`.** The response carries
-`organization_id` and the echoed `state`. The DF-e already holds a user token and
-reads the organization through the API with it. A redirect URL lands in browser
+**3. No token, ever, travels on `return_to`.** The response carries `organization_id`,
+`company_id` and the echoed `state` — ids, and nothing else. The DF-e already holds a
+user token and reads both records through the API with it. A redirect URL lands in browser
 history, in `Referer`, and in access logs; an id is fine there, a credential is not.
 
 ## `GET /v1.0/organizations/handoff`

@@ -18,7 +18,8 @@ The spec's `ctech-dfe` consequence — re-keying `organization_nfe_configs` and 
 
 - **Nothing fiscal.** No inscrição estadual, no CRT/regime, no fiscal address, no certificate — not even a boolean saying a certificate exists. Spec: *"identity is a fact about the company that serves everyone; configuration is one product knowing how to issue."*
 - **No delete.** Fiscal documents reference a company and must stay referenceable. Same rule organizations already follow.
-- **`tax_id` is digits only, normalized on write.** `tax_id_kind` is `cnpj` or `cpf` — never a CNPJ-only field; `ctech-dfe` keys `CPF_{digits}` today (`api/internal/repositories/organizations.go:16`).
+- **`tax_id` is canonical on write: mask stripped, letters uppercased — NOT digits.** A CNPJ's first twelve positions have been alphanumeric since the Receita Federal's 2026 change; only the two check digits stayed numeric. A CPF stayed numeric throughout. `tax_id_kind` is `cnpj` or `cpf` — never a CNPJ-only field; `ctech-dfe` keys `CPF_{digits}` today (`api/internal/repositories/organizations.go:16`).
+- **The two documents do not share weights.** CNPJ weights cycle 2..9 from the right; CPF weights descend from 10. One sequence used for both still validates most inputs by luck.
 - **`company_id` is a UUIDv7 and is never the tax id.** Uniqueness of `(organization_id, tax_id)` is a conditional write on a lock row.
 - **The same tax id in two different organizations is allowed.** This is the accountant case and it is load-bearing; a test pins it so nobody "fixes" it into a global unique key.
 - **The cnpja lookup is a convenience, never a gate.** An outage must not block registration.
@@ -2089,3 +2090,40 @@ quietly relaxes."
 **Type consistency.** `NormalizeTaxID` returns `(string, string, bool)` in Tasks 1, 5 and 7. `Company`/`Actor` field names match across model, repository, service, handler DTO and TS interface. `Register` takes `(ctx, orgID, actorUserID, actorName, rawTaxID, legalName, tradeName)` in Tasks 5 and 6. `ErrTaxIDTaken` is raised in Task 4 and mapped in Task 6. `Repository` in Task 4 matches `fakeRepo` in Task 5 method for method.
 
 One gap found and closed while reviewing: Task 7's route had to be registered **before** `/:company_id` or Fiber captures `lookup` as a company id — now stated in the step.
+
+
+---
+
+## Execution record (2026-08-29)
+
+Implemented inline. Deviations from the plan as written, and why:
+
+**Task 1 was rewritten for the alphanumeric CNPJ.** The plan assumed digits and a single
+shared weight table. Both were wrong: canonical is mask-stripped uppercase alphanumeric,
+and the CNPJ and CPF weight sequences genuinely differ. `NormalizeTaxID` now takes
+`charValue` (ASCII − 48, the Receita's rule) plus a per-document weight function, and
+`canonicalize` refuses stray characters rather than dropping them — silently dropping one
+can turn a typo into a different valid document.
+
+**`main.go` hoists the organizations route group.** The plan had the company handler mount
+on a group the organization handler created inline. Both now share one `orgsGroup`, so one
+`RequireAuth` + `RequireClientID` covers both rather than two groups that could drift.
+
+**`Create` uses `BuildPutTxItemIfAbsent` for the company row too**, not `BuildPutTxItem`.
+A UUIDv7 collision is not the concern; a retry replaying the same transaction is.
+
+**`ListForUser` was added to the repository**, which the plan omitted. It is the query
+`ctech-dfe` needs — "which companies may this person act for" — and the GSI it reads
+already existed for the source-ref lookup.
+
+**One test-suite bug repeated.** `ResponsiveDataList` renders the mobile cards and the
+desktop table simultaneously, so five UI tests failed on "Found multiple elements". The
+plan warned about exactly this and the tests were written unscoped anyway. Fixed with a
+`seeded()` helper that scopes to `getByRole('table')`.
+
+Task 9 amended the handoff spec, ADR 0022 and this plan's own constraints for the
+alphanumeric CNPJ.
+
+**Still open:** the `ctech-dfe` re-key (out of scope here, its own plan), and the
+`/account/organizations/new` handoff screen itself — the spec is amended, the screen is
+not built.

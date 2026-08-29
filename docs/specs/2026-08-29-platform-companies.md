@@ -103,12 +103,25 @@ User (N) ──── (M) ──────────┘   the "may act for" 
 |---|---|
 | `organization_id` | partition; a company never exists outside one |
 | `company_id` | UUIDv7, opaque — never the tax id (see below) |
-| `tax_id` | digits only, normalized on write |
+| `tax_id` | canonical on write: mask stripped, letters uppercased. **Not digits** — see below |
 | `tax_id_kind` | `cnpj` \| `cpf` |
 | `legal_name` | razão social |
 | `trade_name` | nome fantasia, optional |
 | `source_system` / `source_ref` | migration provenance only, as on Organization |
 | `created_at` / `updated_at` | |
+
+**A CNPJ is alphanumeric.** Since the Receita Federal's 2026 change its first twelve
+positions may hold letters; only the two check digits stayed numeric. So "digits only" is
+no longer the canonical form, and any code that assumes it — a mask, a validator, a
+column type, a client parsing the API response — is wrong on a CNPJ issued from now on.
+A CPF stayed numeric throughout.
+
+The check digits are verified locally rather than at the registry lookup, because they
+are arithmetic and not a fact about the world: a CNPJ issued this morning is unknown to
+every public register and must still be accepted. The two documents share the modulus-11
+skeleton and nothing else — the CNPJ weights cycle 2..9 from the right, the CPF weights
+descend from 10 — and treating them as one sequence still validates most inputs by luck,
+which is how that bug survives review.
 
 **`tax_id_kind` is not speculation.** `ctech-dfe` already keys organizations as
 `CNPJ_{digits}` *or* `CPF_{digits}` (`api/internal/repositories/organizations.go:16`):
