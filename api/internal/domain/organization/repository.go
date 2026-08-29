@@ -76,6 +76,7 @@ type Repository interface {
 	GetInvitationByToken(ctx context.Context, tokenHash string) (*Invitation, error)
 	ListInvitations(ctx context.Context, orgID string) ([]*Invitation, error)
 	DeleteInvitation(ctx context.Context, orgID, email string) error
+	AcceptInvitation(ctx context.Context, m *Membership, invitedEmail string) error
 }
 
 type repo struct {
@@ -400,6 +401,28 @@ func unmarshalInvitation(item map[string]types.AttributeValue) (*Invitation, err
 		}
 	}
 	return &inv, nil
+}
+
+// AcceptInvitation writes the membership and consumes the invitation in one
+// transaction, so a token cannot be spent twice by two requests that both read
+// it as pending. The membership put is conditional on absence: somebody already
+// in the organization does not get their role reset by an old invitation.
+func (r *repo) AcceptInvitation(ctx context.Context, m *Membership, invitedEmail string) error {
+	item, err := r.membershipItem(m)
+	if err != nil {
+		return err
+	}
+	err = r.memberships.TransactWrite(ctx, []types.TransactWriteItem{
+		r.memberships.BuildPutTxItemIfAbsent(item),
+		r.invitations.BuildDeleteTxItem(orgPK(m.OrganizationID), inviteSK(invitedEmail)),
+	})
+	if database.IsConditionFailed(err) {
+		return ErrAlreadyMember
+	}
+	if err != nil {
+		return fmt.Errorf("accepting invitation: %w", err)
+	}
+	return nil
 }
 
 func (r *repo) DeleteInvitation(ctx context.Context, orgID, email string) error {

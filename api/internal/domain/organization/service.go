@@ -2,6 +2,10 @@ package organization
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -205,4 +209,122 @@ func (s *Service) Transfer(ctx context.Context, orgID, actorUserID, toUserID str
 		return err
 	}
 	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, s.now().UTC())
+}
+
+// invitationTTL bounds how long an offer stands. Seven days is long enough for
+// somebody to read their e-mail on holiday and short enough that a link found
+// in an old inbox is no longer a way in.
+const invitationTTL = 7 * 24 * time.Hour
+
+var (
+	// ErrInvitationInvalid covers unknown, expired and already-consumed tokens
+	// alike. Distinguishing them tells whoever is guessing which guess was
+	// closer.
+	ErrInvitationInvalid = errors.New("invitation is not valid")
+	// ErrWrongInvitee is an invitation being accepted by a different address.
+	ErrWrongInvitee = errors.New("invitation was sent to a different address")
+)
+
+// Invite offers membership to one e-mail address and returns the token once.
+//
+// The token is returned, never stored: the row holds its SHA-256, so a dump of
+// the invitations table is a list of who was invited, not a set of keys to
+// every organization in it.
+func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role string) (string, error) {
+	if !IsGrantableRole(role) {
+		return "", ErrNotGrantable
+	}
+	address := NormalizeEmail(email)
+	if address == "" || !strings.Contains(address, "@") {
+		return "", ErrInvalidName
+	}
+	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+		return "", err
+	}
+
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("minting invitation token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+
+	now := s.now().UTC()
+	// Re-inviting the same address overwrites the pending row rather than
+	// adding a second, which also invalidates the previous token — the right
+	// behaviour when somebody re-sends because the first was leaked.
+	if err := s.repo.PutInvitation(ctx, &Invitation{
+		OrganizationID: orgID,
+		Email:          address,
+		Role:           role,
+		TokenHash:      HashToken(token),
+		InvitedBy:      actorUserID,
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(invitationTTL),
+	}); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// HashToken is exported so a future re-send path hashes the same way. SHA-256
+// with no salt on purpose: the token is 32 random bytes, so there is no
+// dictionary to defend against and the hash has to be computable from the token
+// alone to be looked up on the index.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// Accept turns an invitation into a membership.
+//
+// userEmail must be the address the session has already verified. The
+// invitation names one address, and a token that any signed-in account could
+// spend would let a leaked link be redeemed by whoever found it.
+func (s *Service) Accept(ctx context.Context, token, userID, userEmail string) (*Membership, error) {
+	if token == "" || strings.TrimSpace(userID) == "" {
+		return nil, ErrInvitationInvalid
+	}
+	inv, err := s.repo.GetInvitationByToken(ctx, HashToken(token))
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrInvitationInvalid
+	}
+	if err != nil {
+		return nil, err
+	}
+	// The TTL reaps the row eventually. Eventually is not a check.
+	if !inv.ExpiresAt.IsZero() && s.now().UTC().After(inv.ExpiresAt) {
+		return nil, ErrInvitationInvalid
+	}
+	if NormalizeEmail(userEmail) != NormalizeEmail(inv.Email) {
+		return nil, ErrWrongInvitee
+	}
+
+	m := &Membership{
+		OrganizationID: inv.OrganizationID,
+		UserID:         userID,
+		Role:           inv.Role,
+		InvitedBy:      inv.InvitedBy,
+		CreatedAt:      s.now().UTC(),
+	}
+	if err := s.repo.AcceptInvitation(ctx, m, inv.Email); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// ListInvitations shows who is pending. Admin and above: the list is a list of
+// addresses of people who have not joined yet.
+func (s *Service) ListInvitations(ctx context.Context, orgID, actorUserID string) ([]*Invitation, error) {
+	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+		return nil, err
+	}
+	return s.repo.ListInvitations(ctx, orgID)
+}
+
+// RevokeInvitation withdraws a standing offer.
+func (s *Service) RevokeInvitation(ctx context.Context, orgID, actorUserID, email string) error {
+	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+		return err
+	}
+	return s.repo.DeleteInvitation(ctx, orgID, email)
 }

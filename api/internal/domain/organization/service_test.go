@@ -164,6 +164,13 @@ func (f *fakeRepo) ListInvitations(_ context.Context, orgID string) ([]*Invitati
 	return out, nil
 }
 
+func (f *fakeRepo) AcceptInvitation(ctx context.Context, m *Membership, invitedEmail string) error {
+	if err := f.PutMembership(ctx, m); err != nil {
+		return err
+	}
+	return f.DeleteInvitation(ctx, m.OrganizationID, invitedEmail)
+}
+
 func (f *fakeRepo) DeleteInvitation(_ context.Context, orgID, email string) error {
 	delete(f.invitations[orgID], NormalizeEmail(email))
 	return nil
@@ -316,5 +323,94 @@ func TestAMemberCannotChangeRoles(t *testing.T) {
 	join(t, svc, org.ID, "usr_2", RoleMember)
 	if err := svc.SetRole(ctx, org.ID, "usr_2", "usr_2", RoleAdmin); err == nil {
 		t.Fatal("a member promoted themselves")
+	}
+}
+
+// The stored row must not be usable to accept the invitation it describes.
+func TestInvitationStoresOnlyTheHash(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo, fixedClock)
+	org, _ := svc.Create(context.Background(), "usr_owner", "CTech")
+
+	token, err := svc.Invite(context.Background(), org.ID, "usr_owner", "novo@example.com", RoleMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == "" {
+		t.Fatal("no token to send to the invitee")
+	}
+	for _, byEmail := range repo.invitations {
+		for _, inv := range byEmail {
+			if inv.TokenHash == token {
+				t.Fatal("the token itself was stored")
+			}
+			if inv.TokenHash == "" {
+				t.Fatal("no hash was stored, so nothing can be accepted")
+			}
+		}
+	}
+}
+
+// An invitation is an offer to one address, not a bearer capability to join any
+// organization.
+func TestAcceptRequiresTheInvitedAddress(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
+
+	if _, err := svc.Accept(ctx, token, "usr_outro", "outro@example.com"); err == nil {
+		t.Fatal("accepted with an address the invitation was not sent to")
+	}
+	m, err := svc.Accept(ctx, token, "usr_convidado", "Convidado@Example.com")
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if m.Role != RoleMember {
+		t.Fatalf("role = %q, want the invited role", m.Role)
+	}
+}
+
+// A token that worked once must not work twice: the second use would re-add
+// somebody who was removed.
+func TestAcceptConsumesTheInvitation(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
+	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com"); err == nil {
+		t.Fatal("the same invitation was accepted twice")
+	}
+}
+
+// An expired invitation is not a slow yes. The TTL reaps the row eventually,
+// but eventually is not a guarantee the check can rest on.
+func TestAcceptRefusesAnExpiredInvitation(t *testing.T) {
+	repo := newFakeRepo()
+	clock := fixedClock()
+	svc := NewService(repo, func() time.Time { return clock })
+	org, _ := svc.Create(context.Background(), "usr_owner", "CTech")
+	token, _ := svc.Invite(context.Background(), org.ID, "usr_owner", "c@example.com", RoleMember)
+
+	clock = clock.Add(invitationTTL + time.Hour)
+	if _, err := svc.Accept(context.Background(), token, "usr_c", "c@example.com"); err == nil {
+		t.Fatal("accepted an expired invitation")
+	}
+}
+
+func TestInviteRefusesOwner(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	if _, err := svc.Invite(context.Background(), org.ID, "usr_owner", "x@example.com", RoleOwner); err == nil {
+		t.Fatal("invited somebody as owner")
+	}
+}
+
+// A viewer inviting people is a viewer who can grow the organization.
+func TestInviteRequiresAdmin(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	join(t, svc, org.ID, "usr_viewer", RoleViewer)
+	if _, err := svc.Invite(context.Background(), org.ID, "usr_viewer", "x@example.com", RoleMember); err == nil {
+		t.Fatal("a viewer invited somebody")
 	}
 }
