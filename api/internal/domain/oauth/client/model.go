@@ -57,11 +57,16 @@ func (c *OAuthClient) IsRedirectURIAllowed(uri string) bool {
 	return false
 }
 
-// IsPostLogoutRedirectAllowed reports whether uri shares a scheme+host with at
-// least one registered redirect_uri. There is no separate post-logout-URI
-// registration list on this model — reusing the callback origin still prevents
-// an open redirect (RP-initiated logout) without adding client configuration.
-func (c *OAuthClient) IsPostLogoutRedirectAllowed(uri string) bool {
+// IsRegisteredOrigin reports whether uri shares a scheme+host with at least one
+// registered redirect_uri.
+//
+// Two callers: RP-initiated logout's post_logout_redirect_uri, and the
+// organization handoff's return_to. Neither has its own registration list on
+// this model, and reusing the callback origin prevents an open redirect in both
+// without adding client configuration. One implementation on purpose — a second
+// copy of an origin check is how the two drift apart and one ends up
+// permissive.
+func (c *OAuthClient) IsRegisteredOrigin(uri string) bool {
 	target, err := url.Parse(uri)
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		return false

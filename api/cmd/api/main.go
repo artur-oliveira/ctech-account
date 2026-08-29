@@ -424,6 +424,10 @@ func main() {
 	// sit behind one RequireAuth + RequireClientID rather than two groups that
 	// could drift apart.
 	orgsGroup := v1.Group("/organizations", adminAuth[0], adminAuth[1])
+	// Registered FIRST, before the organization handler's /:id: Fiber matches in
+	// registration order, so a literal segment mounted after a parameter is
+	// captured by it and never reached.
+	handler.NewHandoffHandler(oauthClientRepo).Register(orgsGroup)
 	handler.NewOrganizationHandler(orgSvc, userSvc).Register(
 		orgsGroup,
 		v1.Group("/invitations", adminAuth[0], adminAuth[1]),

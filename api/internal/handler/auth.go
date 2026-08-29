@@ -418,7 +418,7 @@ func (h *AuthHandler) endSession(c fiber.Ctx) error {
 
 	redirectTo := h.cfg.AppURL + "/login"
 	if postLogout := c.Query("post_logout_redirect_uri"); postLogout != "" {
-		if oauthClient, err := h.clientRepo.GetByID(c.Context(), c.Query("client_id")); err == nil && oauthClient.IsPostLogoutRedirectAllowed(postLogout) {
+		if oauthClient, err := h.clientRepo.GetByID(c.Context(), c.Query("client_id")); err == nil && oauthClient.IsRegisteredOrigin(postLogout) {
 			redirectTo = postLogout
 		} else if err != nil && !errors.Is(err, oauthclient.ErrNotFound) {
 			observability.Warn(c.Context(), "end-session: failed to resolve OAuth client redirect", err)

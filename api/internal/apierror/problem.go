@@ -288,3 +288,15 @@ func KYCBasicRequired(instance string) *Problem {
 	return newProblem("kyc-basic-required", "Basic Verification Required", http.StatusConflict,
 		"Complete phone-verified Basic identity verification before submitting Enhanced documents.", instance)
 }
+
+// OrganizationHandoffInvalid → 422: a product sent somebody here to create an
+// organization, and the handoff parameters do not check out.
+//
+// One type for four causes — unknown client, third-party client, unregistered
+// origin, malformed URL. The distinctions matter to whoever is fixing the
+// integration and travel in the log; they mean nothing to the person on the
+// screen, who can do nothing about any of them.
+func OrganizationHandoffInvalid(instance string) *Problem {
+	return newProblem("organization-handoff-invalid", "Invalid Handoff", http.StatusUnprocessableEntity,
+		"The product that sent you here is not configured correctly. You can still create an organization from your account.", instance)
+}
