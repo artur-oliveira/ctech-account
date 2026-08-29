@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/account/api/internal/database"
+	companyDomain "gopkg.aoctech.app/account/api/internal/domain/company"
 	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 )
@@ -62,6 +63,7 @@ func run(ctx context.Context, region, dfePrefix, prefix, only string, doApply bo
 		name:        database.TableName(dfePrefix, "organizations"),
 	}
 	repo := orgDomain.NewRepository(db, prefix)
+	companies := companyDomain.NewRepository(db, prefix)
 	users := userDomain.NewRepository(db, prefix)
 	userExists := func(ctx context.Context, id string) (bool, error) {
 		_, err := users.GetByID(ctx, id)
@@ -99,19 +101,27 @@ func run(ctx context.Context, region, dfePrefix, prefix, only string, doApply bo
 			return err
 		}
 
+		// The company half of the same row. A dfe organization was always a
+		// company — its key is the CNPJ — and this is the pass that unfuses
+		// them (ctech-billing ADR 0022).
+		cd := planCompany(org, members, d)
+
 		fmt.Printf("── %s  %q\n", d.SourceRef, d.DisplayName)
-		for _, note := range d.Notes {
+		for _, note := range append(d.Notes, cd.Notes...) {
 			fmt.Printf("   note: %s\n", note)
 		}
-		if d.Action == actionReview {
+		// Either half refusing stops both. A workspace with no company cannot
+		// issue anything, and a company with no workspace has nobody in it.
+		if d.Action == actionReview || cd.Action == actionReview {
 			needHuman++
-			for _, r := range d.Review {
+			for _, r := range append(d.Review, cd.Review...) {
 				fmt.Printf("   NEEDS A HUMAN: %s\n", r)
 			}
 			fmt.Println("   not migrated")
 			continue
 		}
 		fmt.Printf("   owner %s, %d further member(s)\n", d.OwnerUserID, len(d.Members))
+		fmt.Printf("   company %s (%s), %d actor(s)\n", cd.TaxID, cd.TaxIDKind, len(cd.Actors))
 		if !doApply {
 			created++
 			continue
@@ -121,6 +131,16 @@ func run(ctx context.Context, region, dfePrefix, prefix, only string, doApply bo
 		if err != nil {
 			return err
 		}
+		cres, err := applyCompany(ctx, companies, res.OrganizationID, cd)
+		if err != nil {
+			return err
+		}
+		if cres.CreatedCompany {
+			fmt.Printf("   created company %s with %d actor(s)\n", cres.CompanyID, cres.CreatedActors)
+		} else {
+			fmt.Printf("   company already imported as %s; %d actor edge(s) written\n", cres.CompanyID, cres.CreatedActors)
+		}
+
 		switch {
 		case res.CreatedOrganization:
 			created++

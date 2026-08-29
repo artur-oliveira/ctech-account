@@ -24,13 +24,13 @@ func TestIsRegisteredOriginMatchesSchemeAndHost(t *testing.T) {
 	}
 
 	refused := []string{
-		"http://dfe.example/callback",         // a different scheme
-		"https://outro.example/callback",      // a different host
-		"https://dfe.example.evil.com/x",      // a lookalike suffix
+		"http://dfe.example/callback",          // a different scheme
+		"https://outro.example/callback",       // a different host
+		"https://dfe.example.evil.com/x",       // a lookalike suffix
 		"https://evil.com/https://dfe.example", // the host in the path
-		"https://dfe.example:8443/x",          // a different port
-		"//dfe.example/x",                     // scheme-relative, no scheme
-		"/empresas/vincular",                  // relative, no host
+		"https://dfe.example:8443/x",           // a different port
+		"//dfe.example/x",                      // scheme-relative, no scheme
+		"/empresas/vincular",                   // relative, no host
 		"",
 		"::not a url",
 		"javascript:alert(1)",
