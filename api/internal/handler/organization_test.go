@@ -3,9 +3,12 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -315,5 +318,76 @@ func TestOrganizationRoutesRefuseNonMembers(t *testing.T) {
 	fake := a.do(t, http.MethodGet, "/v1.0/organizations/org_does_not_exist", token, "")
 	if real.StatusCode != http.StatusForbidden || fake.StatusCode != http.StatusForbidden {
 		t.Fatalf("statuses = %d and %d, want 403 for both", real.StatusCode, fake.StatusCode)
+	}
+}
+
+// problemOf decodes an RFC 7807 body once. Once matters: a response body is a
+// stream, and two helpers each reading it is how the second gets nothing.
+func problemOf(t *testing.T, resp *http.Response) apierror.Problem {
+	t.Helper()
+	body, _ := io.ReadAll(resp.Body)
+	var p apierror.Problem
+	if err := json.Unmarshal(body, &p); err != nil {
+		t.Fatalf("decoding problem: %v (%s)", err, body)
+	}
+	return p
+}
+
+// "Verify your e-mail first" and "this invitation is no longer valid" are
+// different answers and the page has to say different things. They arrive with
+// the same status, so the type is the only thing that can carry the branch.
+//
+// This is not the leak the merged invitation errors avoid: whether your own
+// address is verified is a fact about your own account, visible on /account.
+func TestTheVerificationGateIsDistinguishableFromAnInvalidInvitation(t *testing.T) {
+	a := newOrgTestApp(t)
+	owner := a.registerUser(t, "dono5@example.com", "Sup3rSecret!pass", "Dono")
+	unverified := a.registerUnverifiedUser(t, "naoverificado@example.com", "Sup3rSecret!pass", "Convidado")
+
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "naoverificado@example.com", orgDomain.RoleMember)
+
+	gate := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
+		a.issueToken(t, unverified.ID()), `{"token":"`+token+`"}`)
+	if gate.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", gate.StatusCode)
+	}
+	gate1 := problemOf(t, gate)
+	if !strings.HasSuffix(gate1.Type, "/email-not-verified") {
+		t.Fatalf("type = %q, want one the client can branch on", gate1.Type)
+	}
+
+	// A verified account with a token that means nothing must NOT come back
+	// with the verification type — that would send the page to a resend button
+	// for a problem resending cannot fix.
+	verified := a.registerUser(t, "verificado@example.com", "Sup3rSecret!pass", "Outro")
+	invalid := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
+		a.issueToken(t, verified.ID()), `{"token":"nao-existe"}`)
+	if invalid1 := problemOf(t, invalid); invalid1.Type == gate1.Type {
+		t.Fatalf("both refusals answer %q; the page cannot tell them apart", invalid1.Type)
+	}
+}
+
+// The four invitation failures stay merged. Each distinction is a hint to
+// whoever is guessing: unknown, expired, already used and addressed to somebody
+// else must be one answer.
+func TestTheInvitationFailuresStayMerged(t *testing.T) {
+	a := newOrgTestApp(t)
+	owner := a.registerUser(t, "dono6@example.com", "Sup3rSecret!pass", "Dono")
+	intruder := a.registerUser(t, "intruso2@example.com", "Sup3rSecret!pass", "Intruso")
+	org, _ := a.svc.Create(context.Background(), owner.ID(), "CTech")
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "outra@example.com", orgDomain.RoleMember)
+
+	wrongPerson := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
+		a.issueToken(t, intruder.ID()), `{"token":"`+token+`"}`)
+	unknown := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
+		a.issueToken(t, intruder.ID()), `{"token":"nao-existe"}`)
+
+	a1, b1 := problemOf(t, wrongPerson), problemOf(t, unknown)
+	if a1.Type != b1.Type {
+		t.Fatalf("a wrong-invitee refusal answers %q, an unknown token %q", a1.Type, b1.Type)
+	}
+	if a1.Detail != b1.Detail {
+		t.Fatalf("the two refusals read differently (%q vs %q), which is the same hint by another route", a1.Detail, b1.Detail)
 	}
 }

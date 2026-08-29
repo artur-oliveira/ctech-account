@@ -188,18 +188,28 @@ The failures, and what each must say:
 - **Already a member.** `409`. Not an error to apologise for: say they are already in,
   and link to the organization.
 
-## Server changes this screen requires
+## The problem types this screen branches on
 
-One, and it is small: **the unverified-e-mail refusal needs its own problem `type`.**
-Today `accept` answers `apierror.Forbidden` for both "verify your e-mail first" and "this
-invitation is no longer valid", so both arrive as `type: "…/problems/forbidden"` and the
-page cannot tell them apart. `detail` cannot carry the branch — this codebase already
-treats `detail` as prose that gets rewritten (`ctech-billing`'s `client.ts` says so where
-it matches on `type` instead).
+`accept` answers three refusals with `403`, and the page says something different for
+each. It branches on the RFC 7807 `type` and never on `detail`, which is prose that gets
+rewritten:
 
-This is not the leak the merged invitation errors avoid: the verification gate is a fact
-about the caller's own account, which they can already see on `/account`. Everything
-else on that route stays merged.
+| `type` | what the page does |
+|---|---|
+| `…/problems/email-not-verified` | says the address must be verified, offers *resend* (`resendVerificationAPI`), keeps the token |
+| `…/problems/forbidden` | says the invitation is no longer valid, offers a link to ask for a new one |
+| `…/problems/conflict` (409) | says they are already a member, links to the organization |
+
+The verification gate got its own type in `accept`; the type itself already existed
+(`apierror.EmailNotVerified`, used by sign-in for exactly this reason — "clients should
+offer to resend the verification link"). Reusing it is what makes the two screens behave
+alike.
+
+This is not the leak the merged invitation errors avoid. Unknown, expired, already used
+and addressed-to-somebody-else stay a single answer with identical `type` **and**
+identical `detail`, pinned by a test — each distinction is a hint to whoever is guessing.
+Whether your own address is verified is a fact about your own account, already visible on
+`/account`.
 
 ## Patterns this must follow
 

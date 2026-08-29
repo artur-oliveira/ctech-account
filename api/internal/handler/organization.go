@@ -262,7 +262,10 @@ func (h *OrganizationHandler) accept(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !u.EmailVerified {
-		return apierror.Forbidden("Verify your e-mail address before accepting an invitation.", c.Path()).Send(c)
+		// Its own problem type: the page offers "resend verification" here and
+		// "ask for a new invitation" for every other refusal on this route, and
+		// it cannot tell them apart from a shared status and prose detail.
+		return apierror.EmailNotVerified(c.Path()).Send(c)
 	}
 	m, err := h.svc.Accept(c.Context(), req.Token, middleware.GetUserID(c), u.Email)
 	if err != nil {
