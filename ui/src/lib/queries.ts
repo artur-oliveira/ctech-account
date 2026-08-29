@@ -1,5 +1,5 @@
 import { api, isAxiosError } from './axios'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -123,4 +123,38 @@ export async function fetchOrganizationInvitations(id: string): Promise<Organiza
     `/v1.0/organizations/${encodeURIComponent(id)}/invitations`,
   )
   return data.invitations ?? []
+}
+
+export async function fetchCompanies(id: string): Promise<Company[]> {
+  const { data } = await api.get<{ companies: Company[] }>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies`,
+  )
+  return data.companies ?? []
+}
+
+export async function fetchCompanyActors(id: string, companyID: string): Promise<CompanyActor[]> {
+  const { data } = await api.get<{ actors: CompanyActor[] }>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies/${encodeURIComponent(companyID)}/actors`,
+  )
+  return data.actors ?? []
+}
+
+/**
+ * Fills the names for a CNPJ. Never throws and never rejects: every failure —
+ * an outage, a register that has not heard of this CNPJ — means the same thing
+ * to the form, which is that the person types the names.
+ */
+export async function lookupTaxID(
+  id: string,
+  taxID: string,
+): Promise<{ legal_name: string; trade_name: string } | null> {
+  try {
+    const { data } = await api.get<{ found: boolean; legal_name?: string; trade_name?: string }>(
+      `/v1.0/organizations/${encodeURIComponent(id)}/companies/lookup`,
+      { params: { tax_id: taxID } },
+    )
+    return data.found ? { legal_name: data.legal_name ?? '', trade_name: data.trade_name ?? '' } : null
+  } catch {
+    return null
+  }
 }

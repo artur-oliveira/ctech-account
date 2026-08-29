@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationMember, OrganizationRole } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationMember, OrganizationRole, Company } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -334,4 +334,38 @@ export async function transferOwnershipAPI(id: string, userId: string) {
 export async function acceptInvitationAPI(token: string) {
   const { data } = await api.post<OrganizationMember>('/v1.0/invitations/accept', { token })
   return data
+}
+
+export async function registerCompanyAPI(
+  id: string,
+  body: { tax_id: string; legal_name: string; trade_name?: string },
+): Promise<Company> {
+  const { data } = await api.post<Company>(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies`,
+    body,
+  )
+  return data
+}
+
+export async function renameCompanyAPI(
+  id: string,
+  companyID: string,
+  body: { legal_name: string; trade_name?: string },
+): Promise<void> {
+  await api.patch(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies/${encodeURIComponent(companyID)}`,
+    body,
+  )
+}
+
+export async function grantCompanyActorAPI(id: string, companyID: string, userID: string): Promise<void> {
+  await api.put(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies/${encodeURIComponent(companyID)}/actors/${encodeURIComponent(userID)}`,
+  )
+}
+
+export async function revokeCompanyActorAPI(id: string, companyID: string, userID: string): Promise<void> {
+  await api.delete(
+    `/v1.0/organizations/${encodeURIComponent(id)}/companies/${encodeURIComponent(companyID)}/actors/${encodeURIComponent(userID)}`,
+  )
 }

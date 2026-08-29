@@ -409,7 +409,9 @@
     "memberRemoved": "Member removed.",
     "invitationRevoked": "Invitation revoked.",
     "ownershipTransferred": "Ownership transferred.",
-    "organizationRenamed": "Organization renamed."
+    "organizationRenamed": "Organization renamed.",
+    "companyAdded": "Company added.",
+    "addCompanyFailed": "Could not add the company."
   },
   "consent": {
     "title": "{{app}} is requesting access",
@@ -861,7 +863,8 @@
       "members": "Members",
       "invitations": "Invitations",
       "settings": "Settings",
-      "noAccess": "You do not have access to this organization."
+      "noAccess": "You do not have access to this organization.",
+      "companies": "Companies"
     },
     "members": {
       "user": "User",
@@ -923,6 +926,18 @@
       "resent": "Verification e-mail sent.",
       "retry": "Try again",
       "already": "You are already a member of this organization."
+    },
+    "companies": {
+      "company": "Company",
+      "tradeName": "Trade name",
+      "added": "Added",
+      "add": "Add company",
+      "addTitle": "Add a company",
+      "tradeNameOptional": "Trade name (optional)",
+      "addBody": "The CNPJ or CPF you issue documents in the name of. Fiscal settings — inscrição estadual, certificate — stay in the DF-e.",
+      "taxId": "CNPJ or CPF",
+      "legalName": "Legal name",
+      "empty": "No companies yet. Add the CNPJ you issue documents for."
     }
   }
 }

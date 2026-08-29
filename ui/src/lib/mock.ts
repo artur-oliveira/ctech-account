@@ -24,6 +24,8 @@ import type {
   SupportMessage,
   SupportTicket,
   User,
+  Company,
+  CompanyActor,
 } from './types'
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_MOCK_API === 'true'
@@ -31,6 +33,10 @@ export const USE_MOCK = process.env.NEXT_PUBLIC_MOCK_API === 'true'
 export const MOCK_ACCESS_TOKEN = 'mock.access.token'
 
 /** The token the mock accepts; anything else is refused. */
+// The one CNPJ the mock register has heard of. Everything else is a miss, so
+// the "type the names yourself" path is reachable without faking an outage.
+const MOCK_KNOWN_CNPJ = '11222333000181'
+
 const MOCK_VALID_INVITE_TOKEN = 'mock-valid-invitation'
 /** The token that reproduces the unverified-e-mail gate. */
 const MOCK_UNVERIFIED_INVITE_TOKEN = 'mock-unverified-invitation'
@@ -178,6 +184,8 @@ const state = {
   } as User,
   organizations: [] as Organization[],
   members: {} as Record<string, OrganizationMember[]>,
+  companies: {} as Record<string, Company[]>,
+  companyActors: {} as Record<string, CompanyActor[]>,
   invitations: {} as Record<string, OrganizationInvitation[]>,
   sessions: [
     mockSession({ is_current: true, device_name: 'Chrome on macOS' }),
@@ -424,6 +432,75 @@ const routes: Route[] = [
     method: 'get',
     pattern: /^\/v1\.0\/organizations\/([^/]+)\/members$/,
     handle: (m) => ({ members: state.members[m[1]] ?? [] }),
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies$/,
+    handle: (m) => ({ companies: state.companies[m[1]] ?? [] }),
+  },
+  {
+    // Before the /:company_id route below, exactly as the server registers it —
+    // otherwise "lookup" is captured as a company id here too, and mock mode
+    // would disagree with production about a route that exists.
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies\/lookup$/,
+    handle: (_m, _body, config) => {
+      const raw = new URL(config.url ?? '', 'http://mock').searchParams.get('tax_id') ?? ''
+      const canonical = raw.replace(/[^0-9A-Za-z]/g, '').toUpperCase()
+      // One CNPJ the register knows, everything else a miss — so the "type
+      // them yourself" path is reachable in mock mode without an outage.
+      if (canonical === MOCK_KNOWN_CNPJ) {
+        return { found: true, legal_name: 'ACME COMERCIO LTDA', trade_name: 'Acme' }
+      }
+      return { found: false }
+    },
+  },
+  {
+    method: 'post',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies$/,
+    handle: (m, body, config) => {
+      const orgID = m[1]
+      const b = body as { tax_id: string; legal_name: string; trade_name?: string }
+      const canonical = b.tax_id.replace(/[^0-9A-Za-z]/g, '').toUpperCase()
+      const existing = state.companies[orgID] ?? []
+      if (existing.some((c) => c.tax_id === canonical)) {
+        fail(409, {
+          type: 'https://accounts.aoctech.app/problems/conflict',
+          status: 409,
+          detail: 'This organization already has a company with that CNPJ or CPF.',
+        }, config)
+      }
+      const company: Company = {
+        id: `cmp_${Date.now()}`,
+        tax_id: canonical,
+        tax_id_kind: canonical.length === 11 ? 'cpf' : 'cnpj',
+        legal_name: b.legal_name,
+        trade_name: b.trade_name || undefined,
+        created_at: new Date().toISOString(),
+      }
+      state.companies[orgID] = [...existing, company]
+      return company
+    },
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies\/([^/]+)\/actors$/,
+    handle: (m) => ({ actors: state.companyActors[`${m[1]}|${m[2]}`] ?? [] }),
+  },
+  {
+    method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies\/([^/]+)$/,
+    handle: (m, _body, config) => {
+      const found = (state.companies[m[1]] ?? []).find((c) => c.id === m[2])
+      if (!found) {
+        fail(403, {
+          type: 'https://accounts.aoctech.app/problems/forbidden',
+          status: 403,
+          detail: 'You do not have access to this organization.',
+        }, config)
+      }
+      return found
+    },
   },
   {
     method: 'patch',

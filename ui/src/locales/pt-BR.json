@@ -409,7 +409,9 @@
     "memberRemoved": "Membro removido.",
     "invitationRevoked": "Convite revogado.",
     "ownershipTransferred": "Organização transferida.",
-    "organizationRenamed": "Organização renomeada."
+    "organizationRenamed": "Organização renomeada.",
+    "companyAdded": "Empresa adicionada.",
+    "addCompanyFailed": "Não foi possível adicionar a empresa."
   },
   "consent": {
     "title": "{{app}} está solicitando acesso",
@@ -861,7 +863,8 @@
       "members": "Membros",
       "invitations": "Convites",
       "settings": "Configurações",
-      "noAccess": "Você não tem acesso a esta organização."
+      "noAccess": "Você não tem acesso a esta organização.",
+      "companies": "Empresas"
     },
     "members": {
       "user": "Usuário",
@@ -923,6 +926,18 @@
       "resent": "E-mail de verificação enviado.",
       "retry": "Tentar de novo",
       "already": "Você já é membro desta organização."
+    },
+    "companies": {
+      "company": "Empresa",
+      "tradeName": "Nome fantasia",
+      "added": "Adicionada",
+      "add": "Adicionar empresa",
+      "addTitle": "Adicionar uma empresa",
+      "tradeNameOptional": "Nome fantasia (opcional)",
+      "addBody": "O CNPJ ou CPF em nome de quem os documentos são emitidos. Configuração fiscal — inscrição estadual, certificado — fica no DF-e.",
+      "taxId": "CNPJ ou CPF",
+      "legalName": "Razão social",
+      "empty": "Nenhuma empresa ainda. Adicione o CNPJ para o qual você emite documentos."
     }
   }
 }

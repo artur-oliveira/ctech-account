@@ -293,3 +293,44 @@ export interface OrganizationInvitation {
   invited_by: string
   expires_at: string
 }
+
+export type TaxIDKind = 'cnpj' | 'cpf'
+
+/**
+ * A tax id an organization acts for. Identity only — the fiscal configuration
+ * (inscrição estadual, regime, certificate) lives in ctech-dfe, per ADR 0022.
+ */
+export interface Company {
+  id: string
+  /**
+   * Canonical: mask stripped, letters uppercased. A CNPJ has been alphanumeric
+   * in its first twelve positions since 2026, so never assume digits.
+   */
+  tax_id: string
+  tax_id_kind: TaxIDKind
+  legal_name: string
+  trade_name?: string
+  created_at: string
+}
+
+/** One person's permission to act for one company. */
+export interface CompanyActor {
+  user_id: string
+  name?: string
+  granted_by?: string
+  created_at: string
+}
+
+/**
+ * Masks a canonical tax id for reading. The server stores it unmasked so two
+ * spellings of one document cannot both be registered; people read the mask.
+ */
+export function formatTaxID(taxID: string, kind: TaxIDKind): string {
+  if (kind === 'cnpj' && taxID.length === 14) {
+    return `${taxID.slice(0, 2)}.${taxID.slice(2, 5)}.${taxID.slice(5, 8)}/${taxID.slice(8, 12)}-${taxID.slice(12)}`
+  }
+  if (kind === 'cpf' && taxID.length === 11) {
+    return `${taxID.slice(0, 3)}.${taxID.slice(3, 6)}.${taxID.slice(6, 9)}-${taxID.slice(9)}`
+  }
+  return taxID
+}

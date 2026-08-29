@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import { MembersTab } from './members-tab'
+import { CompaniesTab } from './companies-tab'
 import { InvitationsTab } from './invitations-tab'
 import { SettingsTab } from './settings-tab'
 
@@ -85,6 +86,7 @@ function OrganizationDetail() {
       <Tabs defaultValue="members">
         <TabsList>
           <TabsTrigger value="members">{t('organizations.detail.members')}</TabsTrigger>
+          <TabsTrigger value="companies">{t('organizations.detail.companies')}</TabsTrigger>
           {/* A viewer or member does not get the tab: the pending list is a list
               of addresses of people who have not joined yet. */}
           {canManage && (
@@ -95,6 +97,10 @@ function OrganizationDetail() {
 
         <TabsContent value="members" className="mt-6">
           <MembersTab organization={organization} />
+        </TabsContent>
+
+        <TabsContent value="companies" className="mt-6">
+          <CompaniesTab organization={organization} />
         </TabsContent>
         {canManage && (
           <TabsContent value="invitations" className="mt-6">
