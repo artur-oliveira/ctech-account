@@ -307,6 +307,10 @@ func organizationProblem(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, organization.ErrInvalidName):
 		return apierror.ValidationFailed("The organization name is required and must be at most 120 characters.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrOwnRole):
+		return apierror.ValidationFailed("You cannot change your own role. Ask somebody who outranks you.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrOutranked):
+		return apierror.ValidationFailed("You can only manage people below your own role.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotGrantable):
 		return apierror.ValidationFailed("That role cannot be assigned. Ownership moves through transfer.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotAMember), errors.Is(err, organization.ErrForbidden), errors.Is(err, organization.ErrNotFound):

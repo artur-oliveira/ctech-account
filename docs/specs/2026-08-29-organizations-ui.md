@@ -129,8 +129,8 @@ Below it, the actions that are hard to undo, visually separated:
 ## What each role may see and do
 
 The server decides; the UI only chooses what to render. Every affordance below is
-already refused by `RequireOrgRole` and the service if it is called anyway, so a forged
-role in the client reveals chrome and nothing else — the same boundary
+already refused by `RequireOrgRole` and the service if it is called anyway, so a
+forged role in the client reveals chrome and nothing else — the same boundary
 [the admin KYC spec](2026-08-29-admin-kyc-review.md) draws around `support_role`.
 
 | | viewer | member | admin | owner |
@@ -143,39 +143,39 @@ role in the client reveals chrome and nothing else — the same boundary
 | transfer ownership | | | | ✓ |
 | leave | ✓ | ✓ | ✓ | |
 
-The role comes from the `role` field on the list response, or from `GET
-/organizations/:id`, which returns the caller's role alongside the organization. The UI
-must not derive it from anything cached longer than that query: a demotion has to take
-effect on the next render, which is what the server-side rule of reading the membership
-row on every request exists to guarantee.
+### Reach: who may act on whom
 
-## Names on the roster
+Holding admin is not enough on its own. Three further rules apply to every role
+change, removal and invitation, and all three exist to stop an accident rather
+than an attack:
 
-A membership row carries a copy of the person's display name, written when they
-join and refreshed when they rename themselves. Inside an organization a
-colleague's name is not a disclosure — you already work with them — and a roster
-of bare ids is a worse workspace than the one people came from.
+1. **Nobody changes their own role.** Demoting yourself is one wrong click in a
+   column of dropdowns, and the person who did it may no longer hold the role
+   needed to undo it.
+2. **You may only act on somebody you strictly outrank.** Two admins able to
+   edit each other is a disagreement that resolves as a race. This covers
+   removal as well as demotion — without it the rule is a formality, because an
+   admin refused a demotion could remove the person outright, which is worse.
+3. **You may only grant a role you strictly outrank.** An admin promoting
+   somebody to admin creates a peer who can then act back on them. **Inviting is
+   granting**, so it obeys the same limit: otherwise an admin walks around all of
+   the above by inviting a new admin instead of promoting an existing member.
 
-It is a **cache, not the record**. The account is the source of truth, so:
+So an admin manages members and viewers, and hands out member and viewer. Only
+the owner hands out admin. The owner's own row stays untouchable — ownership
+moves through transfer.
 
-- `POST /account/profile` calls `RenameMember`, which refreshes the copy on every
-  membership that person holds. It runs after the profile has saved and **never
-  fails the save**: a stale name is cosmetic, and telling somebody their profile
-  did not save when it did is not.
-- The refresh is one conditional `UpdateItem` per row, **not** a
-  `BatchWriteItem`. DynamoDB has no batch *update* — `BatchWriteItem` puts or
-  deletes whole items, so using it would mean reading each row and writing it
-  back entire, and a role change landing in that window would be silently undone
-  by a rename. A person belongs to a handful of organizations; the round trips
-  are not the cost worth optimizing, the role is.
-- A row written before names were stored has none. The UI renders the user id
-  rather than a blank, and a test pins that fallback.
+Leaving is exempt from rule 1: it removes yourself, and the self rule is about
+roles, not about the door. The owner still cannot leave; they transfer first.
 
-The id stays visible under the name: it is what support asks for, and it is the
-only thing a legacy row has.
+`AssignableRoles(callerRole)` on the server and `assignableRoles()` in
+`types.ts` are the same function twice, and must stay that way — a dropdown that
+offers a choice the server refuses teaches people the product is broken. Both
+return nothing below admin: a member outranks a viewer but manages nobody.
 
-The dfe migration carries names across — dfe already keeps a display-only name
-snapshot on each membership row — so a migrated roster arrives readable.
+A control appears only where it can succeed. Your own row, a peer's row and the
+owner's row all render the role as static text rather than a disabled `Select`:
+the server refuses each of those, and a dead control is an invitation to try.
 
 ## What a non-member is told
 

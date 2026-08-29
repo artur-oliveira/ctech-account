@@ -227,8 +227,41 @@ export interface AdminKYCDocument extends KYCDocument {
 /** The organization role ladder. `owner` is never assignable through member management. */
 export type OrganizationRole = 'owner' | 'admin' | 'member' | 'viewer'
 
-/** Roles the invite and role-change controls may offer. Owner moves only through transfer. */
+/** Roles that exist below owner. Owner moves only through transfer. */
 export const GRANTABLE_ROLES: OrganizationRole[] = ['admin', 'member', 'viewer']
+
+const ROLE_RANK: Record<OrganizationRole, number> = { viewer: 1, member: 2, admin: 3, owner: 4 }
+
+/** Strictly above. Mirrors `organization.Outranks` on the server. */
+export function outranks(role: OrganizationRole, other: OrganizationRole): boolean {
+  return ROLE_RANK[role] > ROLE_RANK[other]
+}
+
+/**
+ * The roles this caller may hand out — everything they strictly outrank, and
+ * nothing at all below admin. Mirrors `organization.AssignableRoles`: a
+ * dropdown offering a choice the server refuses teaches people the product is
+ * broken.
+ */
+export function assignableRoles(callerRole: OrganizationRole): OrganizationRole[] {
+  // The admin floor first: a member outranks a viewer but manages nobody.
+  if (ROLE_RANK[callerRole] < ROLE_RANK.admin) return []
+  return GRANTABLE_ROLES.filter((role) => outranks(callerRole, role))
+}
+
+/**
+ * Whether this caller may act on this member at all. Never yourself — demoting
+ * yourself is one wrong click and you may not hold the role needed to undo it —
+ * and never a peer.
+ */
+export function canManageMember(
+  callerRole: OrganizationRole,
+  callerUserID: string,
+  member: { user_id: string; role: OrganizationRole },
+): boolean {
+  if (callerUserID === member.user_id) return false
+  return outranks(callerRole, member.role)
+}
 
 /** One organization as the person who belongs to it sees it. */
 export interface Organization {

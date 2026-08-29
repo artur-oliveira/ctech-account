@@ -593,3 +593,103 @@ func TestAcceptCarriesTheInviteesOwnName(t *testing.T) {
 		t.Fatalf("name = %q", m.Name)
 	}
 }
+
+// Demoting yourself by accident is one wrong click in a row of dropdowns, and
+// the person who did it may no longer have the role needed to undo it.
+func TestNobodyChangesTheirOwnRole(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_admin", RoleAdmin)
+
+	if err := svc.SetRole(ctx, org.ID, "usr_admin", "usr_admin", RoleMember); err == nil {
+		t.Fatal("an admin demoted themselves")
+	}
+	if err := svc.SetRole(ctx, org.ID, "usr_owner", "usr_owner", RoleAdmin); err == nil {
+		t.Fatal("the owner changed their own role")
+	}
+}
+
+// You may only act on somebody strictly below you. An admin editing a peer is
+// two people able to undo each other, and it is how a disagreement becomes a
+// race.
+func TestAPeerIsOutOfReach(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_admin_a", RoleAdmin)
+	join(t, svc, org.ID, "usr_admin_b", RoleAdmin)
+
+	if err := svc.SetRole(ctx, org.ID, "usr_admin_a", "usr_admin_b", RoleMember); err == nil {
+		t.Fatal("an admin demoted another admin")
+	}
+	// The same reach applies to removal, or the rule is a formality: demote is
+	// refused, remove is allowed, and remove is the worse of the two.
+	if err := svc.Remove(ctx, org.ID, "usr_admin_a", "usr_admin_b"); err == nil {
+		t.Fatal("an admin removed another admin")
+	}
+}
+
+// Nobody hands out a rank they do not outrank. An admin promoting a viewer to
+// admin creates a peer who can then act back on them.
+func TestNobodyGrantsTheirOwnRank(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_admin", RoleAdmin)
+	join(t, svc, org.ID, "usr_viewer", RoleViewer)
+
+	if err := svc.SetRole(ctx, org.ID, "usr_admin", "usr_viewer", RoleAdmin); err == nil {
+		t.Fatal("an admin granted admin")
+	}
+	// Below their own rank is fine.
+	if err := svc.SetRole(ctx, org.ID, "usr_admin", "usr_viewer", RoleMember); err != nil {
+		t.Fatalf("an admin could not grant member: %v", err)
+	}
+	// The owner outranks admin, so the owner may hand it out.
+	if err := svc.SetRole(ctx, org.ID, "usr_owner", "usr_viewer", RoleAdmin); err != nil {
+		t.Fatalf("the owner could not grant admin: %v", err)
+	}
+}
+
+// Leaving is removing yourself, and it stays allowed — the self rule is about
+// roles, not about the door.
+func TestLeavingIsStillAllowed(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_2", RoleAdmin)
+
+	if err := svc.Remove(ctx, org.ID, "usr_2", "usr_2"); err != nil {
+		t.Fatalf("an admin could not leave: %v", err)
+	}
+}
+
+// AssignableRoles is what the UI offers. It must agree with what SetRole
+// accepts, or the dropdown lists a choice the server refuses.
+func TestAssignableRolesStopsBelowTheCallersRank(t *testing.T) {
+	if got := AssignableRoles(RoleOwner); len(got) != 3 || got[0] != RoleAdmin {
+		t.Fatalf("owner may assign %v, want admin, member, viewer", got)
+	}
+	if got := AssignableRoles(RoleAdmin); len(got) != 2 || got[0] != RoleMember {
+		t.Fatalf("admin may assign %v, want member, viewer", got)
+	}
+	if got := AssignableRoles(RoleMember); len(got) != 0 {
+		t.Fatalf("a member may assign %v, want nothing", got)
+	}
+}
+
+// Inviting is granting a role, so it obeys the same reach. Without this an
+// admin walks around every rule above by inviting a new admin instead of
+// promoting an existing member.
+func TestInvitingCannotHandOutYourOwnRank(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_admin", RoleAdmin)
+
+	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleAdmin); err == nil {
+		t.Fatal("an admin invited another admin")
+	}
+	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleMember); err != nil {
+		t.Fatalf("an admin could not invite a member: %v", err)
+	}
+	if _, err := svc.Invite(ctx, org.ID, "usr_owner", "outro@example.com", RoleAdmin); err != nil {
+		t.Fatalf("the owner could not invite an admin: %v", err)
+	}
+}

@@ -27,7 +27,12 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { GRANTABLE_ROLES, type Organization, type OrganizationInvitation, type OrganizationRole } from '@/lib/types'
+import {
+  assignableRoles,
+  type Organization,
+  type OrganizationInvitation,
+  type OrganizationRole,
+} from '@/lib/types'
 
 export function InvitationsTab({ organization }: { organization: Organization }) {
   const { t } = useTranslation()
@@ -121,6 +126,9 @@ function InviteDialog({ organization }: { organization: Organization }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [role, setRole] = useState<OrganizationRole>('member')
+  // Inviting is granting, so the list stops below the caller's own rank —
+  // exactly what SetRole offers, and exactly what the server accepts.
+  const options = assignableRoles(organization.role)
   // Held in state, never re-fetchable: the server returns the token once and
   // stores only its hash.
   const [link, setLink] = useState<string | null>(null)
@@ -225,14 +233,15 @@ function InviteDialog({ organization }: { organization: Organization }) {
 
             <div className="space-y-1.5">
               <Label htmlFor="invite-role">{t('organizations.invitations.roleLabel')}</Label>
-              {/* Owner is absent: the API rejects it, and offering a choice that
-                  always fails is asking a question with a wrong answer on it. */}
+              {/* Owner is absent, and so is the caller's own rank: the API
+                  rejects both, and offering a choice that always fails is
+                  asking a question with a wrong answer on it. */}
               <Select value={role} onValueChange={(v) => setRole(v as OrganizationRole)}>
                 <SelectTrigger id="invite-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {GRANTABLE_ROLES.map((r) => (
+                  {options.map((r) => (
                     <SelectItem key={r} value={r}>
                       {t(`organizations.roles.${r}`)}
                     </SelectItem>

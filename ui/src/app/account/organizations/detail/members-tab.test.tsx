@@ -1,12 +1,14 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MembersTab } from './members-tab'
-import { fetchOrganizationMembers } from '@/lib/queries'
+import { fetchOrganizationMembers, fetchProfile } from '@/lib/queries'
 import type { Organization, OrganizationRole } from '@/lib/types'
 
 vi.mock('@/lib/queries', () => ({
   fetchOrganizationMembers: vi.fn(),
+  fetchProfile: vi.fn(),
 }))
 
 vi.mock('@/lib/mutations', () => ({
@@ -26,6 +28,12 @@ function organization(role: OrganizationRole): Organization {
   }
 }
 
+/** The signed-in caller. Their own row is never actionable, so tests that need
+ *  controls must not be looking at themselves. */
+function signedInAs(userID: string) {
+  vi.mocked(fetchProfile).mockResolvedValue({ user_id: userID, email: 'me@example.com' } as never)
+}
+
 function renderTab(role: OrganizationRole) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -38,6 +46,7 @@ function renderTab(role: OrganizationRole) {
 describe('members tab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    signedInAs('usr_me')
     vi.mocked(fetchOrganizationMembers).mockResolvedValue([
       { organization_id: 'org_1', user_id: 'usr_owner', role: 'owner', created_at: new Date().toISOString() },
       { organization_id: 'org_1', user_id: 'usr_2', role: 'member', created_at: new Date().toISOString() },
@@ -87,7 +96,10 @@ describe('members tab', () => {
 })
 
 describe('member identity', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    signedInAs('usr_me')
+  })
 
   // The name is what a colleague recognizes. The id stays because it is what
   // support asks for, and because a row written before names were stored has
@@ -120,5 +132,69 @@ describe('member identity', () => {
     renderTab('viewer')
 
     expect(await screen.findAllByText('usr_legacy')).not.toHaveLength(0)
+  })
+})
+
+describe('who may act on whom', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    signedInAs('usr_admin_a')
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue([
+      { organization_id: 'org_1', user_id: 'usr_owner', name: 'Dono', role: 'owner', created_at: new Date().toISOString() },
+      { organization_id: 'org_1', user_id: 'usr_admin_a', name: 'Eu', role: 'admin', created_at: new Date().toISOString() },
+      { organization_id: 'org_1', user_id: 'usr_admin_b', name: 'Colega', role: 'admin', created_at: new Date().toISOString() },
+      { organization_id: 'org_1', user_id: 'usr_viewer', name: 'Leitor', role: 'viewer', created_at: new Date().toISOString() },
+    ])
+  })
+
+  // Demoting yourself is one wrong click in a column of dropdowns, and you may
+  // no longer hold the role needed to undo it.
+  it('gives an admin no control over their own row', async () => {
+    renderTab('admin')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    const own = table.getByText('Eu').closest('tr') as HTMLElement
+    expect(within(own).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(own).queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
+  })
+
+  // Two admins able to edit each other is a disagreement that resolves as a
+  // race. Removal is gated too, or the rule is a formality: refused a demotion,
+  // an admin could remove the person outright.
+  it('gives an admin no control over a peer', async () => {
+    renderTab('admin')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    const peer = table.getByText('Colega').closest('tr') as HTMLElement
+    expect(within(peer).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(peer).queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
+  })
+
+  it('gives an admin control over somebody below them', async () => {
+    renderTab('admin')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    const below = table.getByText('Leitor').closest('tr') as HTMLElement
+    expect(within(below).getByRole('combobox')).toBeInTheDocument()
+    expect(within(below).getByRole('button', { name: /remove/i })).toBeInTheDocument()
+  })
+
+  // The dropdown must not offer a rank the caller holds: an admin promoting
+  // somebody to admin creates a peer who can act back on them, and the server
+  // refuses it anyway.
+  it('does not offer an admin the rank they hold', async () => {
+    const user = userEvent.setup()
+    renderTab('admin')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    const below = table.getByText('Leitor').closest('tr') as HTMLElement
+    await user.click(within(below).getByRole('combobox'))
+
+    expect(await screen.findByRole('option', { name: /member/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /^admin$/i })).not.toBeInTheDocument()
   })
 })

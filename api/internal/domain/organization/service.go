@@ -27,6 +27,12 @@ var (
 	ErrInvalidName = errors.New("organization name is required")
 	// ErrNotGrantable is an attempt to hand out owner through member routes.
 	ErrNotGrantable = errors.New("role is not grantable")
+	// ErrOwnRole is somebody changing their own role. Separate from
+	// ErrForbidden because it is the one refusal here that is almost always an
+	// accident rather than an attempt.
+	ErrOwnRole = errors.New("you cannot change your own role")
+	// ErrOutranked is acting on somebody at or above your own rank.
+	ErrOutranked = errors.New("you can only manage members below your own role")
 )
 
 // maxDisplayName is a storage bound, not a product rule. Long enough for any
@@ -141,48 +147,77 @@ func (s *Service) require(ctx context.Context, orgID, actorUserID, floor string)
 	return nil
 }
 
-// SetRole changes a member's role. Admin and above may call it; owner is not a
-// role it can write, and the owner's own row is not a row it can touch.
+// SetRole changes a member's role.
+//
+// Three rules, and all three exist to stop an accident rather than an attack:
+//
+//   - Nobody changes their own role. Demoting yourself is one wrong click in a
+//     column of dropdowns, and the person who did it may no longer hold the
+//     role needed to undo it.
+//   - You may only act on somebody you strictly outrank. Two admins able to
+//     edit each other is a disagreement that resolves as a race.
+//   - You may only grant a role you strictly outrank. An admin promoting
+//     somebody to admin creates a peer who can then act back on them.
 func (s *Service) SetRole(ctx context.Context, orgID, actorUserID, targetUserID, role string) error {
 	if !IsGrantableRole(role) {
 		return ErrNotGrantable
 	}
-	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
-		return err
+	if actorUserID == targetUserID {
+		return ErrOwnRole
 	}
-	current, err := s.RoleOf(ctx, orgID, targetUserID)
+	actorRole, err := s.RoleOf(ctx, orgID, actorUserID)
 	if err != nil {
 		return err
 	}
-	// The repository refuses this too. The check is here as well so the caller
-	// gets an error that says what happened rather than a condition failure
-	// that reads as "not found".
-	if current == RoleOwner {
-		return ErrNotGrantable
+	if !AtLeast(actorRole, RoleAdmin) {
+		return ErrForbidden
+	}
+	currentRole, err := s.RoleOf(ctx, orgID, targetUserID)
+	if err != nil {
+		return err
+	}
+	if !Outranks(actorRole, currentRole) {
+		return ErrOutranked
+	}
+	if !Outranks(actorRole, role) {
+		return ErrOutranked
 	}
 	return s.repo.SetRole(ctx, orgID, targetUserID, role)
 }
 
 // Remove takes a member out of the organization.
 //
-// The owner is not removable — not by an admin, and not by themselves. An
+// Removing yourself is leaving, and stays open to everybody but the owner:
+// the self rule above is about roles, not about the door.
+//
+// Removing somebody else needs the same reach SetRole needs. Without it the
+// rule would be a formality — an admin refused a demotion could remove the
+// person outright, which is the worse of the two.
+//
+// The owner is not removable, not by an admin and not by themselves. An
 // organization whose owner walked out has nobody who can invite, rename or
 // transfer it, and no support path short of a database edit. Leaving is
 // Transfer followed by Remove, in that order, deliberately.
 func (s *Service) Remove(ctx context.Context, orgID, actorUserID, targetUserID string) error {
-	// Leaving on your own account needs no admin role; removing somebody else
-	// does.
-	if actorUserID != targetUserID {
-		if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
-			return err
-		}
-	}
-	role, err := s.RoleOf(ctx, orgID, targetUserID)
+	targetRole, err := s.RoleOf(ctx, orgID, targetUserID)
 	if err != nil {
 		return err
 	}
-	if role == RoleOwner {
+	if targetRole == RoleOwner {
 		return ErrForbidden
+	}
+	if actorUserID == targetUserID {
+		return s.repo.RemoveMembership(ctx, orgID, targetUserID)
+	}
+	actorRole, err := s.RoleOf(ctx, orgID, actorUserID)
+	if err != nil {
+		return err
+	}
+	if !AtLeast(actorRole, RoleAdmin) {
+		return ErrForbidden
+	}
+	if !Outranks(actorRole, targetRole) {
+		return ErrOutranked
 	}
 	return s.repo.RemoveMembership(ctx, orgID, targetUserID)
 }
@@ -235,8 +270,18 @@ func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role st
 	if address == "" || !strings.Contains(address, "@") {
 		return "", ErrInvalidName
 	}
-	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
+	actorRole, err := s.RoleOf(ctx, orgID, actorUserID)
+	if err != nil {
 		return "", err
+	}
+	if !AtLeast(actorRole, RoleAdmin) {
+		return "", ErrForbidden
+	}
+	// Inviting is granting, so it obeys the same reach SetRole does. Without
+	// this an admin walks around every rule above by inviting a new admin
+	// instead of promoting an existing member.
+	if !Outranks(actorRole, role) {
+		return "", ErrOutranked
 	}
 
 	raw := make([]byte, 32)

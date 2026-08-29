@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchOrganizationMembers } from '@/lib/queries'
+import { fetchOrganizationMembers, fetchProfile } from '@/lib/queries'
 import { removeMemberAPI, setMemberRoleAPI } from '@/lib/mutations'
 import { formatDate } from '@/lib/format'
 import { isAxiosError } from '@/lib/axios'
@@ -14,12 +14,22 @@ import { ResponsiveDataList, type Column } from '@/components/responsive-data-li
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { GRANTABLE_ROLES, type Organization, type OrganizationMember, type OrganizationRole } from '@/lib/types'
+import {
+  assignableRoles,
+  canManageMember,
+  type Organization,
+  type OrganizationMember,
+  type OrganizationRole,
+} from '@/lib/types'
 
 export function MembersTab({ organization }: { organization: Organization }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const canManage = organization.role === 'admin' || organization.role === 'owner'
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
+  // What this caller may hand out. Empty below admin, and never their own rank.
+  const options = assignableRoles(organization.role)
+  const canActOn = (m: OrganizationMember) =>
+    !!profile && canManageMember(organization.role, profile.user_id, m)
 
   const { data: members = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['organization-members', organization.id],
@@ -91,10 +101,11 @@ export function MembersTab({ organization }: { organization: Organization }) {
       key: 'role',
       header: t('organizations.role'),
       cell: (m) =>
-        // The owner's row shows the role as text, never a control: the API
-        // refuses to re-role or remove an owner, and a control that always
-        // fails is worse than no control.
-        canManage && m.role !== 'owner' ? (
+        // A control appears only where it can succeed. Your own row, a peer's
+        // row and the owner's row all show the role as text: the server
+        // refuses each of those, and a control that always fails is worse than
+        // no control.
+        canActOn(m) && options.length > 0 ? (
           <Select
             value={m.role}
             onValueChange={(role) =>
@@ -106,7 +117,7 @@ export function MembersTab({ organization }: { organization: Organization }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {GRANTABLE_ROLES.map((role) => (
+              {options.map((role) => (
                 <SelectItem key={role} value={role}>
                   {t(`organizations.roles.${role}`)}
                 </SelectItem>
@@ -130,9 +141,9 @@ export function MembersTab({ organization }: { organization: Organization }) {
       columns={columns}
       rowKey={(m) => m.user_id}
       actions={
-        canManage
+        options.length > 0
           ? (m) =>
-              m.role === 'owner' ? null : (
+              !canActOn(m) ? null : (
                 <ConfirmDialog
                   trigger={
                     <Button variant="ghost" size="sm" className="text-destructive">

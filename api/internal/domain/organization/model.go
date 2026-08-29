@@ -35,6 +35,36 @@ func IsGrantableRole(role string) bool {
 	return role == RoleAdmin || role == RoleMember || role == RoleViewer
 }
 
+// Outranks reports whether one role sits strictly above another.
+//
+// Strictly, everywhere member management is concerned: acting on a peer means
+// two people who can undo each other, and granting your own rank creates one.
+func Outranks(role, other string) bool {
+	return RoleRank(role) > RoleRank(other) && RoleRank(role) > 0
+}
+
+// AssignableRoles lists the roles a caller may hand out — everything they
+// outrank, and nothing else.
+//
+// Exported because the UI builds its dropdown from it: a control offering a
+// choice the server refuses is a control that teaches people the product is
+// broken.
+func AssignableRoles(callerRole string) []string {
+	// The admin floor first: a member outranks a viewer but may not manage
+	// anybody, and a list that forgot this would offer a choice SetRole
+	// refuses.
+	if !AtLeast(callerRole, RoleAdmin) {
+		return nil
+	}
+	out := make([]string, 0, 3)
+	for _, role := range []string{RoleAdmin, RoleMember, RoleViewer} {
+		if Outranks(callerRole, role) {
+			out = append(out, role)
+		}
+	}
+	return out
+}
+
 // AtLeast reports whether role clears floor.
 func AtLeast(role, floor string) bool {
 	return RoleRank(role) >= RoleRank(floor) && RoleRank(role) > 0
