@@ -32,6 +32,7 @@ import (
 	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	authcodeDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/code"
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
+	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
@@ -189,6 +190,7 @@ func main() {
 	// Services
 	userSvc := userDomain.NewService(userRepo)
 	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
+	orgSvc := orgDomain.NewService(orgDomain.NewRepository(db, cfg.TablePrefix), time.Now)
 	supportSvc.SetNotifier(handler.NewSupportWSNotifier(supportWSRegistry))
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)
@@ -411,6 +413,8 @@ func main() {
 	termsH.Register(account)
 	passkeyH.RegisterManagement(account, stepUp)
 	supportH.RegisterAccount(account)
+	handler.NewOrganizationHandler(orgSvc, userSvc).Register(
+		v1.Group("", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID)))
 	adminAuth := []fiber.Handler{middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID)}
 	supportAdminH.Register(v1.Group("/admin", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
