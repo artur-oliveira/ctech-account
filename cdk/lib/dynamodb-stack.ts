@@ -354,6 +354,45 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_invitations', invitationsTable);
 
+    // Three row kinds under pk=ORG#{organization_id}:
+    //   sk=COMPANY#{company_id}          the company
+    //   sk=TAXID#{canonical}             the uniqueness lock, written in the
+    //                                    same transaction as the company so
+    //                                    two concurrent registrations of one
+    //                                    CNPJ cannot both find nothing and
+    //                                    both succeed
+    //   sk=ACTOR#{company_id}#{user_id}  who may act for it
+    //
+    // lookup-index answers two questions with one GSI, exactly as the
+    // organizations tables do: lookup_pk=USER#{id} for "which companies may
+    // this person act for", lookup_pk=SOURCE#{system}#{ref} for "have I
+    // already imported this one". Sparse — a company row carries lookup_pk
+    // only when it was imported, and a lock row never carries one.
+    const companiesTable = new dynamodb.TableV2(this, 'CompaniesTableV2', {
+      tableName: `${environment}_account_companies`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'lookup-index',
+          partitionKey: {name: 'lookup_pk', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.ALL,
+          warmThroughput: undefined,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
+    });
+    this.tables.set('account_companies', companiesTable);
+
     for (const [name, table] of this.tables) {
       new cdk.CfnOutput(this, `${name}_TableName`, {
         value: table.tableName,
