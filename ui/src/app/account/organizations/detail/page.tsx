@@ -122,7 +122,7 @@ function BackLink() {
   return (
     <Link
       href="/account/organizations"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground max-sm:min-h-11"
     >
       <ArrowLeft className="size-3.5" />
       {t('organizations.detail.back')}

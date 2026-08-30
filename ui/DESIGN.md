@@ -200,6 +200,7 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 - **Destructive:** red tint (10% fill) + red text; never a solid red block except for explicit irreversible actions.
 - **Disabled:** 50% opacity, no pointer events.
 - Every variant shares the same shape and focus treatment — see The One Vocabulary Rule.
+- On phone layouts, interactive targets expand to at least 44px even when their desktop visual height remains 32px; this includes dialog close controls.
 
 ### Cards / Containers
 - **Corner:** 1.225rem (`rounded-xl`).
@@ -242,6 +243,10 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 
 - Basic KYC collects the address required for downstream onboarding, keeps the platform-native date control, and uses a searchable, country-aware phone input: local flag assets, dial-code metadata, and national formatting make the submitted number explicit while the API still receives E.164. An eight-digit Brazilian CEP consults ViaCEP to prefill editable address fields; lookup failure never blocks manual entry or KYC submission.
 - Basic KYC fields apply intentional bounds: legal names stop at 255 characters, phone entry stops at the selected country's valid maximum national length, and each address field mirrors the API's validation limit.
+- Organization company forms format CPF and the 14-character alphanumeric CNPJ as the user types, cap the field at the formatted document length, and enrich complete CNPJs directly from the public CNPJA register without sending account credentials.
+- Organization invitations keep long company names inside their selection rows, explain role scope, distinguish company-loading failures from a genuinely empty portfolio, and add search/bulk controls when the portfolio becomes long.
+- Organization creation treats company registration as a retryable second checkpoint: once the organization exists, a failed company request can be retried without creating a duplicate organization.
+- Organization navigation, tabs, fields, and actions expose at least a 44px target on phone layouts; detail tabs scroll only on the horizontal axis when localized labels exceed the viewport.
 - Consent groups scopes into identity information and account access, makes revocation discoverable, and must not claim client/publisher verification unless the API provides authoritative metadata.
 - OAuth/API-key setup teaches least privilege, validates callback URLs as an early aid (the API remains authoritative), and keeps optional audiences progressively disclosed.
 - Sessions show API-provided city/region as an approximate IP-based signal, never proof of physical location.

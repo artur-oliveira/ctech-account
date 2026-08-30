@@ -33,6 +33,9 @@ That rules out Server Components with data, Server Actions, Route Handlers, and
 
 - Reads: Client Components call `useQuery`/`useInfiniteQuery` against functions in `lib/queries.ts`,
   which call the Go API through `lib/axios.ts`'s `api` instance.
+- Public CNPJ enrichment is the one direct third-party read: `lib/queries.ts`
+  calls CNPJA through `lib/axios.ts`'s credential-free `cnpjaApi` instance.
+  Never attach account auth, cookies, refresh, or step-up interceptors to it.
 - Mutations: Client Components call `useMutation` against functions in `lib/mutations.ts`, same `api` instance.
 - Auth: `store/auth.ts` (Zustand) holds the access token in memory only. The Go API sets the httpOnly
   refresh cookie directly (Next.js never sets or reads it) and a non-secret `ctech_auth` hint cookie
@@ -175,9 +178,13 @@ export async function revokeSessionAPI(sessionId: string) {
 }
 ```
 
-Never construct a raw `axios`/`fetch` call to the API outside `lib/queries.ts` / `lib/mutations.ts` —
+Never construct a raw `axios`/`fetch` call to the account API outside `lib/queries.ts` / `lib/mutations.ts` —
 always go through the shared `api` instance in `lib/axios.ts` so the Bearer-token header injection,
 401 silent-refresh, and step-up-required retry interceptors apply.
+
+The public CNPJA lookup is intentionally different: reads still live in
+`lib/queries.ts`, but use the isolated `cnpjaApi` instance so the authenticated
+account interceptors can never leak credentials to `open.cnpja.com`.
 
 ---
 

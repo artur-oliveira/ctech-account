@@ -9,6 +9,14 @@ The browser calls the API **cross-origin** at `NEXT_PUBLIC_API_URL`
 CORS applies. `/.well-known/*` is served by the API host only. See
 [`CLAUDE.md`](CLAUDE.md) for why the auth cookies still work.
 
+Organization company forms look up a complete 14-character CNPJ directly at
+`https://open.cnpja.com/office/:cnpj`. This public request uses the dedicated
+credential-free `cnpjaApi` client from `lib/axios.ts`, never the authenticated
+account client, so account tokens and cookies cannot reach the third party and
+CNPJA rate limiting sees the browser's IP. Production CSP must include
+`https://open.cnpja.com` in `connect-src` through the frontend deployment
+workflow's `extra-connect-src` input.
+
 Support threads use `@aoctech/ws-client` against the explicit `NEXT_PUBLIC_WS_URL` and exchange binary frames from
 `../proto/support.proto`. The socket's first frame carries the in-memory access JWT or anonymous ticket token; live
 events invalidate the authoritative TanStack Query thread. Deployed CSP must list the `wss://` origin explicitly.

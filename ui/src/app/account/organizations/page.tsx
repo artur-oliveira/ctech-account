@@ -63,7 +63,7 @@ export default function OrganizationsPage() {
       cell: (org) => (
         <Link
           href={`/account/organizations/detail?id=${encodeURIComponent(org.id)}`}
-          className="block max-w-96 truncate text-sm font-medium text-primary hover:underline"
+          className="block max-w-96 truncate text-sm font-medium text-primary hover:underline max-md:flex max-md:min-h-11 max-md:items-center"
           title={org.display_name}
         >
           {org.display_name}

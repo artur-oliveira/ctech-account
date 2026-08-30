@@ -96,8 +96,10 @@ auth store has no access token.
 
 ## Non-Negotiable Rules
 
-1. **All API calls go through `lib/axios.ts`'s `api` instance** — reached only from `lib/queries.ts`
-   (reads) and `lib/mutations.ts` (writes). Never construct a raw `axios`/`fetch` to the API elsewhere.
+1. **All account API calls go through `lib/axios.ts`'s `api` instance** — reached only from
+   `lib/queries.ts` (reads) and `lib/mutations.ts` (writes). The sole third-party exception is the
+   public CNPJA lookup: `lib/queries.ts` uses `lib/axios.ts`'s credential-free `cnpjaApi` client so
+   account tokens, cookies, refresh, and step-up behavior can never reach `open.cnpja.com`.
 2. **No Server Components with data, Server Actions, or Route Handlers** — the app is a static export;
    they don't exist and can't be added (see `output: 'export'`).
 3. **`render` prop instead of `asChild`** — ShadCN 4 uses `@base-ui/react`, `asChild` does not exist.
@@ -163,8 +165,9 @@ Writes use TanStack Query's `useMutation` — there are no Server Actions in thi
 ### DRY
 
 - Before creating any component, search `src/components/` for an existing one.
-- All external API calls go through the shared `api` instance in `lib/axios.ts`, called from
-  `lib/queries.ts` (reads) or `lib/mutations.ts` (writes).
+- All account API calls go through the shared `api` instance in `lib/axios.ts`, called from
+  `lib/queries.ts` (reads) or `lib/mutations.ts` (writes). Public CNPJA enrichment uses only the
+  isolated `cnpjaApi` client from the same module and remains in `lib/queries.ts`.
 - All types in `lib/types.ts` — field names match backend JSON exactly.
 
 ### Constants — no magic strings
@@ -219,7 +222,7 @@ npx eslint src --ext .ts,.tsx  # zero errors/warnings
 - [ ] `npm run build` succeeds (static export)
 - [ ] No duplicate components, queries, or mutations introduced
 - [ ] All constants named (no magic strings)
-- [ ] No raw `fetch`/`axios` call bypassing `lib/axios.ts`'s `api` instance
+- [ ] No raw `fetch`/`axios` call; account traffic uses `api`, and public CNPJA reads use only `cnpjaApi`
 - [ ] `render` prop used (not `asChild`)
 - [ ] Tokens and cookies never logged or exposed to client JS
 - [ ] Cross-project impact reviewed (ui ↔ Go API ↔ cdk)

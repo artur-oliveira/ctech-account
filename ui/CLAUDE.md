@@ -109,10 +109,13 @@ npm run build                   # must compile cleanly (static export)
 ### DRY
 
 - Never duplicate query/mutation functions or components.
-- All external API calls go through the shared `api` instance in `lib/axios.ts`, called from
-  `lib/queries.ts` (reads) or `lib/mutations.ts` (writes).
-- **Never construct a raw `axios`/`fetch` call to the API outside `lib/queries.ts` / `lib/mutations.ts`** —
+- All account API calls go through the shared `api` instance in `lib/axios.ts`, called from
+  `lib/queries.ts` (reads) or `lib/mutations.ts` (writes). Public CNPJA enrichment is the sole
+  third-party exception and uses the credential-free `cnpjaApi` client from the same module.
+- **Never construct a raw `axios`/`fetch` call to the account API outside `lib/queries.ts` / `lib/mutations.ts`** —
   route through `api` so the auth header, 401-refresh, and step-up interceptors apply.
+- Keep CNPJA reads in `lib/queries.ts` and never attach account auth, cookies, refresh, or step-up
+  behavior to `cnpjaApi`.
 - If two pages share the same form pattern, extract a shared component.
 
 ### Constants — no magic strings
@@ -244,7 +247,7 @@ Before touching: identify risks + side effects, verify backward compatibility.
 - [ ] `npm run build` succeeds (static export)
 - [ ] No duplicate components, queries, or mutations introduced
 - [ ] All constants named (no magic strings)
-- [ ] No raw `fetch`/`axios` call bypassing `lib/axios.ts`'s `api` instance
+- [ ] No raw `fetch`/`axios` call; account traffic uses `api`, and public CNPJA reads use only `cnpjaApi`
 - [ ] `render` prop used instead of `asChild` for ShadCN components
 - [ ] Tokens and cookies never logged or exposed beyond what's already documented above
 - [ ] Cross-project impact reviewed (ui ↔ Go API ↔ cdk)

@@ -148,7 +148,7 @@ function NewOrganization() {
         <Building2 className="mx-auto size-8 text-muted-foreground opacity-40"/>
         <h1 className="text-lg font-semibold">{t('organizations.new.handoffInvalidTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('organizations.new.handoffInvalidBody')}</p>
-        <Link href="/account/organizations" className={cn(buttonVariants({variant: 'outline'}))}>
+        <Link href="/account/organizations" className={cn(buttonVariants({variant: 'outline'}), 'max-sm:min-h-11')}>
           {t('organizations.new.goToOrganizations')}
         </Link>
       </div>
