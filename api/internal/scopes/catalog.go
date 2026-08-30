@@ -146,6 +146,15 @@ var defaultCatalog = []ServiceScopes{
 			// This root permission must exist before the Account Resource Server
 			// can bootstrap. Once v2 is present, its manifest overrides this row.
 			{InternalAccountScopeRegistryWrite, "Publish a resource server scope manifest", "Publicar o manifesto de escopos de um servidor de recursos"},
+			// KYC was granted in production before it reached this seed. Added
+			// here so the seed matches what {env}_ctech_scopes holds — a seed
+			// that omits a live scope is a seed that silently revokes it if
+			// anybody ever re-runs seedscopes from scratch.
+			{InternalAccountKYC, "Check a user's KYC standing", "Consultar a situação de KYC de um usuário"},
+			// Reach: whether a person may act for a company. A product asks this
+			// before letting somebody use one (ctech-billing ADR 0023), and it
+			// answers reach and the organization it found — never a role.
+			{InternalAccountCompanyActor, "Check whether a user may act for a company", "Verificar se um usuário pode agir por uma empresa"},
 		},
 	},
 	{
