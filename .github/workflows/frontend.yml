@@ -37,12 +37,12 @@ jobs:
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_PROD }}
       # The reusable workflow derives connect-src from the API origins above;
       # add Turnstile through its dedicated extension point.
-      extra-connect-src: https://prod-ctech-account-kyc-documents.s3.dualstack.us-east-1.amazonaws.com https://challenges.cloudflare.com wss://accounts-dev-api.aoctech.app wss://accounts-stage-api.aoctech.app wss://accounts-api.aoctech.app
+      extra-connect-src: https://prod-ctech-account-kyc-documents.s3.dualstack.us-east-1.amazonaws.com https://challenges.cloudflare.com wss://accounts-dev-api.aoctech.app wss://accounts-stage-api.aoctech.app wss://accounts-api.aoctech.app https://open.cnpja.com
       # blob: for the KYC document capture preview, media-src for its camera
       # stream. Ported from contentSecurityPolicyDirectives in
       # cdk/lib/frontend-stack.ts:41-51.
       csp-overrides: |
         img-src 'self' data: blob:
         media-src 'self' blob:
-        script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com
+        script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com 
         frame-src 'self' https://challenges.cloudflare.com
