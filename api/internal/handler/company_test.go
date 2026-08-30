@@ -514,3 +514,69 @@ func TestTheReachAnswerCarriesTheOrganizationAndNoRole(t *testing.T) {
 		}
 	}
 }
+
+// The identity read: what a product needs to issue in a company's name. It is
+// the half of ADR 0022 that products read, and it carries no role.
+func TestTheIdentityReadCarriesTheNamesAndNoRole(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "identity-ok@example.com")
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+
+	real, err := companyDomain.NewService(a.repo, time.Now).
+		Register(context.Background(), orgID, ownerID, "Dono", "11222333000181", "Acme LTDA", "Acme")
+	if err != nil {
+		t.Fatalf("seeding company: %v", err)
+	}
+
+	resp := a.do(t, http.MethodGet,
+		"/v1.0/internal/organizations/"+orgID+"/companies/"+real.ID, internal, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", resp.StatusCode, bodyString(resp))
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if body["tax_id"] != "11222333000181" || body["tax_id_kind"] != "cnpj" {
+		t.Errorf("got %+v", body)
+	}
+	if body["legal_name"] != "Acme LTDA" {
+		t.Errorf("legal_name = %v", body["legal_name"])
+	}
+	for _, forbidden := range []string{"role", "roles", "permissions"} {
+		if _, present := body[forbidden]; present {
+			t.Errorf("the identity read carries %q, which belongs to the product", forbidden)
+		}
+	}
+}
+
+// The scope gates it too. Identity is not public: a CNPJ is, but the mapping
+// from a company id to one is this platform's.
+func TestTheIdentityReadNeedsTheInternalScope(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "identity-nogo@example.com")
+	resp := a.do(t, http.MethodGet,
+		"/v1.0/internal/organizations/"+orgID+"/companies/cmp_1", a.issueToken(t, ownerID), "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+// A company that is not in the named organization is 404, not somebody else's
+// identity. The organization comes from the handoff, and a mismatched pair must
+// not resolve.
+func TestTheIdentityReadWillNotCrossOrganizations(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgA, ownerA, _ := a.seedOrg(t, "identity-a@example.com")
+	orgB, _, _ := a.seedOrg(t, "identity-b@example.com")
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+
+	real, _ := companyDomain.NewService(a.repo, time.Now).
+		Register(context.Background(), orgA, ownerA, "Dono", "11222333000181", "Acme LTDA", "")
+
+	resp := a.do(t, http.MethodGet,
+		"/v1.0/internal/organizations/"+orgB+"/companies/"+real.ID, internal, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 — a company resolved under another organization", resp.StatusCode)
+	}
+}

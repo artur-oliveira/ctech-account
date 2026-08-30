@@ -22,6 +22,43 @@ func (h *CompanyHandler) RegisterInternal(v1 fiber.Router, internalAuth ...fiber
 	}
 	grp := v1.Group("/internal/companies", handlers...)
 	grp.Get("/:company_id/actors/:user_id", h.internalReach)
+	// Identity, which is a different question from reach and gets its own
+	// route rather than being folded into the answer above. Reach is asked on
+	// every request and must stay one small answer; identity is asked once,
+	// when a product first links a company, and carries the names.
+	// Both ids, because the handoff hands the product both: looking the
+	// organization up from the company alone would need an index that exists
+	// for nothing else.
+	v1.Group("/internal/organizations", handlers...).
+		Get("/:organization_id/companies/:company_id", h.internalIdentity)
+}
+
+// internalIdentity returns who a company IS: the tax id, its kind, the legal
+// name, and the organization it belongs to.
+//
+// This is the half of ADR 0022 that products READ — accounts owns the identity
+// and every product needs it to issue in that company's name. It carries no
+// role and no permission, for the same reason the reach answer does not.
+//
+// An unknown company is 404 here, unlike reach's 200-with-false. The difference
+// is deliberate: reach is asked speculatively about ids a caller may not be
+// entitled to, so its refusal must be indistinguishable from absence. This is
+// asked about a company the caller was just handed, so "there is no such
+// company" is the useful answer and discloses nothing they did not already
+// have.
+func (h *CompanyHandler) internalIdentity(c fiber.Ctx) error {
+	orgID := c.Params("organization_id")
+	company, err := h.svc.Get(c.Context(), orgID, c.Params("company_id"))
+	if err != nil {
+		return apierror.NotFound("company", c.Path()).Send(c)
+	}
+	return c.JSON(fiber.Map{
+		"organization_id": orgID,
+		"tax_id":          company.TaxID,
+		"tax_id_kind":     company.TaxIDKind,
+		"legal_name":      company.LegalName,
+		"trade_name":      company.TradeName,
+	})
 }
 
 // internalReach answers whether one person may act for one company.
