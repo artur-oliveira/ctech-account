@@ -18,6 +18,7 @@ import (
 	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
 // memCompanyRepo is an in-memory company.Repository reproducing the one
@@ -426,6 +427,82 @@ func TestGrantingTheEdgeTwiceIsNotAnError(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		if resp := a.do(t, http.MethodPut, path, token, ""); resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("grant %d: status = %d, want 204 (%s)", i+1, resp.StatusCode, bodyString(resp))
+		}
+	}
+}
+
+// newInternalReachApp mounts the internal route the way main.go does, with the
+// same scope guard, so the test exercises the gate and not just the handler.
+func newInternalReachApp(t *testing.T) *companyTestApp {
+	t.Helper()
+	a := newCompanyTestApp(t)
+	handler.NewCompanyHandler(companyDomain.NewService(a.repo, time.Now), a.orgSvc, a.testApp.userSvc, nil).
+		RegisterInternal(a.app.Group("/v1.0"),
+			middleware.RequireAuth(a.testApp.jwtSvc),
+			middleware.RequireInternalScope(scopes.InternalAccountCompanyActor))
+	return a
+}
+
+// This route is how another product learns reach. A token without the internal
+// scope must not be able to ask it — including a perfectly valid user token,
+// which is what a compromised first-party client would hold.
+func TestTheReachCheckNeedsTheInternalScope(t *testing.T) {
+	a := newInternalReachApp(t)
+	user := a.registerUser(t, "reach-nogo@example.com", "Sup3rSecret!pass", "Sem escopo")
+	resp := a.do(t, http.MethodGet, "/v1.0/internal/companies/cmp_1/actors/usr_1", a.issueToken(t, user.ID()), "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 — a user token reached the internal route", resp.StatusCode)
+	}
+}
+
+// An unknown company and a real one this person cannot reach must be
+// indistinguishable, or the route is a probe for which company ids exist.
+func TestAnUnknownCompanyAndARefusalAnswerAlike(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "reach-probe@example.com")
+	stranger := a.registerUser(t, "reach-stranger@example.com", "Sup3rSecret!pass", "Estranho")
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+
+	real, err := companyDomain.NewService(a.repo, time.Now).
+		Register(context.Background(), orgID, ownerID, "Dono", "11222333000181", "Acme LTDA", "")
+	if err != nil {
+		t.Fatalf("seeding company: %v", err)
+	}
+
+	unknown := bodyString(a.do(t, http.MethodGet, "/v1.0/internal/companies/cmp_nope/actors/"+stranger.ID(), internal, ""))
+	refused := bodyString(a.do(t, http.MethodGet, "/v1.0/internal/companies/"+real.ID+"/actors/"+stranger.ID(), internal, ""))
+	if unknown != refused {
+		t.Fatalf("distinguishable:\n  unknown: %s\n  refused: %s", unknown, refused)
+	}
+}
+
+// The happy path, and the shape the DF-e depends on: reach plus the
+// organization it did not know, and nothing that belongs to the product.
+func TestTheReachAnswerCarriesTheOrganizationAndNoRole(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "reach-ok@example.com")
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+
+	real, err := companyDomain.NewService(a.repo, time.Now).
+		Register(context.Background(), orgID, ownerID, "Dono", "11222333000181", "Acme LTDA", "")
+	if err != nil {
+		t.Fatalf("seeding company: %v", err)
+	}
+
+	resp := a.do(t, http.MethodGet, "/v1.0/internal/companies/"+real.ID+"/actors/"+ownerID, internal, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if body["may_act"] != true || body["organization_id"] != orgID {
+		t.Fatalf("got %+v, want may_act true and org %q", body, orgID)
+	}
+	for _, forbidden := range []string{"role", "roles", "permissions"} {
+		if _, present := body[forbidden]; present {
+			t.Errorf("the reach answer carries %q, which belongs to the product", forbidden)
 		}
 	}
 }

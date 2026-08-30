@@ -54,6 +54,15 @@ const InternalServicePrefix = "internal"
 // InternalAccountKYC lets a service check the KYC of a user
 const InternalAccountKYC = "internal:account:kyc"
 
+// InternalAccountCompanyActor lets a product ask whether a person may act for a
+// company — the reach half of ctech-billing ADR 0023, where the platform owns
+// who may reach a company and the product owns what they may do there.
+//
+// It answers reach and the organization it found, never a role: a role here
+// would be the platform holding a product's vocabulary, which is the argument
+// that ADR settles.
+const InternalAccountCompanyActor = "internal:account:company-actor"
+
 // InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
 // publisher to reconcile the scope manifest bound to its OAuth client. It is
 // an Account-owned root permission and therefore remains in the built-in

@@ -152,3 +152,31 @@ func (s *Service) MayAct(ctx context.Context, orgID, companyID, userID string) (
 	}
 	return true, nil
 }
+
+// ReachOf answers "may this person act for this company", without being told
+// which organization the company belongs to.
+//
+// That asymmetry is the point. It is the question another product asks
+// (ctech-billing ADR 0023), and the caller does not know the organization —
+// finding it out is half of what it wants. The answer carries it back, so the
+// product can store both ids and keep its own authorization lookup to one read.
+//
+// It reads the person's own edges rather than the company's, which is bounded
+// by how many companies one person acts for. The other direction would need the
+// organization to build the key, which is exactly what the caller lacks.
+//
+// An unknown company and a company this person cannot reach answer identically:
+// ("", false, nil). Distinguishing them would make this route a probe for which
+// company ids are real, and "not permitted" is an answer rather than a failure.
+func (s *Service) ReachOf(ctx context.Context, companyID, userID string) (string, bool, error) {
+	edges, err := s.repo.ListForUser(ctx, userID)
+	if err != nil {
+		return "", false, err
+	}
+	for _, e := range edges {
+		if e.CompanyID == companyID {
+			return e.OrganizationID, true, nil
+		}
+	}
+	return "", false, nil
+}

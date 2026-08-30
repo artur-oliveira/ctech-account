@@ -266,3 +266,63 @@ func TestListOrdersByTheNamePeopleRead(t *testing.T) {
 		t.Fatalf("order = %v", []string{companies[0].LegalName, companies[1].LegalName})
 	}
 }
+
+// The question ctech-dfe asks: "may this person act for this company", with no
+// organization to scope by — the caller does not know it, and finding out is
+// half of what it is asking.
+func TestReachOfAnswersWithoutAnOrganization(t *testing.T) {
+	svc, _ := newService()
+	c, _ := svc.Register(context.Background(), "org_1", "usr_1", "Ana", "11222333000181", "Acme LTDA", "")
+
+	orgID, ok, err := svc.ReachOf(context.Background(), c.ID, "usr_1")
+	if err != nil {
+		t.Fatalf("ReachOf: %v", err)
+	}
+	if !ok || orgID != "org_1" {
+		t.Fatalf("got %q %v, want org_1 true", orgID, ok)
+	}
+}
+
+// No edge is false with no error. "Not permitted" is an answer, and a caller
+// forced to tell it from a failure will treat one as the other.
+func TestReachOfIsFalseWithoutAnEdge(t *testing.T) {
+	svc, _ := newService()
+	c, _ := svc.Register(context.Background(), "org_1", "usr_1", "Ana", "11222333000181", "Acme LTDA", "")
+
+	orgID, ok, err := svc.ReachOf(context.Background(), c.ID, "usr_stranger")
+	if err != nil || ok || orgID != "" {
+		t.Fatalf("got %q %v %v, want empty false nil", orgID, ok, err)
+	}
+}
+
+// A person who acts for several companies gets an answer about the one asked
+// about, not the first one found.
+func TestReachOfPicksTheCompanyAsked(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	a, _ := svc.Register(ctx, "org_1", "usr_1", "Ana", "11222333000181", "Acme LTDA", "")
+	b, _ := svc.Register(ctx, "org_2", "usr_1", "Ana", "12ABC34501DE35", "Beta LTDA", "")
+
+	if orgID, _, _ := svc.ReachOf(ctx, a.ID, "usr_1"); orgID != "org_1" {
+		t.Errorf("company a resolved to %q", orgID)
+	}
+	if orgID, _, _ := svc.ReachOf(ctx, b.ID, "usr_1"); orgID != "org_2" {
+		t.Errorf("company b resolved to %q", orgID)
+	}
+}
+
+// An unknown company is false, not an error — and indistinguishable from a real
+// company this person cannot reach, so the answer is not a probe for which
+// company ids exist.
+func TestReachOfOnAnUnknownCompanyLooksLikeARefusal(t *testing.T) {
+	svc, _ := newService()
+	unknownOrg, unknownOK, unknownErr := svc.ReachOf(context.Background(), "cmp_nope", "usr_1")
+
+	c, _ := svc.Register(context.Background(), "org_1", "usr_1", "Ana", "11222333000181", "Acme LTDA", "")
+	refusedOrg, refusedOK, refusedErr := svc.ReachOf(context.Background(), c.ID, "usr_stranger")
+
+	if unknownOrg != refusedOrg || unknownOK != refusedOK || (unknownErr == nil) != (refusedErr == nil) {
+		t.Fatalf("an unknown company (%q %v %v) is distinguishable from a refusal (%q %v %v)",
+			unknownOrg, unknownOK, unknownErr, refusedOrg, refusedOK, refusedErr)
+	}
+}

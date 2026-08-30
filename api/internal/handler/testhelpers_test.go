@@ -489,6 +489,21 @@ func (ta *testApp) issueTokenWithScopes(t *testing.T, userID string, scopes []st
 	return token
 }
 
+// issueServiceToken mints a client-credentials token: scopes, and no session.
+//
+// The empty session id is the point. RequireInternalScope refuses any token
+// that carries one, so a service route cannot be reached by a signed-in
+// person's token even if that token somehow carried the scope — and a test that
+// used issueTokenWithScopes would be testing a path production never takes.
+func (ta *testApp) issueServiceToken(t *testing.T, scopes []string) string {
+	t.Helper()
+	token, err := ta.jwtSvc.SignAccessToken("svc-dfe", "", "dfe", scopes, "http://localhost", []string{"http://localhost"}, time.Now().Unix(), time.Now().Unix(), nil, "")
+	if err != nil {
+		t.Fatalf("issuing service token: %v", err)
+	}
+	return token
+}
+
 // registerUser creates an account with its email already verified — the normal
 // state for a usable account. Use registerUnverifiedUser to exercise the gate.
 func (ta *testApp) registerUser(t *testing.T, email, password, firstName string) *userDomain.User {
