@@ -14,13 +14,13 @@ export function formatDistanceToNow(dateStr: string): string {
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)
 
-  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat(locale(), {numeric: 'auto'})
 
   if (diffSecs < 60) return rtf.format(0, 'second')
   if (diffMins < 60) return rtf.format(-diffMins, 'minute')
   if (diffHours < 24) return rtf.format(-diffHours, 'hour')
   if (diffDays < 30) return rtf.format(-diffDays, 'day')
-  return date.toLocaleDateString(locale(), { year: 'numeric', month: 'short', day: 'numeric' })
+  return date.toLocaleDateString(locale(), {year: 'numeric', month: 'short', day: 'numeric'})
 }
 
 export function formatDate(dateStr: string | null): string {
@@ -29,5 +29,6 @@ export function formatDate(dateStr: string | null): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'UTC',
   })
 }

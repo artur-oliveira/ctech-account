@@ -469,34 +469,37 @@
     "events": {
       "login.success": "Login efetuado",
       "login.failed": "Tentativa de login falhou",
-      "login.mfa_required": "Login exigiu MFA",
+      "login.mfa.required": "Login exigiu MFA",
       "mfa.challenge.success": "MFA verificado",
       "mfa.challenge.failed": "Falha na verificação de MFA",
       "stepup.success": "Identidade reverificada",
       "stepup.failed": "Falha na reverificação de identidade",
       "password.changed": "Senha alterada",
-      "password.reset_requested": "Redefinição de senha solicitada",
-      "password.reset_completed": "Redefinição de senha concluída",
+      "password.reset.requested": "Redefinição de senha solicitada",
+      "password.reset.completed": "Redefinição de senha concluída",
       "email.verified": "E-mail verificado",
       "totp.enabled": "App autenticador ativado",
       "totp.disabled": "App autenticador removido",
       "passkey.added": "Passkey adicionada",
       "passkey.removed": "Passkey removida",
-      "backup_codes.regenerated": "Códigos de backup regenerados",
+      "backup.codes.regenerated": "Códigos de backup regenerados",
       "apikey.created": "Chave de API criada",
       "apikey.revoked": "Chave de API revogada",
-      "oauth_client.created": "Cliente OAuth criado",
-      "oauth_client.updated": "Cliente OAuth atualizado",
-      "oauth_client.deleted": "Cliente OAuth excluído",
+      "oauth.client.created": "Cliente OAuth criado",
+      "oauth.client.updated": "Cliente OAuth atualizado",
+      "oauth.client.deleted": "Cliente OAuth excluído",
       "consent.granted": "Acesso de app concedido",
       "consent.revoked": "Acesso de app revogado",
       "session.revoked": "Sessão revogada",
-      "session.revoked_all": "Todas as outras sessões revogadas",
-      "token.reuse_detected": "Reuso suspeito de token detectado",
+      "session.revoked.all": "Todas as outras sessões revogadas",
+      "token.reuse.detected": "Reuso suspeito de token detectado",
       "social.linked": "Conta social vinculada",
       "kyc.submitted": "Dados de identidade enviados",
       "kyc.verified": "Identidade verificada",
-      "kyc.confirm_failed": "Tentativa de verificação de identidade falhou"
+      "kyc.confirm.failed": "Tentativa de verificação de identidade falhou",
+      "kyc.document.uploaded": "Upload de documentos de verificação de identidade",
+      "kyc.documents.viewed": "Documentos de identidade acessados",
+      "auth.terms.accepted": "Aceite dos termos de uso"
     }
   },
   "stepUp": {
@@ -688,7 +691,7 @@
     },
     "events": {
       "kyc": {
-        "documents_viewed": "acessou os documentos protegidos",
+        "documents.viewed": "acessou os documentos protegidos",
         "verified": "aprovou a identidade",
         "rejected": "rejeitou a identidade"
       }
