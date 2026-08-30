@@ -9,6 +9,7 @@ import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
 import {ConfirmDialog} from '@/components/confirm-dialog'
+import {QueryError} from '@/components/query-error'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
@@ -89,8 +90,8 @@ function RenameSection({organization}: { organization: Organization }) {
 
       {/* Keyed on the id so defaultValue resets once the query resolves — the
           same guard the profile form uses. */}
-      <form key={organization.id} onSubmit={handleSubmit} className="flex max-w-md items-end gap-2">
-        <div className="flex-1 space-y-1.5">
+      <form key={organization.id} onSubmit={handleSubmit} className="flex max-w-md flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1 space-y-1.5">
           <Label htmlFor="display_name">{t('organizations.create.nameLabel')}</Label>
           <Input
             id="display_name"
@@ -98,9 +99,10 @@ function RenameSection({organization}: { organization: Organization }) {
             required
             maxLength={120}
             defaultValue={organization.display_name}
+            className="max-sm:h-11"
           />
         </div>
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
           {isPending ? t('organizations.settings.saving') : t('organizations.settings.save')}
         </Button>
       </form>
@@ -113,7 +115,13 @@ function TransferSection({organization}: { organization: Organization }) {
   const queryClient = useQueryClient()
   const [target, setTarget] = useState('')
 
-  const {data: members = []} = useQuery({
+  const {
+    data: members = [],
+    isLoading: areMembersLoading,
+    isError: didMembersFail,
+    error: membersError,
+    refetch: refetchMembers,
+  } = useQuery({
     queryKey: ['organization-members', organization.id],
     queryFn: () => fetchOrganizationMembers(organization.id),
   })
@@ -122,7 +130,7 @@ function TransferSection({organization}: { organization: Organization }) {
   // typing an id is how an organization gets handed to a stranger.
   const candidates = members.filter((m) => m.role !== 'owner')
 
-  const {mutate, isPending} = useMutation({
+  const {mutateAsync, isPending} = useMutation({
     mutationFn: (userId: string) => transferOwnershipAPI(organization.id, userId),
     onSuccess: () => {
       void queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
@@ -143,16 +151,24 @@ function TransferSection({organization}: { organization: Organization }) {
         {t('organizations.settings.transferDescription')}
       </p>
 
-      {candidates.length === 0 ? (
+      {areMembersLoading ? (
+        <div className="mt-4 h-12 animate-pulse rounded-lg bg-muted" aria-label={t('common.loading')} />
+      ) : didMembersFail ? (
+        <QueryError
+          error={membersError}
+          onRetry={() => void refetchMembers()}
+          className="mt-4 bg-background"
+        />
+      ) : candidates.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
           {t('organizations.settings.noOtherMembers')}
         </p>
       ) : (
-        <div className="mt-4 flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
+        <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-1.5 sm:flex-none">
             <Label htmlFor="transfer-target">{t('organizations.settings.transferSelect')}</Label>
             <Select value={target} onValueChange={(v) => setTarget(v ?? '')}>
-              <SelectTrigger id="transfer-target" className="w-72">
+              <SelectTrigger id="transfer-target" className="w-full max-sm:h-11 sm:w-72">
                 <SelectValue placeholder={t('organizations.settings.transferSelect')}>
                   {candidates.find(it => it.user_id === target)?.name || target}
                 </SelectValue>
@@ -176,7 +192,7 @@ function TransferSection({organization}: { organization: Organization }) {
               name: candidates.find((m) => m.user_id === target)?.name || target,
             })}
             description={t('organizations.settings.transferConfirmBody')}
-            onConfirm={() => mutate(target)}
+            onConfirm={() => mutateAsync(target)}
           />
         </div>
       )}
@@ -190,7 +206,7 @@ function LeaveSection({organization}: { organization: Organization }) {
   const queryClient = useQueryClient()
   const {data: profile} = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
 
-  const {mutate} = useMutation({
+  const {mutateAsync} = useMutation({
     mutationFn: (userId: string) => removeMemberAPI(organization.id, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['organizations']})
@@ -216,7 +232,7 @@ function LeaveSection({organization}: { organization: Organization }) {
           }
           title={t('organizations.settings.leaveConfirmTitle')}
           description={t('organizations.settings.leaveConfirmBody')}
-          onConfirm={() => profile && mutate(profile.user_id)}
+          onConfirm={() => profile ? mutateAsync(profile.user_id) : Promise.resolve()}
         />
       </div>
     </div>

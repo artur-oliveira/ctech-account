@@ -113,7 +113,7 @@ export function MembersTab({organization}: { organization: Organization }) {
             }
             disabled={roleMutation.isPending}
           >
-            <SelectTrigger className="w-36" aria-label={t('organizations.members.changeRole')}>
+            <SelectTrigger className="w-36 max-sm:h-11" aria-label={t('organizations.members.changeRole')}>
               <SelectValue>
                 {m.role ? t(`organizations.roles.${m.role}`) : m.role}
               </SelectValue>

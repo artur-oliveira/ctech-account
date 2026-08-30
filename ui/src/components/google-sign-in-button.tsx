@@ -26,6 +26,7 @@ export function GoogleSignInButton({
       className="w-full max-sm:min-h-11"
       onClick={() => {
         // OAuth must leave the SPA and let the Go API start the provider flow.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API document navigation is intentional.
         window.location.href = `${API_URL}${GOOGLE_AUTH_PATH}?continue=${encodeURIComponent(continueURL)}`
       }}
       disabled={disabled}

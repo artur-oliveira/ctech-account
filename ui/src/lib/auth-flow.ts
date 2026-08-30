@@ -11,6 +11,7 @@ export async function startOAuthFlow(continueURL: string = '/account'): Promise<
   // browser ever gets back to it, bouncing step-up back to /login.
   if (continueURL.startsWith('/v1.0/')) {
     // OAuth authorization is served by the Go API and requires a document navigation.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API document navigation is intentional.
     window.location.href = `${API_URL}${continueURL}`
     return
   }

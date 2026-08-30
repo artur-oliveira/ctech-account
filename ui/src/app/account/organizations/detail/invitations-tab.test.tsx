@@ -101,4 +101,30 @@ describe('invitations tab', () => {
     await user.click(await screen.findByRole('button', {name: /invite/i}))
     expect(within(screen.getByRole('dialog')).queryAllByRole('checkbox')).toHaveLength(0)
   })
+
+  it('keeps a long company name inside one accessible checkbox row', async () => {
+    vi.mocked(fetchCompanies).mockResolvedValue([
+      {
+        id: 'cmp_long', tax_id: '12ABC34501DE35', tax_id_kind: 'cnpj',
+        legal_name: 'COMPANHIA'.repeat(30), created_at: new Date().toISOString(),
+      },
+    ])
+    const user = userEvent.setup()
+    renderTab()
+    await user.click(await screen.findByRole('button', {name: /invite/i}))
+
+    const checkbox = within(screen.getByRole('dialog')).getByRole('checkbox', {name: /COMPANHIA/i})
+    expect(checkbox.closest('label')).toHaveClass('min-w-0', 'grid')
+  })
+
+  it('blocks submission and offers retry when companies cannot be loaded', async () => {
+    vi.mocked(fetchCompanies).mockRejectedValue(new Error('offline'))
+    const user = userEvent.setup()
+    renderTab()
+    await user.click(await screen.findByRole('button', {name: /invite/i}))
+    const dialog = within(screen.getByRole('dialog'))
+
+    expect(await dialog.findByRole('button', {name: /retry|try again/i})).toBeInTheDocument()
+    expect(dialog.getByRole('button', {name: /create invitation/i})).toBeDisabled()
+  })
 })

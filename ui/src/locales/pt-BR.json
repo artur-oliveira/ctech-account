@@ -28,6 +28,7 @@
     "optional": "Opcional",
     "back": "Voltar",
     "done": "Concluído",
+    "cancel": "Cancelar",
     "copy": "Copiar",
     "language": "Idioma"
   },
@@ -405,6 +406,7 @@
     "transferFailed": "Não foi possível transferir a organização.",
     "leaveFailed": "Não foi possível sair da organização.",
     "inviteLinkCopied": "Link do convite copiado.",
+    "inviteLinkCopyFailed": "Não foi possível copiar o link do convite. Selecione e copie manualmente.",
     "roleChanged": "Papel atualizado.",
     "memberRemoved": "Membro removido.",
     "invitationRevoked": "Convite revogado.",
@@ -848,6 +850,12 @@
       "member": "Membro",
       "viewer": "Leitor"
     },
+    "roleDescriptions": {
+      "owner": "Controle total, inclusive para transferir a organização.",
+      "admin": "Gerencia membros, convites, empresas e configurações da organização.",
+      "member": "Trabalha na organização e pode receber acesso às empresas selecionadas.",
+      "viewer": "Consulta as informações da organização sem fazer alterações."
+    },
     "empty": {
       "title": "Você ainda não está em nenhuma organização",
       "body": "Uma organização é um espaço compartilhado: convide colegas, defina o papel de cada um e receba uma cobrança só. Crie uma para começar."
@@ -896,7 +904,12 @@
       "revokeTitle": "Revogar este convite?",
       "revokeBody": "O link para de funcionar. Se a pessoa já aceitou, isto não muda nada.",
       "companiesLabel": "Empresas pelas quais esta pessoa pode agir",
-      "noCompaniesHint": "Nenhuma empresa selecionada. A pessoa entra na organização, mas não poderá agir por nenhuma empresa até alguém conceder acesso."
+      "noCompaniesHint": "Nenhuma empresa selecionada. A pessoa entra na organização, mas não poderá agir por nenhuma empresa até alguém conceder acesso.",
+      "searchCompanies": "Buscar empresas",
+      "selectedCompanies": "{{count}} selecionada(s)",
+      "selectVisible": "Selecionar visíveis",
+      "clearSelection": "Limpar",
+      "noCompanyMatches": "Nenhuma empresa corresponde à busca."
     },
     "settings": {
       "nameTitle": "Nome",
@@ -941,6 +954,8 @@
       "tradeNameOptional": "Nome fantasia (opcional)",
       "addBody": "O CNPJ ou CPF em nome de quem os documentos são emitidos. Configuração fiscal — inscrição estadual, certificado — fica no DF-e.",
       "taxId": "CNPJ ou CPF",
+      "taxIdHint": "O CPF aceita 11 dígitos. O CNPJ aceita 14 letras ou dígitos e é formatado automaticamente.",
+      "lookingUp": "Consultando o CNPJ…",
       "legalName": "Razão social",
       "empty": "Nenhuma empresa ainda. Adicione o CNPJ para o qual você emite documentos."
     },
@@ -950,11 +965,14 @@
       "name": "Nome da organização",
       "taxIdOptional": "CNPJ ou CPF (opcional)",
       "submit": "Criar organização",
+      "retryCompany": "Tentar adicionar a empresa novamente",
       "failed": "Não foi possível criar a organização.",
+      "organizationCreatedCompanyFailed": "A organização foi criada, mas a empresa não foi adicionada. Corrija os dados e tente de novo; outra organização não será criada.",
       "handoffBanner": "Criando uma organização para o {{product}}. Você volta para lá ao terminar.",
       "handoffInvalidTitle": "Este link não é válido",
       "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar uma organização pela sua conta.",
-      "goToOrganizations": "Ir para minhas organizações"
+      "goToOrganizations": "Ir para minhas organizações",
+      "companyRequiredInHandoff": "Informe o CNPJ ou CPF: o produto que te trouxe aqui precisa de uma empresa, não só de um espaço de trabalho."
     }
   }
 }

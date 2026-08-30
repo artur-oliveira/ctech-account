@@ -165,4 +165,17 @@ describe('companies tab', () => {
       trade_name: '',
     })
   })
+
+  it('accepts and masks an alphanumeric CNPJ while typing', async () => {
+    const user = userEvent.setup()
+    renderTab('admin')
+    await seeded()
+    await user.click(screen.getByRole('button', {name: /add company/i}))
+
+    const taxID = screen.getByLabelText(/cnpj/i)
+    await user.type(taxID, '12abc34501de35')
+
+    expect(taxID).toHaveValue('12.ABC.345/01DE-35')
+    expect(taxID).toHaveAttribute('maxlength', '18')
+  })
 })

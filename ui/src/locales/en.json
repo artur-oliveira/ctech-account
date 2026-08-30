@@ -28,6 +28,7 @@
     "optional": "Optional",
     "back": "Back",
     "done": "Done",
+    "cancel": "Cancel",
     "copy": "Copy",
     "language": "Language"
   },
@@ -405,6 +406,7 @@
     "transferFailed": "Could not transfer ownership.",
     "leaveFailed": "Could not leave the organization.",
     "inviteLinkCopied": "Invitation link copied.",
+    "inviteLinkCopyFailed": "Could not copy the invitation link. Select and copy it manually.",
     "roleChanged": "Role updated.",
     "memberRemoved": "Member removed.",
     "invitationRevoked": "Invitation revoked.",
@@ -848,6 +850,12 @@
       "member": "Member",
       "viewer": "Viewer"
     },
+    "roleDescriptions": {
+      "owner": "Full control, including transferring ownership.",
+      "admin": "Manages members, invitations, companies, and organization settings.",
+      "member": "Works in the organization and may receive access to selected companies.",
+      "viewer": "Can view organization information without making changes."
+    },
     "empty": {
       "title": "You are not in any organization yet",
       "body": "An organization is a shared workspace: invite colleagues, give them a role, and bill it as one. Create one to get started."
@@ -896,7 +904,12 @@
       "revokeTitle": "Revoke this invitation?",
       "revokeBody": "The link stops working. If they already accepted, this changes nothing.",
       "companiesLabel": "Companies this person may act for",
-      "noCompaniesHint": "No companies selected. They will join the organization but will not be able to act for any company until somebody grants access."
+      "noCompaniesHint": "No companies selected. They will join the organization but will not be able to act for any company until somebody grants access.",
+      "searchCompanies": "Search companies",
+      "selectedCompanies": "{{count}} selected",
+      "selectVisible": "Select visible",
+      "clearSelection": "Clear",
+      "noCompanyMatches": "No companies match this search."
     },
     "settings": {
       "nameTitle": "Name",
@@ -941,6 +954,8 @@
       "tradeNameOptional": "Trade name (optional)",
       "addBody": "The CNPJ or CPF you issue documents in the name of. Fiscal settings — inscrição estadual, certificate — stay in the DF-e.",
       "taxId": "CNPJ or CPF",
+      "taxIdHint": "CPF accepts 11 digits. CNPJ accepts 14 letters or digits and is formatted automatically.",
+      "lookingUp": "Looking up the CNPJ…",
       "legalName": "Legal name",
       "empty": "No companies yet. Add the CNPJ you issue documents for."
     },
@@ -950,11 +965,14 @@
       "name": "Organization name",
       "taxIdOptional": "CNPJ or CPF (optional)",
       "submit": "Create organization",
+      "retryCompany": "Try adding the company again",
       "failed": "Could not create the organization.",
+      "organizationCreatedCompanyFailed": "The organization was created, but the company was not added. Fix the company details and retry; another organization will not be created.",
       "handoffBanner": "Creating an organization for {{product}}. You will be returned there when you are done.",
       "handoffInvalidTitle": "This link is not valid",
       "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create an organization from your account.",
-      "goToOrganizations": "Go to my organizations"
+      "goToOrganizations": "Go to my organizations",
+      "companyRequiredInHandoff": "A CNPJ or CPF is required: the product that sent you here needs a company, not only a workspace."
     }
   }
 }

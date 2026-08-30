@@ -77,22 +77,24 @@ function OrganizationDetail() {
     <div className="space-y-6">
       <div className="space-y-3">
         <BackLink />
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{organization.display_name}</h1>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <h1 className="min-w-0 text-balance text-2xl font-semibold [overflow-wrap:anywhere]">
+            {organization.display_name}
+          </h1>
           <OrganizationRoleBadge role={organization.role} />
         </div>
       </div>
 
       <Tabs defaultValue="members">
-        <TabsList>
-          <TabsTrigger value="members">{t('organizations.detail.members')}</TabsTrigger>
-          <TabsTrigger value="companies">{t('organizations.detail.companies')}</TabsTrigger>
+        <TabsList className="min-h-11 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden md:min-h-0">
+          <TabsTrigger value="members" className="min-h-11 shrink-0 px-3 md:min-h-0">{t('organizations.detail.members')}</TabsTrigger>
+          <TabsTrigger value="companies" className="min-h-11 shrink-0 px-3 md:min-h-0">{t('organizations.detail.companies')}</TabsTrigger>
           {/* A viewer or member does not get the tab: the pending list is a list
               of addresses of people who have not joined yet. */}
           {canManage && (
-            <TabsTrigger value="invitations">{t('organizations.detail.invitations')}</TabsTrigger>
+            <TabsTrigger value="invitations" className="min-h-11 shrink-0 px-3 md:min-h-0">{t('organizations.detail.invitations')}</TabsTrigger>
           )}
-          <TabsTrigger value="settings">{t('organizations.detail.settings')}</TabsTrigger>
+          <TabsTrigger value="settings" className="min-h-11 shrink-0 px-3 md:min-h-0">{t('organizations.detail.settings')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="members" className="mt-6">

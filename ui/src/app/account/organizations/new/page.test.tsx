@@ -145,4 +145,37 @@ describe('new organization', () => {
     await screen.findByLabelText(/organization name/i)
     expect(screen.getByLabelText(/cnpj/i)).toBeRequired()
   })
+
+  it('masks and caps an alphanumeric CNPJ without discarding letters', async () => {
+    const user = userEvent.setup()
+    renderPage('')
+    const taxID = await screen.findByLabelText(/optional/i)
+
+    await user.type(taxID, '12abc34501de35EXTRA')
+
+    expect(taxID).toHaveValue('12.ABC.345/01DE-35')
+    expect(taxID).toHaveAttribute('maxlength', '18')
+  })
+
+  it('retries only company registration after the organization was created', async () => {
+    const user = userEvent.setup()
+    vi.mocked(registerCompanyAPI)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({
+        id: 'cmp_new', tax_id: '11222333000181', tax_id_kind: 'cnpj',
+        legal_name: 'Acme LTDA', created_at: new Date().toISOString(),
+      })
+    renderPage('')
+
+    await user.type(await screen.findByLabelText(/organization name/i), 'CTech')
+    await user.type(screen.getByLabelText(/optional/i), '11222333000181')
+    await user.type(screen.getByLabelText(/legal name/i), 'Acme LTDA')
+    await user.click(screen.getByRole('button', {name: /create organization/i}))
+    await screen.findByRole('button', {name: /try adding the company again/i})
+    await user.click(screen.getByRole('button', {name: /try adding the company again/i}))
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/account/organizations/detail?id=org_new'))
+    expect(createOrganizationAPI).toHaveBeenCalledTimes(1)
+    expect(registerCompanyAPI).toHaveBeenCalledTimes(2)
+  })
 })

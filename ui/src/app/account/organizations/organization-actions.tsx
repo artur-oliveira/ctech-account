@@ -95,11 +95,12 @@ export function CreateOrganizationDialog() {
               maxLength={MAX_NAME}
               autoComplete="organization"
               placeholder={t('organizations.create.namePlaceholder')}
+              className="max-sm:h-11"
             />
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
               {isPending ? t('organizations.create.submitting') : t('organizations.create.submit')}
             </Button>
           </DialogFooter>

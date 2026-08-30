@@ -63,7 +63,8 @@ export default function OrganizationsPage() {
       cell: (org) => (
         <Link
           href={`/account/organizations/detail?id=${encodeURIComponent(org.id)}`}
-          className="text-sm font-medium text-primary hover:underline"
+          className="block max-w-96 truncate text-sm font-medium text-primary hover:underline"
+          title={org.display_name}
         >
           {org.display_name}
         </Link>
@@ -97,7 +98,7 @@ export default function OrganizationsPage() {
 function Header({ action }: { action?: React.ReactNode }) {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold">{t('organizations.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('organizations.subtitle')}</p>

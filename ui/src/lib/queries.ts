@@ -1,4 +1,5 @@
-import { api, isAxiosError } from './axios'
+import { api, cnpjaApi, isAxiosError } from './axios'
+import {TAX_ID_CNPJ_LENGTH} from '@/lib/constants'
 import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor } from './types'
 
 export async function fetchProfile(): Promise<User> {
@@ -150,12 +151,17 @@ export async function fetchCompanyActors(id: string, companyID: string): Promise
 export async function lookupTaxID(
   taxID: string,
 ): Promise<{ legal_name: string; trade_name: string } | null> {
+  const canonical = taxID.replace(/[^0-9A-Za-z]/g, '').toUpperCase()
+  if (canonical.length !== TAX_ID_CNPJ_LENGTH) return null
+
   try {
-    const { data } = await api.get<{ found: boolean; legal_name?: string; trade_name?: string }>(
-      '/v1.0/companies/lookup',
-      { params: { tax_id: taxID } },
-    )
-    return data.found ? { legal_name: data.legal_name ?? '', trade_name: data.trade_name ?? '' } : null
+    const {data} = await cnpjaApi.get<{
+      alias?: string
+      company?: {name?: string}
+    }>(`/office/${encodeURIComponent(canonical)}`)
+    const legalName = data.company?.name?.trim() ?? ''
+    if (!legalName) return null
+    return {legal_name: legalName, trade_name: data.alias?.trim() ?? ''}
   } catch {
     return null
   }

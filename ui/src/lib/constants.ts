@@ -24,6 +24,18 @@ export function isTOTPMFAMethod(method: string): boolean {
 // KYC — must stay in step with api/internal/domain/kyc/model.go.
 export const CPF_DIGITS = 11
 
+// Brazilian tax identifiers. CNPJ's first 12 positions may be alphanumeric;
+// the two check digits keep the canonical document at 14 characters.
+export const TAX_ID_CPF_LENGTH = 11
+export const TAX_ID_CNPJ_LENGTH = 14
+export const TAX_ID_FORMATTED_MAX_LENGTH = 18
+
+/** Public, credential-free company-register API called directly by the SPA. */
+export const CNPJA_API_BASE_URL = 'https://open.cnpja.com'
+
+/** Company tools become useful before the picker turns into a scanning chore. */
+export const COMPANY_PICKER_SEARCH_THRESHOLD = 6
+
 /** Prevents accidental oversized Basic KYC submissions; the API remains authoritative. */
 export const KYC_LEGAL_NAME_MAX_LENGTH = 255
 

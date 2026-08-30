@@ -33,10 +33,6 @@ export const USE_MOCK = process.env.NEXT_PUBLIC_MOCK_API === 'true'
 export const MOCK_ACCESS_TOKEN = 'mock.access.token'
 
 /** The token the mock accepts; anything else is refused. */
-// The one CNPJ the mock register has heard of. Everything else is a miss, so
-// the "type the names yourself" path is reachable without faking an outage.
-const MOCK_KNOWN_CNPJ = '11222333000181'
-
 const MOCK_VALID_INVITE_TOKEN = 'mock-valid-invitation'
 /** The token that reproduces the unverified-e-mail gate. */
 const MOCK_UNVERIFIED_INVITE_TOKEN = 'mock-unverified-invitation'
@@ -437,22 +433,6 @@ const routes: Route[] = [
     method: 'get',
     pattern: /^\/v1\.0\/organizations\/([^/]+)\/companies$/,
     handle: (m) => ({ companies: state.companies[m[1]] ?? [] }),
-  },
-  {
-    // Outside the organization scope, exactly as the server mounts it: the
-    // create screen needs a lookup before an organization exists.
-    method: 'get',
-    pattern: /^\/v1\.0\/companies\/lookup$/,
-    handle: (_m, _body, config) => {
-      const raw = new URL(config.url ?? '', 'http://mock').searchParams.get('tax_id') ?? ''
-      const canonical = raw.replace(/[^0-9A-Za-z]/g, '').toUpperCase()
-      // One CNPJ the register knows, everything else a miss — so the "type
-      // them yourself" path is reachable in mock mode without an outage.
-      if (canonical === MOCK_KNOWN_CNPJ) {
-        return { found: true, legal_name: 'ACME COMERCIO LTDA', trade_name: 'Acme' }
-      }
-      return { found: false }
-    },
   },
   {
     method: 'post',

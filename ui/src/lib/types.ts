@@ -1,3 +1,5 @@
+import {TAX_ID_CNPJ_LENGTH, TAX_ID_CPF_LENGTH} from '@/lib/constants'
+
 /** Documents whose published version moved past the one this account accepted. */
 export type TermsPending = {
   tos: boolean
@@ -329,11 +331,39 @@ export interface CompanyActor {
  * spellings of one document cannot both be registered; people read the mask.
  */
 export function formatTaxID(taxID: string, kind: TaxIDKind): string {
-  if (kind === 'cnpj' && taxID.length === 14) {
+  if (kind === 'cnpj' && taxID.length === TAX_ID_CNPJ_LENGTH) {
     return `${taxID.slice(0, 2)}.${taxID.slice(2, 5)}.${taxID.slice(5, 8)}/${taxID.slice(8, 12)}-${taxID.slice(12)}`
   }
-  if (kind === 'cpf' && taxID.length === 11) {
+  if (kind === 'cpf' && taxID.length === TAX_ID_CPF_LENGTH) {
     return `${taxID.slice(0, 3)}.${taxID.slice(3, 6)}.${taxID.slice(6, 9)}-${taxID.slice(9)}`
   }
   return taxID
+}
+
+/**
+ * Formats tax-id input without losing the alphanumeric CNPJ alphabet. Numeric
+ * values read as CPF through 11 digits, then switch to the 14-character CNPJ
+ * mask. The API remains authoritative for check-digit validation.
+ */
+export function formatTaxIDInput(value: string): string {
+  const canonical = value
+    .replace(/[^0-9A-Za-z]/g, '')
+    .toUpperCase()
+    .slice(0, TAX_ID_CNPJ_LENGTH)
+  const kind: TaxIDKind = /[A-Z]/.test(canonical) || canonical.length > TAX_ID_CPF_LENGTH
+    ? 'cnpj'
+    : 'cpf'
+
+  if (kind === 'cpf') {
+    return canonical
+      .replace(/^(\d{3})(\d)/, '$1.$2')
+      .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4')
+  }
+
+  return canonical
+    .replace(/^([0-9A-Z]{2})([0-9A-Z])/, '$1.$2')
+    .replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})([0-9A-Z])/, '$1.$2.$3')
+    .replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})\.([0-9A-Z]{3})([0-9A-Z])/, '$1.$2.$3/$4')
+    .replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})\.([0-9A-Z]{3})\/([0-9A-Z]{4})([0-9A-Z])/, '$1.$2.$3/$4-$5')
 }

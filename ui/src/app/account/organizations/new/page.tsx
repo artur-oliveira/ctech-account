@@ -14,6 +14,8 @@ import {Button, buttonVariants} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
+import {TAX_ID_FORMATTED_MAX_LENGTH} from '@/lib/constants'
+import {formatTaxIDInput} from '@/lib/types'
 
 /**
  * Creating an organization, with an optional return trip.
@@ -45,6 +47,8 @@ function NewOrganization() {
   const [taxID, setTaxID] = useState('')
   const [legalName, setLegalName] = useState('')
   const [tradeName, setTradeName] = useState('')
+  const [isLookingUp, setIsLookingUp] = useState(false)
+  const [createdOrganizationID, setCreatedOrganizationID] = useState<string | null>(null)
 
   // The server decides whether this handoff is legitimate and what the product
   // is called. A banner reading client_name off the query string is a banner
@@ -76,16 +80,29 @@ function NewOrganization() {
 
   const {mutate, isPending, error} = useMutation({
     mutationFn: async () => {
-      const org = await createOrganizationAPI(displayName.trim())
+      // A handoff exists to produce a company, and `required` on the field is
+      // only the browser's opinion — devtools, an autofill quirk or a
+      // script-submitted form all get past it. Without this guard an empty tax
+      // id creates the organization, hands the product an empty company_id, and
+      // strands somebody with a workspace the product refuses and a second one
+      // waiting to be created when they try again.
+      if (isHandoff && !taxID.trim()) {
+        throw new Error(t('organizations.new.companyRequiredInHandoff'))
+      }
+      const organizationID = createdOrganizationID ?? (await createOrganizationAPI(displayName.trim())).id
+      if (!createdOrganizationID) {
+        setCreatedOrganizationID(organizationID)
+        void queryClient.invalidateQueries({queryKey: ['organizations']})
+      }
       // The company second, and only when one was typed: a handoff always
       // collects it, and a direct visit does not have to.
-      if (!taxID.trim()) return {organizationID: org.id, companyID: ''}
-      const company = await registerCompanyAPI(org.id, {
+      if (!taxID.trim()) return {organizationID, companyID: ''}
+      const company = await registerCompanyAPI(organizationID, {
         tax_id: taxID,
         legal_name: legalName.trim(),
         trade_name: tradeName.trim(),
       })
-      return {organizationID: org.id, companyID: company.id}
+      return {organizationID, companyID: company.id}
     },
     onSuccess: ({organizationID, companyID}) => {
       void queryClient.invalidateQueries({queryKey: ['organizations']})
@@ -101,15 +118,23 @@ function NewOrganization() {
   // nothing about whether it is real.
   async function fillFromRegister() {
     if (!taxID.trim() || legalName.trim()) return
-    const names = await lookupTaxID(taxID)
-    if (!names) return
-    setLegalName(names.legal_name)
-    if (names.trade_name) setTradeName(names.trade_name)
+    setIsLookingUp(true)
+    try {
+      const names = await lookupTaxID(taxID)
+      if (!names) return
+      setLegalName(names.legal_name)
+      if (names.trade_name) setTradeName(names.trade_name)
+    } finally {
+      setIsLookingUp(false)
+    }
   }
 
   const errorMsg = isAxiosError(error)
     ? (error.response?.data?.detail ?? t('organizations.new.failed'))
-    : null
+    : (error?.message ?? null)
+  const submitLabel = createdOrganizationID
+    ? t('organizations.new.retryCompany')
+    : t('organizations.new.submit')
 
   if (isHandoff && isLoading) {
     return <div className="h-64 animate-pulse rounded-xl bg-muted"/>
@@ -156,7 +181,11 @@ function NewOrganization() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {errorMsg && (
           <Alert variant="destructive">
-            <AlertDescription>{errorMsg}</AlertDescription>
+            <AlertDescription>
+              {createdOrganizationID
+                ? `${t('organizations.new.organizationCreatedCompanyFailed')} ${errorMsg}`
+                : errorMsg}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -169,6 +198,8 @@ function NewOrganization() {
             required
             maxLength={120}
             autoFocus
+            disabled={createdOrganizationID !== null}
+            className="max-sm:h-11"
           />
         </div>
 
@@ -179,12 +210,22 @@ function NewOrganization() {
           <Input
             id="new-tax-id"
             value={taxID}
-            onChange={(e) => setTaxID(e.target.value)}
+            onChange={(e) => setTaxID(formatTaxIDInput(e.target.value))}
             onBlur={() => void fillFromRegister()}
             required={isHandoff}
-            maxLength={32}
+            maxLength={TAX_ID_FORMATTED_MAX_LENGTH}
             autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            aria-describedby="new-tax-id-hint new-tax-id-status"
+            className="max-sm:h-11"
           />
+          <p id="new-tax-id-hint" className="text-xs text-muted-foreground">
+            {t('organizations.companies.taxIdHint')}
+          </p>
+          <p id="new-tax-id-status" className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
+            {isLookingUp ? t('organizations.companies.lookingUp') : ''}
+          </p>
         </div>
 
         {!!taxID.trim() && (
@@ -197,6 +238,7 @@ function NewOrganization() {
                 onChange={(e) => setLegalName(e.target.value)}
                 required
                 maxLength={200}
+                className="max-sm:h-11"
               />
             </div>
             <div className="space-y-2">
@@ -206,23 +248,24 @@ function NewOrganization() {
                 value={tradeName}
                 onChange={(e) => setTradeName(e.target.value)}
                 maxLength={200}
+                className="max-sm:h-11"
               />
             </div>
           </>
         )}
 
         <div className="flex items-center gap-2 pt-2">
-          <Button type="submit" disabled={isPending}>
-            {isPending ? t('common.saving') : t('organizations.new.submit')}
+          <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+            {isPending ? t('common.saving') : submitLabel}
           </Button>
           {/* A real action, not a back button: the product that sent them has
               to be told, or it cannot put the person back where they were. */}
           {isHandoff ? (
-            <Button type="button" variant="ghost" onClick={() => leave('cancelled')}>
+            <Button type="button" variant="ghost" onClick={() => leave('cancelled')} className="max-sm:min-h-11">
               {t('common.cancel')}
             </Button>
           ) : (
-            <Link href="/account/organizations" className={cn(buttonVariants({variant: 'ghost'}))}>
+            <Link href="/account/organizations" className={cn(buttonVariants({variant: 'ghost'}), 'max-sm:min-h-11')}>
               {t('common.cancel')}
             </Link>
           )}

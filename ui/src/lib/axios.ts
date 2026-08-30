@@ -5,6 +5,7 @@ import {oauthClient, hasAuthHint, clearAuthHint} from '@/lib/oauth-client'
 import {USE_MOCK, mockAdapter} from '@/lib/mock'
 import {API_URL, CLIENT_ID} from '@/lib/env'
 import {reportAPIError} from '@/lib/client-logging'
+import {CNPJA_API_BASE_URL} from '@/lib/constants'
 
 export {API_URL, CLIENT_ID}
 
@@ -17,6 +18,20 @@ export const api = axios.create({
   withCredentials: true,
   headers: {'Content-Type': 'application/json'},
   adapter: USE_MOCK ? mockAdapter : undefined,
+})
+
+/**
+ * Credential-free client for the public CNPJA register. It intentionally has
+ * none of the account API's auth, refresh, step-up, or cookie behavior: a
+ * third-party lookup must never receive the account bearer token.
+ */
+export const cnpjaApi = axios.create({
+  baseURL: CNPJA_API_BASE_URL,
+  timeout: 8_000,
+  withCredentials: false,
+  // Mock mode replaces axios's global adapter for account/OAuth calls. Keep
+  // this public lookup on a real browser transport even during local QA.
+  adapter: ['xhr', 'http', 'fetch'],
 })
 
 api.interceptors.request.use((config) => {
@@ -58,6 +73,7 @@ api.interceptors.response.use(
       useAuthStore.getState().clearAuth()
       clearAuthHint()
       // A failed refresh must restart the document with all in-memory auth state cleared.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- hard reload clears stale in-memory auth state.
       if (typeof window !== 'undefined') window.location.href = '/login'
       reportAPIError(error)
       return Promise.reject(error)

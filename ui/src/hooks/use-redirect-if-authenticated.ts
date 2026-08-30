@@ -31,6 +31,7 @@ export function useRedirectIfAuthenticated(rawContinue?: string | null) {
     const target = sanitizeContinue(rawContinue)
     if (target.startsWith(API_PATH_PREFIX)) {
       // This target is an OAuth endpoint served by the Go API, not a Next.js page.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API document navigation is intentional.
       window.location.href = `${API_URL}${target}`
     } else {
       router.replace(target)

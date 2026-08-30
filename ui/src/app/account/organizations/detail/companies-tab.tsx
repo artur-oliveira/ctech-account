@@ -24,7 +24,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {assignableRoles, type Company, formatTaxID, type Organization} from '@/lib/types'
+import {TAX_ID_FORMATTED_MAX_LENGTH} from '@/lib/constants'
+import {assignableRoles, type Company, formatTaxID, formatTaxIDInput, type Organization} from '@/lib/types'
 
 export function CompaniesTab({organization}: { organization: Organization }) {
   const {t} = useTranslation()
@@ -69,7 +70,7 @@ export function CompaniesTab({organization}: { organization: Organization }) {
     {
       key: 'trade',
       header: t('organizations.companies.tradeName'),
-      cell: (c) => <span className="text-sm text-muted-foreground">{c.trade_name || '—'}</span>,
+      cell: (c) => <span className="block max-w-64 truncate text-sm text-muted-foreground">{c.trade_name || '—'}</span>,
     },
     {
       key: 'added',
@@ -107,6 +108,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
   const [taxID, setTaxID] = useState('')
   const [legalName, setLegalName] = useState('')
   const [tradeName, setTradeName] = useState('')
+  const [isLookingUp, setIsLookingUp] = useState(false)
 
   const {mutate, isPending, error, reset} = useMutation({
     mutationFn: () =>
@@ -134,10 +136,15 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
   // a CNPJ says nothing about whether it is real.
   async function fillFromRegister() {
     if (!taxID.trim() || legalName.trim()) return
-    const names = await lookupTaxID(taxID)
-    if (!names) return
-    setLegalName(names.legal_name)
-    if (names.trade_name) setTradeName(names.trade_name)
+    setIsLookingUp(true)
+    try {
+      const names = await lookupTaxID(taxID)
+      if (!names) return
+      setLegalName(names.legal_name)
+      if (names.trade_name) setTradeName(names.trade_name)
+    } finally {
+      setIsLookingUp(false)
+    }
   }
 
   function handleOpenChange(next: boolean) {
@@ -146,6 +153,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
       setTaxID('')
       setLegalName('')
       setTradeName('')
+      setIsLookingUp(false)
       reset()
     }
   }
@@ -165,7 +173,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{t('organizations.companies.addTitle')}</DialogTitle>
@@ -183,12 +191,22 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
                 id="company-tax-id"
                 name="tax_id"
                 value={taxID}
-                onChange={(e) => setTaxID(e.target.value)}
+                onChange={(e) => setTaxID(formatTaxIDInput(e.target.value))}
                 onBlur={() => void fillFromRegister()}
                 required
-                maxLength={32}
+                maxLength={TAX_ID_FORMATTED_MAX_LENGTH}
                 autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                aria-describedby="company-tax-id-hint company-tax-id-status"
+                className="max-sm:h-11"
               />
+              <p id="company-tax-id-hint" className="text-xs text-muted-foreground">
+                {t('organizations.companies.taxIdHint')}
+              </p>
+              <p id="company-tax-id-status" className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
+                {isLookingUp ? t('organizations.companies.lookingUp') : ''}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="company-legal-name">{t('organizations.companies.legalName')}</Label>
@@ -199,6 +217,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
                 onChange={(e) => setLegalName(e.target.value)}
                 required
                 maxLength={200}
+                className="max-sm:h-11"
               />
             </div>
             <div className="space-y-2">
@@ -209,11 +228,12 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
                 value={tradeName}
                 onChange={(e) => setTradeName(e.target.value)}
                 maxLength={200}
+                className="max-sm:h-11"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
               {isPending ? t('common.saving') : t('organizations.companies.add')}
             </Button>
           </DialogFooter>
