@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `ctech-account` becomes the only record of who may reach a company; `ctech-dfe` keeps only what a person may do once there.
+**Goal:** `ctech-account` becomes the only record of who may reach a company; `ctech-dfe` keeps only what a person may do once there — and the company quota starts counting what it was always meant to.
 
 **Architecture:** the DF-e asks `ctech-account` "may this user act for this company" through a scope-gated internal route — the pattern `/v1.0/internal/kyc` already established — and answers "what may they do" from its own `(company, user)` row. A row with no edge grants nothing, and the check fails closed.
 
@@ -24,6 +24,8 @@ ADR 0023 fixes it: **decide the owner → extend the invitation → migrate the 
 
 Tasks 1–3 are `ctech-account` and change no behaviour until something calls them. Tasks 4–6 are `ctech-dfe`. Task 7 is the migration and Task 8 the retirement — and Task 8 ships a release after Task 7, never in the same one, because the rollback for everything above it is "the product still has its own rows".
 
+Task 9 is independent of all of it and can ship first: the company quota is already counting the wrong thing, and that is a bug with a customer behind it rather than a consequence of this work.
+
 ---
 
 ## File Structure
@@ -37,6 +39,7 @@ Tasks 1–3 are `ctech-account` and change no behaviour until something calls th
 | `ctech-dfe/api/internal/services/reach.go` (create) | the client, its cache and its failure mode |
 | `ctech-dfe/api/internal/middleware/rbac.go` (modify) | reach from the edge, verbs from the row |
 | `ctech-dfe/api/cmd/migrate-grants/` (create) | the explicit grants, once there is an owner |
+| `ctech-dfe/api/internal/services/billing.go` (modify) | the company quota counts what is enabled |
 
 ---
 
@@ -304,6 +307,64 @@ Only now, and the order is ADR 0023's: the owner exists (Task 2), the invitation
 What goes: nothing. `organization_users` **stays** — it is the authorization overlay now. What goes is the *belief* that it grants access, and that already went in Task 5.
 
 The row that becomes collectable is the orphan: an overlay whose edge was revoked. ADR 0023 lists this under limits accepted and says nothing collects them yet. A sweep belongs here, and it is the one piece of this plan that can wait indefinitely without costing anything but rows.
+
+---
+
+### Task 9: What a company quota counts
+
+**Files:**
+- Modify: `ctech-dfe/api/internal/services/billing.go` (`ownedOrganizations`, `CheckCompanyQuota`)
+- Test: alongside
+
+**This is already wrong, before the unification.** `ownedOrganizations` filters the account's memberships to the ones where it is `OWNER` and counts those — so the company quota counts companies you **own**, not companies you have **enabled**.
+
+[ADR 0021](../../../ctech-billing/docs/adr/0021-platform-organizations-and-companies.md) decided the opposite:
+
+> Two counters, never one: companies that **exist** in an organization, and companies **enabled for a given product**. Quota applies to the second.
+
+Only one counter exists today, and it counts the wrong thing. The accountant this whole model is for — forty CNPJs, one of them issuing — is refused at forty while using one.
+
+The unification does not cause this; it makes it reachable. Before the platform had companies, "owned organization" and "enabled company" were the same row, and the bug had nothing to disagree with.
+
+**What "enabled" means:** a fiscal configuration exists. `organization_nfe_configs` and its siblings are one row per company, written when somebody sets a série — which is exactly the moment a company becomes able to emit. A company registered and never configured emits nothing and costs nothing.
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+// The customer this model exists for: forty CNPJs, one issuing. Counting what
+// they own refuses them at forty while they use one.
+func TestTheCompanyQuotaCountsWhatIsEnabledNotWhatIsOwned(t *testing.T) { /* ... */ }
+
+// A company with no fiscal configuration is free. That is what lets one
+// organization hold forty CNPJs and pay for one.
+func TestARegisteredButUnconfiguredCompanyCostsNothing(t *testing.T) { /* ... */ }
+
+// Enabling counts once per company, not once per document type: a company with
+// NF-e and NFC-e configured is one company.
+func TestEnablementCountsCompaniesNotConfigurations(t *testing.T) { /* ... */ }
+```
+
+- [ ] **Steps 2–5:** red, implement, green, commit.
+
+**Not in scope here:** what happens when a plan shrinks below the enabled count. ADR 0021 already decided it — refuse new enablements, disable nothing, ask a person to choose — and implementing that is its own task with its own screen.
+
+---
+
+### Task 10: The DF-e's invitations are retired, and what replaces them
+
+Folded into Task 6, and stated separately because it is the question that gets asked: **yes, DF-e invitations go away entirely.**
+
+They cannot go before Task 3, and that dependency is the whole reason for the order. The platform's invitation grants organization membership and a ladder role; until it can also carry companies, retiring the DF-e's leaves an accountant unable to invite a junior to five of forty CNPJs. Task 6 without Task 3 is a regression dressed as consolidation.
+
+---
+
+## Decided elsewhere, recorded here so it is not re-opened by accident
+
+**People are not metered.** Removed from `ctech-dfe` — `MeterUsers`, `distinctMembers`, `CheckUserQuota`, `UserQuotaGuard` and both call sites. Removed rather than raised to a large limit, because the count was about to become wrong rather than merely strict: after this unification `organization_users` counts who holds a **role**, not who has **access**, so somebody invited and not yet given a role would not count and somebody whose reach was revoked still would.
+
+Where a user quota belongs, if it comes back, is the workspace in `ctech-account` and not reach in the product — the invoice is the organization's, the plan is the organization's, and "you have twelve people and I bill eight" is a conversation nobody wins. That is a recommendation, not a decision, and it is not this plan's to make.
+
+**Whether creating an organization requires a plan.** Deferred deliberately. It follows from the above — if the workspace is what carries the quota, the workspace is what needs a subscription — and it reaches `ctech-account`'s own signup, which is a bigger surface than this plan. Noted so the next person finds the thread rather than re-deriving it.
 
 ---
 
