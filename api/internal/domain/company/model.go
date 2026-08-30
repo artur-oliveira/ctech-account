@@ -38,6 +38,21 @@ type Company struct {
 // organization holds forty CNPJs and a junior handles five of them. Membership
 // is what gets you into the workspace; this is what lets you act for a company
 // inside it.
+//
+// **It carries no role, and no ownership, on purpose.** This edge answers reach
+// — whether a person may act for this company at all — and nothing about what
+// they may do once there. A role is a named bundle of permissions, which is
+// authorization vocabulary owned by whichever product defines the verbs
+// (ctech-billing ADR 0023): only ctech-dfe knows what emit.nfe means.
+//
+// "Who may hand out an explicit grant" is answered the same way: by the
+// product's own OWNER row, not by a field here and not by the organization's
+// owner_user_id — an accountant owning a workspace of forty CNPJs would own
+// every company in it, which is exactly the customer this model exists for and
+// exactly the wrong answer.
+//
+// Adding Role, Permissions or Owner here is what ADR 0023's "Reopen if" is
+// watching for, and TestTheActorEdgeCarriesNoRole is what notices.
 type Actor struct {
 	OrganizationID string `dynamodbav:"-"`
 	CompanyID      string `dynamodbav:"-"`
