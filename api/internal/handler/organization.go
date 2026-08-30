@@ -57,6 +57,10 @@ type organizationRequest struct {
 type inviteRequest struct {
 	Email string `json:"email" validate:"required,email"`
 	Role  string `json:"role" validate:"required,oneof=admin member viewer"`
+	// CompanyIDs are the companies this invitation also grants reach to.
+	// Optional: inviting somebody to the workspace with no company is real, and
+	// requiring a list would make the common case carry the accountant's.
+	CompanyIDs []string `json:"company_ids" validate:"omitempty,max=200,dive,required"`
 }
 
 type roleRequest struct {
@@ -100,10 +104,13 @@ type membershipDTO struct {
 }
 
 type invitationDTO struct {
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	InvitedBy string `json:"invited_by"`
-	ExpiresAt string `json:"expires_at"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	// So a pending list shows what the person will be able to reach, not only
+	// that somebody was invited.
+	CompanyIDs []string `json:"company_ids,omitempty"`
+	InvitedBy  string   `json:"invited_by"`
+	ExpiresAt  string   `json:"expires_at"`
 }
 
 func (h *OrganizationHandler) create(c fiber.Ctx) error {
@@ -207,7 +214,7 @@ func (h *OrganizationHandler) listInvitations(c fiber.Ctx) error {
 		// TokenHash is deliberately absent: the pending list is who was
 		// invited, not a set of keys.
 		out = append(out, invitationDTO{
-			Email: inv.Email, Role: inv.Role, InvitedBy: inv.InvitedBy,
+			Email: inv.Email, Role: inv.Role, CompanyIDs: inv.CompanyIDs, InvitedBy: inv.InvitedBy,
 			ExpiresAt: inv.ExpiresAt.Format(time.RFC3339),
 		})
 	}
@@ -219,13 +226,16 @@ func (h *OrganizationHandler) invite(c fiber.Ctx) error {
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
-	token, err := h.svc.Invite(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c), req.Email, req.Role)
+	token, err := h.svc.Invite(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c), req.Email, req.Role, req.CompanyIDs)
 	if err != nil {
 		return organizationProblem(c, err)
 	}
 	// The token is returned once, to the admin who created it, so they can send
 	// it. It is never readable again — nothing stores it.
-	return c.Status(http.StatusCreated).JSON(fiber.Map{"token": token, "email": organization.NormalizeEmail(req.Email), "role": req.Role})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{
+		"token": token, "email": organization.NormalizeEmail(req.Email), "role": req.Role,
+		"company_ids": req.CompanyIDs,
+	})
 }
 
 func (h *OrganizationHandler) revokeInvitation(c fiber.Ctx) error {

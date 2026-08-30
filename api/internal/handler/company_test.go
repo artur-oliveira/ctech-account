@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/account/api/internal/apierror"
@@ -137,6 +138,13 @@ func (m *memCompanyRepo) ListForUser(_ context.Context, userID string) ([]*compa
 		}
 	}
 	return out, nil
+}
+
+func (m *memCompanyRepo) BuildActorTxItem(a *companyDomain.Actor) (types.TransactWriteItem, error) {
+	// The fake reproduces the shape, not the keys: what the accept transaction
+	// needs from this is that an edge is written, and the real key layout is
+	// exercised by the repository's own tests.
+	return types.TransactWriteItem{}, nil
 }
 
 func (m *memCompanyRepo) RemoveActor(_ context.Context, orgID, companyID, userID string) error {

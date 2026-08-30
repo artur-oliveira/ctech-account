@@ -891,7 +891,9 @@
       "done": "Pronto",
       "revoke": "Revogar",
       "revokeTitle": "Revogar este convite?",
-      "revokeBody": "O link para de funcionar. Se a pessoa já aceitou, isto não muda nada."
+      "revokeBody": "O link para de funcionar. Se a pessoa já aceitou, isto não muda nada.",
+      "companiesLabel": "Empresas pelas quais esta pessoa pode agir",
+      "noCompaniesHint": "Nenhuma empresa selecionada. A pessoa entra na organização, mas não poderá agir por nenhuma empresa até alguém conceder acesso."
     },
     "settings": {
       "nameTitle": "Nome",

@@ -25,7 +25,7 @@ func TestIsValidCPF(t *testing.T) {
 }
 
 func TestMaskCPF(t *testing.T) {
-	if got := MaskCPF("52998224725"); got != "***.***.***-25" {
+	if got := MaskCPF("52998224725"); got != "529.•••.•••-25" {
 		t.Errorf("MaskCPF = %q", got)
 	}
 	if got := MaskCPF(""); got != "" {

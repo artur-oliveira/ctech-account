@@ -16,6 +16,8 @@ type fakeRepo struct {
 	orgs        map[string]*Organization
 	memberships map[string]map[string]*Membership // orgID -> userID -> membership
 	invitations map[string]map[string]*Invitation // orgID -> email -> invitation
+	// grantedEdges records what an accept handed out, keyed by user.
+	grantedEdges map[string][]string
 }
 
 func newFakeRepo() *fakeRepo {
@@ -354,7 +356,7 @@ func TestInvitationStoresOnlyTheHash(t *testing.T) {
 	svc := NewService(repo, fixedClock)
 	org, _ := svc.Create(context.Background(), "usr_owner", "Pessoa", "CTech")
 
-	token, err := svc.Invite(context.Background(), org.ID, "usr_owner", "novo@example.com", RoleMember)
+	token, err := svc.Invite(context.Background(), org.ID, "usr_owner", "novo@example.com", RoleMember, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +380,7 @@ func TestInvitationStoresOnlyTheHash(t *testing.T) {
 func TestAcceptRequiresTheInvitedAddress(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
 	ctx := context.Background()
-	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember, nil)
 
 	if _, err := svc.Accept(ctx, token, "usr_outro", "outro@example.com", "Outro"); err == nil {
 		t.Fatal("accepted with an address the invitation was not sent to")
@@ -397,7 +399,7 @@ func TestAcceptRequiresTheInvitedAddress(t *testing.T) {
 func TestAcceptConsumesTheInvitation(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
 	ctx := context.Background()
-	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember)
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "convidado@example.com", RoleMember, nil)
 	if _, err := svc.Accept(ctx, token, "usr_c", "convidado@example.com", "Convidado"); err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +415,7 @@ func TestAcceptRefusesAnExpiredInvitation(t *testing.T) {
 	clock := fixedClock()
 	svc := NewService(repo, func() time.Time { return clock })
 	org, _ := svc.Create(context.Background(), "usr_owner", "Pessoa", "CTech")
-	token, _ := svc.Invite(context.Background(), org.ID, "usr_owner", "c@example.com", RoleMember)
+	token, _ := svc.Invite(context.Background(), org.ID, "usr_owner", "c@example.com", RoleMember, nil)
 
 	clock = clock.Add(invitationTTL + time.Hour)
 	if _, err := svc.Accept(context.Background(), token, "usr_c", "c@example.com", "Convidado"); err == nil {
@@ -423,7 +425,7 @@ func TestAcceptRefusesAnExpiredInvitation(t *testing.T) {
 
 func TestInviteRefusesOwner(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
-	if _, err := svc.Invite(context.Background(), org.ID, "usr_owner", "x@example.com", RoleOwner); err == nil {
+	if _, err := svc.Invite(context.Background(), org.ID, "usr_owner", "x@example.com", RoleOwner, nil); err == nil {
 		t.Fatal("invited somebody as owner")
 	}
 }
@@ -432,7 +434,7 @@ func TestInviteRefusesOwner(t *testing.T) {
 func TestInviteRequiresAdmin(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
 	join(t, svc, org.ID, "usr_viewer", RoleViewer)
-	if _, err := svc.Invite(context.Background(), org.ID, "usr_viewer", "x@example.com", RoleMember); err == nil {
+	if _, err := svc.Invite(context.Background(), org.ID, "usr_viewer", "x@example.com", RoleMember, nil); err == nil {
 		t.Fatal("a viewer invited somebody")
 	}
 }
@@ -583,7 +585,7 @@ func TestRenamingWithNoMembershipsIsQuiet(t *testing.T) {
 func TestAcceptCarriesTheInviteesOwnName(t *testing.T) {
 	svc, org := seedOrg(t, "usr_owner")
 	ctx := context.Background()
-	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "c@example.com", RoleMember)
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "c@example.com", RoleMember, nil)
 
 	m, err := svc.Accept(ctx, token, "usr_c", "c@example.com", "Convidado Silva")
 	if err != nil {
@@ -683,13 +685,89 @@ func TestInvitingCannotHandOutYourOwnRank(t *testing.T) {
 	ctx := context.Background()
 	join(t, svc, org.ID, "usr_admin", RoleAdmin)
 
-	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleAdmin); err == nil {
+	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleAdmin, nil); err == nil {
 		t.Fatal("an admin invited another admin")
 	}
-	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleMember); err != nil {
+	if _, err := svc.Invite(ctx, org.ID, "usr_admin", "novo@example.com", RoleMember, nil); err != nil {
 		t.Fatalf("an admin could not invite a member: %v", err)
 	}
-	if _, err := svc.Invite(ctx, org.ID, "usr_owner", "outro@example.com", RoleAdmin); err != nil {
+	if _, err := svc.Invite(ctx, org.ID, "usr_owner", "outro@example.com", RoleAdmin, nil); err != nil {
 		t.Fatalf("the owner could not invite an admin: %v", err)
+	}
+}
+
+// The case that pays for this model: an accountant invites a junior who should
+// reach five of forty companies. An invitation that cannot say which five
+// leaves them inside the workspace able to act for nothing.
+// newService returns a service whose actor grants are recorded, so a test can
+// assert what an accept handed out without a companies table.
+func newService() (*Service, *fakeRepo) {
+	repo := newFakeRepo()
+	repo.grantedEdges = map[string][]string{}
+	svc := NewService(repo, fixedClock).WithActorGranter(
+		func(_ context.Context, orgID, companyID, userID, name, grantedBy string) error {
+			repo.grantedEdges[userID] = append(repo.grantedEdges[userID], companyID)
+			return nil
+		})
+	return svc, repo
+}
+
+func TestAnInvitationCarriesItsCompanies(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+	org, _ := svc.Create(ctx, "usr_owner", "Dono", "Contabilidade")
+
+	token, err := svc.Invite(ctx, org.ID, "usr_owner", "junior@example.com", RoleMember, []string{"cmp_1", "cmp_2"})
+	if err != nil {
+		t.Fatalf("Invite: %v", err)
+	}
+	inv := repo.invitations[org.ID]["junior@example.com"]
+	if len(inv.CompanyIDs) != 2 {
+		t.Fatalf("the invitation carries %v, want two companies", inv.CompanyIDs)
+	}
+	_ = token
+}
+
+// Inviting to the workspace with no company is real — a bookkeeper who only
+// reads invoices — so an empty list is valid and grants nothing.
+func TestAnInvitationWithNoCompaniesIsValid(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	org, _ := svc.Create(ctx, "usr_owner", "Dono", "CTech")
+
+	if _, err := svc.Invite(ctx, org.ID, "usr_owner", "leitor@example.com", RoleViewer, nil); err != nil {
+		t.Fatalf("an invitation with no companies was refused: %v", err)
+	}
+}
+
+// Accepting grants the membership and the edges together. A membership written
+// without its edges is a person who joined and cannot work.
+func TestAcceptGrantsTheEdgesItWasInvitedWith(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+	org, _ := svc.Create(ctx, "usr_owner", "Dono", "Contabilidade")
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "junior@example.com", RoleMember, []string{"cmp_1", "cmp_2"})
+
+	if _, err := svc.Accept(ctx, token, "usr_junior", "junior@example.com", "Júnior"); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if got := repo.grantedEdges["usr_junior"]; len(got) != 2 {
+		t.Fatalf("granted %v, want both companies", got)
+	}
+}
+
+// And an invitation with no companies grants none — the person is in the
+// workspace and reaches nothing until somebody says otherwise.
+func TestAcceptingWithNoCompaniesGrantsNoEdges(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+	org, _ := svc.Create(ctx, "usr_owner", "Dono", "CTech")
+	token, _ := svc.Invite(ctx, org.ID, "usr_owner", "leitor@example.com", RoleViewer, nil)
+
+	if _, err := svc.Accept(ctx, token, "usr_leitor", "leitor@example.com", "Leitor"); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if got := repo.grantedEdges["usr_leitor"]; len(got) != 0 {
+		t.Fatalf("granted %v, want none", got)
 	}
 }

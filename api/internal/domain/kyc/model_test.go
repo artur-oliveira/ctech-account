@@ -61,8 +61,8 @@ func TestIsValidPhone(t *testing.T) {
 }
 
 func TestMaskPhone(t *testing.T) {
-	if got := MaskPhone("+5511987654321"); got != "***4321" {
-		t.Errorf("MaskPhone = %q, want ***4321", got)
+	if got := MaskPhone("+5511987654321"); got != "••••-4321" {
+		t.Errorf("MaskPhone = %q, want •••-4321", got)
 	}
 	if got := MaskPhone(""); got != "" {
 		t.Errorf("MaskPhone(empty) = %q, want empty", got)

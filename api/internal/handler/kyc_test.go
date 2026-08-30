@@ -270,7 +270,7 @@ func TestKYCFullFlow(t *testing.T) {
 	// 3. get → masked CPF, masked phone.
 	resp = ta.doWithToken(http.MethodGet, "/v1.0/account/kyc", nil, token)
 	readJSON(t, resp, &st)
-	if st["cpf_masked"] != "***.***.***-25" || st["state"] != "under_review" {
+	if st["cpf_masked"] != "529.•••.•••-25" || st["state"] != "under_review" {
 		t.Fatalf("status = %v", st)
 	}
 

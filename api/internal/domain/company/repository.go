@@ -69,6 +69,11 @@ type Repository interface {
 	ListActors(ctx context.Context, orgID, companyID string) ([]*Actor, error)
 	ListForUser(ctx context.Context, userID string) ([]*Actor, error)
 	RemoveActor(ctx context.Context, orgID, companyID, userID string) error
+	// BuildActorTxItem lets another aggregate write an edge inside its own
+	// transaction — the invitation accept, which must land the membership and
+	// the edges together or not at all. The key layout stays in this package;
+	// only the item travels.
+	BuildActorTxItem(a *Actor) (types.TransactWriteItem, error)
 }
 
 type repo struct {
@@ -228,6 +233,18 @@ func (r *repo) PutActor(ctx context.Context, a *Actor) error {
 		return fmt.Errorf("granting actor: %w", err)
 	}
 	return nil
+}
+
+// BuildActorTxItem returns a put-if-absent for one edge, without writing.
+//
+// If-absent, not a plain put: an accept that raced another grant must not
+// silently overwrite a GrantedBy somebody will later be asked about.
+func (r *repo) BuildActorTxItem(a *Actor) (types.TransactWriteItem, error) {
+	item, err := r.actorItem(a)
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return r.companies.BuildPutTxItemIfAbsent(item), nil
 }
 
 func (r *repo) GetActor(ctx context.Context, orgID, companyID, userID string) (*Actor, error) {

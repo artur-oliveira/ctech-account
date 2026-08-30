@@ -891,7 +891,9 @@
       "done": "Done",
       "revoke": "Revoke",
       "revokeTitle": "Revoke this invitation?",
-      "revokeBody": "The link stops working. If they already accepted, this changes nothing."
+      "revokeBody": "The link stops working. If they already accepted, this changes nothing.",
+      "companiesLabel": "Companies this person may act for",
+      "noCompaniesHint": "No companies selected. They will join the organization but will not be able to act for any company until somebody grants access."
     },
     "settings": {
       "nameTitle": "Name",

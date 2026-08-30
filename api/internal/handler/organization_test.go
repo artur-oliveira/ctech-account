@@ -264,7 +264,7 @@ func TestAcceptUsesTheAccountsVerifiedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seeding organization: %v", err)
 	}
-	token, err := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado@example.com", orgDomain.RoleMember)
+	token, err := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado@example.com", orgDomain.RoleMember, nil)
 	if err != nil {
 		t.Fatalf("inviting: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestAcceptRefusesAnUnverifiedAccount(t *testing.T) {
 	invitee := a.registerUnverifiedUser(t, "convidado2@example.com", "Sup3rSecret!pass", "Convidado")
 
 	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
-	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado2@example.com", orgDomain.RoleMember)
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado2@example.com", orgDomain.RoleMember, nil)
 
 	resp := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
 		a.issueToken(t, invitee.ID()), `{"token":"`+token+`"}`)
@@ -305,7 +305,7 @@ func TestAcceptAddsTheInvitedMember(t *testing.T) {
 	invitee := a.registerUser(t, "convidado3@example.com", "Sup3rSecret!pass", "Convidado")
 
 	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
-	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado3@example.com", orgDomain.RoleMember)
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "convidado3@example.com", orgDomain.RoleMember, nil)
 
 	resp := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
 		a.issueToken(t, invitee.ID()), `{"token":"`+token+`"}`)
@@ -361,7 +361,7 @@ func TestTheVerificationGateIsDistinguishableFromAnInvalidInvitation(t *testing.
 	unverified := a.registerUnverifiedUser(t, "naoverificado@example.com", "Sup3rSecret!pass", "Convidado")
 
 	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
-	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "naoverificado@example.com", orgDomain.RoleMember)
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "naoverificado@example.com", orgDomain.RoleMember, nil)
 
 	gate := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
 		a.issueToken(t, unverified.ID()), `{"token":"`+token+`"}`)
@@ -392,7 +392,7 @@ func TestTheInvitationFailuresStayMerged(t *testing.T) {
 	owner := a.registerUser(t, "dono6@example.com", "Sup3rSecret!pass", "Dono")
 	intruder := a.registerUser(t, "intruso2@example.com", "Sup3rSecret!pass", "Intruso")
 	org, _ := a.svc.Create(context.Background(), owner.ID(), "Dono", "CTech")
-	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "outra@example.com", orgDomain.RoleMember)
+	token, _ := a.svc.Invite(context.Background(), org.ID, owner.ID(), "outra@example.com", orgDomain.RoleMember, nil)
 
 	wrongPerson := a.do(t, http.MethodPost, "/v1.0/invitations/accept",
 		a.issueToken(t, intruder.ID()), `{"token":"`+token+`"}`)

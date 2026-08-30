@@ -194,6 +194,13 @@ func main() {
 	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
 	orgSvc := orgDomain.NewService(orgDomain.NewRepository(db, cfg.TablePrefix), time.Now)
 	companySvc := companyDomain.NewService(companyDomain.NewRepository(db, cfg.TablePrefix), time.Now)
+	// An accepted invitation grants the companies it named. Wired here rather
+	// than injected into the organization package, which stays ignorant that
+	// companies exist (ctech-billing ADR 0023).
+	orgSvc = orgSvc.WithActorGranter(
+		func(ctx context.Context, orgID, companyID, userID, name, grantedBy string) error {
+			return companySvc.GrantActor(ctx, orgID, companyID, userID, name, grantedBy)
+		})
 	supportSvc.SetNotifier(handler.NewSupportWSNotifier(supportWSRegistry))
 	sessionSvc := sessionDomain.NewService(sessionRepo)
 	scopesCatalogSvc := scopesPkg.NewCatalogService(scopesRepo, valkeyClient)

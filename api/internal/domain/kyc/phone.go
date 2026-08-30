@@ -13,11 +13,11 @@ func IsValidPhone(phone string) bool {
 	return e164Pattern.MatchString(phone)
 }
 
-// MaskPhone renders a phone as ***1234 (last 4 digits visible), mirroring
+// MaskPhone renders a phone as ••••-1234 (last 4 digits visible), mirroring
 // MaskCPF's style.
 func MaskPhone(phone string) string {
 	if len(phone) < 4 {
 		return ""
 	}
-	return "***" + phone[len(phone)-4:]
+	return "••••-" + phone[len(phone)-4:]
 }

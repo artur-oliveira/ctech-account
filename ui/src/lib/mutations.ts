@@ -295,10 +295,23 @@ export async function renameOrganizationAPI(id: string, displayName: string) {
  * Returns the invitation token exactly once. Nothing stores it and nothing
  * e-mails it: if the caller loses this value the invitation has to be reissued.
  */
-export async function inviteMemberAPI(id: string, email: string, role: OrganizationRole) {
-  const { data } = await api.post<{ token: string; email: string; role: OrganizationRole }>(
+export async function inviteMemberAPI(
+  id: string,
+  email: string,
+  role: OrganizationRole,
+  companyIDs: string[] = [],
+) {
+  const { data } = await api.post<{
+    token: string
+    email: string
+    role: OrganizationRole
+    company_ids?: string[]
+  }>(
     `/v1.0/organizations/${encodeURIComponent(id)}/invitations`,
-    { email, role },
+    // Companies are optional and default to none: inviting somebody to the
+    // workspace with no company is real, and an accepted invitation with none
+    // grants no company access — which the screen has to say out loud.
+    { email, role, company_ids: companyIDs },
   )
   return data
 }

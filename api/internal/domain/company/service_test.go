@@ -2,6 +2,8 @@ package company
 
 import (
 	"context"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"testing"
 	"time"
 )
@@ -124,6 +126,13 @@ func (f *fakeRepo) ListForUser(_ context.Context, userID string) ([]*Actor, erro
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) BuildActorTxItem(a *Actor) (types.TransactWriteItem, error) {
+	// The fake reproduces the shape, not the keys: what the accept transaction
+	// needs from this is that an edge is written, and the real key layout is
+	// exercised by the repository's own tests.
+	return types.TransactWriteItem{}, nil
 }
 
 func (f *fakeRepo) RemoveActor(_ context.Context, orgID, companyID, userID string) error {

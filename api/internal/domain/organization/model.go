@@ -106,11 +106,20 @@ type Membership struct {
 // TokenHash, never the token: a row read out of the table must not be usable to
 // accept the invitation it describes.
 type Invitation struct {
-	OrganizationID string    `dynamodbav:"-"`
-	Email          string    `dynamodbav:"-"`
-	Role           string    `dynamodbav:"role"`
-	TokenHash      string    `dynamodbav:"token_hash"`
-	InvitedBy      string    `dynamodbav:"invited_by"`
-	CreatedAt      time.Time `dynamodbav:"created_at"`
-	ExpiresAt      time.Time `dynamodbav:"-"`
+	OrganizationID string `dynamodbav:"-"`
+	Email          string `dynamodbav:"-"`
+	Role           string `dynamodbav:"role"`
+	TokenHash      string `dynamodbav:"token_hash"`
+	// CompanyIDs are the companies this invitation also grants reach to, and it
+	// is optional on purpose.
+	//
+	// The case that needs it: an accountant invites a junior who should reach
+	// five of forty companies, and an invitation that cannot say which five
+	// leaves them inside the workspace able to act for nothing. The case that
+	// needs it empty: a bookkeeper who only reads invoices, for whom forcing a
+	// list would make the common case carry the accountant's problem.
+	CompanyIDs []string  `dynamodbav:"company_ids,omitempty"`
+	InvitedBy  string    `dynamodbav:"invited_by"`
+	CreatedAt  time.Time `dynamodbav:"created_at"`
+	ExpiresAt  time.Time `dynamodbav:"-"`
 }

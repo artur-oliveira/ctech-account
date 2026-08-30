@@ -290,6 +290,9 @@ export interface OrganizationMember {
 export interface OrganizationInvitation {
   email: string
   role: OrganizationRole
+  /** Companies this invitation also grants reach to. Absent means none, and
+   *  none means the person joins the workspace able to act for no company. */
+  company_ids?: string[]
   invited_by: string
   expires_at: string
 }

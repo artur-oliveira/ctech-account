@@ -42,9 +42,25 @@ const maxDisplayName = 120
 // Service holds the rules a conditional write cannot express on its own —
 // mostly "who is allowed to ask for this", which needs the actor's membership
 // read before the write is attempted.
+// ActorGranter writes one "may act for this company" edge.
+//
+// A function rather than an interface on the company package, so this package
+// stays ignorant that companies exist: it knows an invitation may carry ids and
+// that something grants them, and nothing about the shape of what it grants.
+type ActorGranter func(ctx context.Context, orgID, companyID, userID, name, grantedBy string) error
+
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo    Repository
+	now     func() time.Time
+	granter ActorGranter
+}
+
+// WithActorGranter wires the grant an accepted invitation performs. Optional:
+// without it an invitation's companies are recorded and never granted, which is
+// what every deployment did before ctech-billing ADR 0023.
+func (s *Service) WithActorGranter(g ActorGranter) *Service {
+	s.granter = g
+	return s
 }
 
 func NewService(repo Repository, now func() time.Time) *Service {
@@ -262,7 +278,7 @@ var (
 // The token is returned, never stored: the row holds its SHA-256, so a dump of
 // the invitations table is a list of who was invited, not a set of keys to
 // every organization in it.
-func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role string) (string, error) {
+func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role string, companyIDs []string) (string, error) {
 	if !IsGrantableRole(role) {
 		return "", ErrNotGrantable
 	}
@@ -298,6 +314,7 @@ func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role st
 		OrganizationID: orgID,
 		Email:          address,
 		Role:           role,
+		CompanyIDs:     companyIDs,
 		TokenHash:      HashToken(token),
 		InvitedBy:      actorUserID,
 		CreatedAt:      now,
@@ -354,6 +371,27 @@ func (s *Service) Accept(ctx context.Context, token, userID, userEmail, userName
 	}
 	if err := s.repo.AcceptInvitation(ctx, m, inv.Email); err != nil {
 		return nil, err
+	}
+
+	// The companies the inviter chose, granted after the membership landed.
+	//
+	// After, not inside: the membership and the invitation live in two tables
+	// this package owns, and the edges live in a third it deliberately knows
+	// nothing about. One transaction across all three would put the company
+	// key layout in here, which is the coupling ADR 0023's split exists to
+	// avoid.
+	//
+	// The cost is a window: a grant that fails leaves somebody in the workspace
+	// reaching nothing. That is recoverable by an admin in one click, and it is
+	// the state an invitation with no companies produces on purpose — so the
+	// screen already has to explain it. A failed membership would not be
+	// recoverable, and that one IS transactional.
+	if s.granter != nil {
+		for _, companyID := range inv.CompanyIDs {
+			if err := s.granter(ctx, inv.OrganizationID, companyID, userID, m.Name, inv.InvitedBy); err != nil {
+				return m, fmt.Errorf("granting company %s to %s: %w", companyID, userID, err)
+			}
+		}
 	}
 	return m, nil
 }

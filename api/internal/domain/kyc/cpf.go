@@ -26,7 +26,7 @@ func IsValidCPF(cpf string) bool {
 // from the preceding pos digits, per the Receita Federal mod-11 algorithm.
 func checkDigit(cpf string, pos int) int {
 	sum := 0
-	for i := 0; i < pos; i++ {
+	for i := range pos {
 		sum += int(cpf[i]-'0') * (pos + 1 - i)
 	}
 	d := 11 - sum%11
@@ -36,10 +36,10 @@ func checkDigit(cpf string, pos int) int {
 	return d
 }
 
-// MaskCPF renders a CPF as ***.***.***-XX (last two digits visible).
+// MaskCPF renders a CPF as XXX.•••.•••-XX (last two digits visible).
 func MaskCPF(cpf string) string {
 	if len(cpf) != 11 {
 		return ""
 	}
-	return "***.***.***-" + cpf[9:]
+	return cpf[:3] + ".•••.•••-" + cpf[9:]
 }

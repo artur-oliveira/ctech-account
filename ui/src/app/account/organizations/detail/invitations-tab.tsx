@@ -7,6 +7,7 @@ import { Copy, MailPlus, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchOrganizationInvitations } from '@/lib/queries'
 import { inviteMemberAPI, revokeInvitationAPI } from '@/lib/mutations'
+import { fetchCompanies } from '@/lib/queries'
 import { formatDate } from '@/lib/format'
 import { isAxiosError } from '@/lib/axios'
 import { QueryError } from '@/components/query-error'
@@ -29,6 +30,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   assignableRoles,
+  formatTaxID,
   type Organization,
   type OrganizationInvitation,
   type OrganizationRole,
@@ -132,10 +134,18 @@ function InviteDialog({ organization }: { organization: Organization }) {
   // Held in state, never re-fetchable: the server returns the token once and
   // stores only its hash.
   const [link, setLink] = useState<string | null>(null)
+  // Which companies this invitation also grants reach to. Empty is valid and
+  // common — a bookkeeper who only reads invoices — so the form never demands
+  // one; it says what empty means instead.
+  const [companyIDs, setCompanyIDs] = useState<string[]>([])
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies', organization.id],
+    queryFn: () => fetchCompanies(organization.id),
+  })
 
   const { mutate, isPending, error, reset } = useMutation({
     mutationFn: ({ email, role }: { email: string; role: OrganizationRole }) =>
-      inviteMemberAPI(organization.id, email, role),
+      inviteMemberAPI(organization.id, email, role, companyIDs),
     onSuccess: (data) => {
       // The full URL, not the bare token: a token alone is something the
       // recipient cannot act on.
@@ -162,6 +172,7 @@ function InviteDialog({ organization }: { organization: Organization }) {
     if (!next) {
       setLink(null)
       setRole('member')
+      setCompanyIDs([])
       reset()
     }
   }
@@ -251,6 +262,44 @@ function InviteDialog({ organization }: { organization: Organization }) {
                 </SelectContent>
               </Select>
             </div>
+
+            {companies.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>{t('organizations.invitations.companiesLabel')}</Label>
+                {/* Checkboxes, not a Select: choosing several is the case this
+                    exists for — an accountant picking five of forty — and a
+                    multi-select hides how many are ticked behind a summary. */}
+                <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {companies.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        checked={companyIDs.includes(c.id)}
+                        onChange={(e) =>
+                          setCompanyIDs((prev) =>
+                            e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id),
+                          )
+                        }
+                      />
+                      <span className="min-w-0 truncate">{c.legal_name}</span>
+                      <code className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
+                        {formatTaxID(c.tax_id, c.tax_id_kind)}
+                      </code>
+                    </label>
+                  ))}
+                </div>
+                {/* Said out loud rather than left implied: somebody invited
+                    with no company joins and can act for nothing, and silence
+                    there is a person who cannot work with nothing on screen
+                    explaining why. */}
+                {companyIDs.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('organizations.invitations.noCompaniesHint')}
+                  </p>
+                )}
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="submit" disabled={isPending}>

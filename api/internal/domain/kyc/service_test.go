@@ -554,7 +554,7 @@ func TestGetMasksCPFAndPhone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if st.CPFMasked != "***.***.***-25" || st.PhoneMasked != "***4321" {
+	if st.CPFMasked != "529.•••.•••-25" || st.PhoneMasked != "••••-4321" {
 		t.Fatalf("status = %+v", st)
 	}
 	if st.Address == nil {
