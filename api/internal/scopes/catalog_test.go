@@ -1,29 +1,69 @@
 package scopes
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-// A scope constant that is not in the catalog cannot be granted: createclient
-// validates against it and answers ErrInvalidScope. Declaring the constant and
-// forgetting the entry is the mistake this catches — the code compiles, the
-// route is mounted, and provisioning the credential fails at the last step.
+// Every internal:account scope this repo declares as a constant must be in the
+// Resource Server manifest, which is the source of truth
+// (account-scope-manifest.json).
 //
-// It found a real one: internal:account:kyc was live in {env}_ctech_scopes and
-// missing from this seed, so a seedscopes run from scratch would have dropped
-// it — and ctech-wallet's KYC check with it.
-func TestEveryInternalAccountScopeIsInTheCatalog(t *testing.T) {
-	registered := map[string]bool{}
-	for _, svc := range defaultCatalog {
-		for _, e := range svc.Scopes {
-			registered[e.Scope] = true
-		}
+// A constant without a manifest entry cannot be granted: createclient validates
+// the requested scopes against the published catalog and answers
+// ErrInvalidScope. Nothing else notices — the code compiles, the route mounts,
+// and provisioning the credential fails at the last step, which is the worst
+// moment to discover it.
+func TestEveryInternalAccountScopeIsInTheManifest(t *testing.T) {
+	manifest, err := AccountManifest()
+	if err != nil {
+		t.Fatalf("AccountManifest: %v", err)
 	}
+	published := make(map[string]ScopeDefinition, len(manifest.Scopes))
+	for _, s := range manifest.Scopes {
+		published[s.Scope] = s
+	}
+
 	for _, scope := range []string{
 		InternalAccountKYC,
 		InternalAccountScopeRegistryWrite,
 		InternalAccountCompanyActor,
 	} {
-		if !registered[scope] {
-			t.Errorf("%q is declared and not in the catalog; no client can be granted it", scope)
+		entry, ok := published[scope]
+		if !ok {
+			t.Errorf("%q is declared and not in the manifest; no client can be granted it", scope)
+			continue
+		}
+		// Internal, not public: these are machine-to-machine, and a public one
+		// would appear on a consent screen for a permission no person grants.
+		if entry.Visibility != "internal" {
+			t.Errorf("%q has visibility %q, want internal", scope, entry.Visibility)
+		}
+		if entry.Status != "active" {
+			t.Errorf("%q has status %q, want active", scope, entry.Status)
+		}
+	}
+}
+
+// And the reverse: a manifest entry with no constant is a scope nothing in this
+// repo can reference, which means either the constant was forgotten or the entry
+// is dead. Either way somebody has to look.
+func TestEveryInternalManifestScopeHasAConstant(t *testing.T) {
+	manifest, err := AccountManifest()
+	if err != nil {
+		t.Fatalf("AccountManifest: %v", err)
+	}
+	declared := map[string]bool{
+		InternalAccountKYC:                true,
+		InternalAccountScopeRegistryWrite: true,
+		InternalAccountCompanyActor:       true,
+	}
+	for _, s := range manifest.Scopes {
+		if !strings.HasPrefix(s.Scope, "internal:") {
+			continue
+		}
+		if !declared[s.Scope] {
+			t.Errorf("the manifest publishes %q with no constant in this repo", s.Scope)
 		}
 	}
 }

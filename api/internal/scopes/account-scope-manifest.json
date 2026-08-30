@@ -173,6 +173,15 @@
       },
       "visibility": "internal",
       "status": "active"
+    },
+    {
+      "name": "internal:account:company-actor",
+      "descriptions": {
+        "en": "Check whether a user may act for a company.",
+        "pt-BR": "Verificar se um usuário pode agir por uma empresa."
+      },
+      "visibility": "internal",
+      "status": "active"
     }
   ]
 }
