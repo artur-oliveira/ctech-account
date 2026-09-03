@@ -5,7 +5,10 @@ import { ApiStack } from '../lib/api-stack'
 /** EC2's hard cap on user data, which a deploy discovers and not a review. */
 const USER_DATA_LIMIT_BYTES = 16384
 
-function userDataText(): string {
+let cachedTemplate: Template | undefined
+
+function synth(): Template {
+  if (cachedTemplate) return cachedTemplate
   const app = new cdk.App()
   const stack = new ApiStack(app, 'TestComputeStack', {
     env: { account: '868899309401', region: 'us-east-1' },
@@ -17,7 +20,12 @@ function userDataText(): string {
     kycDocumentsBucketName: 'prod-ctech-account-kyc',
     valkeyUrlSsmPath: '/ctech/prod/valkey/url',
   })
-  const template = Template.fromStack(stack)
+  cachedTemplate = Template.fromStack(stack)
+  return cachedTemplate
+}
+
+function userDataText(): string {
+  const template = synth()
   const launchTemplate = Object.values(template.findResources('AWS::EC2::LaunchTemplate'))[0] as any
   const encoded = launchTemplate.Properties.LaunchTemplateData.UserData['Fn::Base64']
   if (typeof encoded === 'string') return encoded
@@ -52,4 +60,14 @@ test('no secret value is written into the launch template', () => {
   const text = userDataText()
   expect(text).toContain("'SECRET_ENC_KEY=/ctech-account/prod/secret-encryption-key'")
   expect(text).not.toMatch(/SECRET_ENC_KEY=(?!\/|\$)/)
+})
+
+test('the Spot policy can launch both nano and micro Graviton instances', () => {
+  synth().hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+    MixedInstancesPolicy: {
+      LaunchTemplate: {
+        Overrides: [{ InstanceType: 't4g.nano' }, { InstanceType: 't4g.micro' }],
+      },
+    },
+  })
 })
