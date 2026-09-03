@@ -23,7 +23,7 @@ require (
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.8.0
+	gopkg.aoctech.app/api-commons v1.9.1
 )
 
 require (
