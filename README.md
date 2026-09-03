@@ -13,7 +13,14 @@ Gateway.
 
 - **OAuth 2.0** — Authorization Code flow with PKCE
 - **OpenID Connect** — Discovery document, JWKS, UserInfo endpoint
-- **Persistent sessions** — Cookie-based refresh tokens with automatic rotation and token-reuse detection
+- **Persistent sessions** — Per-OAuth-client cookie-based refresh tokens with automatic rotation and token-reuse detection
+
+Refresh cookies are namespaced by a stable hash of `client_id`. This is required
+because all first-party SPAs call the same Accounts API and `.aoctech.app`
+cookies are otherwise shared: a global `ctech_rt` cookie lets one product
+overwrite another product's client-bound token. The token endpoint reads the
+legacy cookie during migration and retires it after the first successful
+exchange or refresh.
 - **API keys** — Long-lived scoped tokens for programmatic access
 - **TOTP / MFA** — Time-based one-time passwords (Sprint 2)
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)

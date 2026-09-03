@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"slices"
 	"strings"
@@ -25,6 +26,15 @@ import (
 )
 
 const refreshTokenCookieName = "ctech_rt"
+
+// refreshTokenCookieNameFor isolates each OAuth client's cookie. A single
+// Domain=.aoctech.app ctech_rt cookie made every CTech SPA overwrite the other
+// products' client-bound refresh token.
+func refreshTokenCookieNameFor(clientID string) string {
+	sum := sha256.Sum256([]byte(clientID))
+	return refreshTokenCookieName + "_" + hex.EncodeToString(sum[:8])
+}
+
 const refreshTokenMaxAge = 90 * 24 * 60 * 60
 
 // OAuth grant_type values accepted by POST /v1.0/token.
@@ -293,7 +303,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	// Set httpOnly cookie so SPA clients receive the refresh token without JS access.
 	// The SSO session cookie (ctech_session) is independent and is never rotated here,
 	// so server-side exchanges by other clients can't log the browser out.
-	h.setRefreshCookie(c, newRefreshToken, refreshTokenMaxAge)
+	h.setRefreshCookie(c, clientID, newRefreshToken, refreshTokenMaxAge)
 	setAuthHintCookie(c, h.cfg, refreshTokenMaxAge)
 
 	// Public (SPA) clients receive the refresh token only in the HttpOnly
@@ -316,10 +326,15 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	// Accept refresh token from form field or httpOnly cookie (SPA clients use the cookie).
 	rawRefreshToken := c.FormValue("refresh_token")
-	if rawRefreshToken == "" {
-		rawRefreshToken = c.Cookies(refreshTokenCookieName)
-	}
 	clientID := c.FormValue("client_id")
+	if rawRefreshToken == "" {
+		rawRefreshToken = c.Cookies(refreshTokenCookieNameFor(clientID))
+		if rawRefreshToken == "" {
+			// One-release migration path for sessions issued before cookies were
+			// namespaced per OAuth client.
+			rawRefreshToken = c.Cookies(refreshTokenCookieName)
+		}
+	}
 
 	if rawRefreshToken == "" || clientID == "" {
 		// Missing params, not a wrong credential — the common case is a silent
@@ -415,7 +430,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	}
 
 	// Rotate the cookie with the new refresh token value.
-	h.setRefreshCookie(c, newRawToken, refreshTokenMaxAge)
+	h.setRefreshCookie(c, clientID, newRawToken, refreshTokenMaxAge)
 	setAuthHintCookie(c, h.cfg, refreshTokenMaxAge)
 
 	// See authorizationCode: public clients get the rotated refresh token only
@@ -436,8 +451,14 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 	// SPA clients hold the refresh token only in the HttpOnly ctech_rt cookie
 	// (no JS access), so accept it from the cookie when the form field is absent.
 	rawToken := c.FormValue("token")
+	clientID := c.FormValue("client_id")
 	if rawToken == "" {
-		rawToken = c.Cookies(refreshTokenCookieName)
+		if clientID != "" {
+			rawToken = c.Cookies(refreshTokenCookieNameFor(clientID))
+		}
+		if rawToken == "" {
+			rawToken = c.Cookies(refreshTokenCookieName)
+		}
 	}
 	if rawToken == "" {
 		return apierror.InvalidRequest("token is required.", c.Path()).Send(c)
@@ -458,16 +479,22 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 		}
 	}
 
-	h.clearRefreshCookie(c)
+	h.clearRefreshCookie(c, clientID)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"revoked": true})
 }
 
-func (h *TokenHandler) setRefreshCookie(c fiber.Ctx, value string, maxAge int) {
-	setAuthCookie(c, h.cfg, refreshTokenCookieName, value, maxAge)
+func (h *TokenHandler) setRefreshCookie(c fiber.Ctx, clientID, value string, maxAge int) {
+	setAuthCookie(c, h.cfg, refreshTokenCookieNameFor(clientID), value, maxAge)
+	// Retire the shared legacy cookie after the first successful exchange or
+	// refresh. Other clients retain their independently named cookies.
+	clearAuthCookie(c, h.cfg, refreshTokenCookieName)
 }
 
-func (h *TokenHandler) clearRefreshCookie(c fiber.Ctx) {
+func (h *TokenHandler) clearRefreshCookie(c fiber.Ctx, clientID string) {
+	if clientID != "" {
+		clearAuthCookie(c, h.cfg, refreshTokenCookieNameFor(clientID))
+	}
 	clearAuthCookie(c, h.cfg, refreshTokenCookieName)
 }
 
