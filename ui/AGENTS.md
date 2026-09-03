@@ -187,6 +187,8 @@ Writes use TanStack Query's `useMutation` — there are no Server Actions in thi
   non-secret `ctech_auth` hint cookie (`@aoctech/auth-client`'s `hasAuthHint()`) says a session exists.
 - The refresh cookie is `httpOnly; Secure; SameSite=Lax`, set directly by the Go API — Next.js never
   sets or reads it.
+- Refresh cookies are isolated per OAuth client. `OAuthTransientError` preserves
+  local identity/auth hints; only a `null` result represents a terminal session.
 - PKCE verifier/challenge and OAuth `state` are generated **client-side** (inside `@aoctech/auth-client`,
   Web Crypto) and held in `sessionStorage` only for the redirect round-trip.
 - Never log tokens, cookies, or passwords.

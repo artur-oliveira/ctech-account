@@ -79,6 +79,10 @@ function AuthInitializer() {
         return
       }
       store.setInitialized()
+    }).catch(() => {
+      // Network/5xx failures are retryable and must not clear auth hints or
+      // redirect to login. Finish boot and let subsequent activity retry.
+      store.setInitialized()
     })
   }, [])
 
