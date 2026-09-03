@@ -54,7 +54,8 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 - The retained `/ctech/{env}/network/alb-sg-id` parameter now identifies the shared
   edge SG trusted by service instances. Its historical name is intentionally kept
   until every service has migrated without downtime.
-- The service uses a `t4g.micro`, encrypted 3-GiB gp3 root volume, private IPv4,
+- The service permits `t4g.nano` and `t4g.micro` Spot capacity, uses an encrypted
+  3-GiB gp3 root volume, private IPv4,
   and IPv6 egress (no NAT gateway). Account-specific nginx, bootstrap/deploy
   scripts and alarms remain local.
 - **Capacity:** min 1, max **3 in prod**, max 1 otherwise.
