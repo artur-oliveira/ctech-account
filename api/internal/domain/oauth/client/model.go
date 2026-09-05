@@ -48,6 +48,39 @@ func (c *OAuthClient) IsPublic() bool {
 	return c.ClientType == "public"
 }
 
+// IsNativeClient reports whether this public client is a native/CLI app
+// rather than a browser SPA — every registered redirect_uri is a loopback
+// (http://127.0.0.1 or http://localhost), the RFC 8252 convention for
+// installed apps, as opposed to an https origin for a browser SPA.
+//
+// This distinction matters because a browser SPA and a native app need the
+// authorization_code grant's refresh_token delivered differently. A SPA's
+// refresh_token is deliberately withheld from the JSON response body and set
+// only as an HttpOnly cookie (handler/token.go's exchangeCode) — that cookie
+// is invisible to the SPA's own JS, so an XSS in the SPA can't read it. A
+// native/CLI client has no cookie jar and no XSS threat model at all (there's
+// no DOM, no JS) — withholding the refresh_token from it the same way the SPA
+// gets it withheld doesn't protect anything, it just means the client can
+// never refresh, silently forcing a full re-login on every access-token
+// expiry. IsNativeClient is what tells exchangeCode to include it in the body
+// for this kind of public client, the only place it has anywhere to put it.
+func (c *OAuthClient) IsNativeClient() bool {
+	if !c.IsPublic() || len(c.RedirectURIs) == 0 {
+		return false
+	}
+	for _, raw := range c.RedirectURIs {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "http" {
+			return false
+		}
+		host := u.Hostname()
+		if host != "localhost" && !strings.HasPrefix(host, "127.") {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *OAuthClient) IsRedirectURIAllowed(uri string) bool {
 	for _, allowed := range c.RedirectURIs {
 		if allowed == uri {
