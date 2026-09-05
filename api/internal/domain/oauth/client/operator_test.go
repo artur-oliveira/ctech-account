@@ -142,7 +142,7 @@ func TestEnsureFirstPartyPublicClientCreatesAndReconciles(t *testing.T) {
 	service, repo := newOperatorService()
 	required := append([]string{scopes.OpenID, scopes.Profile, scopes.Email}, scopes.AccountUserScopes()...)
 	created, changed, err := service.EnsureFirstPartyPublicClient(
-		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required,
+		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required, nil,
 	)
 	if err != nil || !changed || !created.FirstParty || !created.IsPublic() {
 		t.Fatalf("create: client=%+v changed=%v err=%v", created, changed, err)
@@ -151,7 +151,7 @@ func TestEnsureFirstPartyPublicClientCreatesAndReconciles(t *testing.T) {
 	created.AllowedScopes = []string{scopes.OpenID}
 	created.RedirectURIs = []string{"https://legacy.example.test/callback"}
 	updated, changed, err := service.EnsureFirstPartyPublicClient(
-		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required,
+		context.Background(), "accounts", "CTech Account", "https://accounts.example.test/login/callback", required, nil,
 	)
 	if err != nil || !changed {
 		t.Fatalf("reconcile: changed=%v err=%v", changed, err)
@@ -166,6 +166,41 @@ func TestEnsureFirstPartyPublicClientCreatesAndReconciles(t *testing.T) {
 	}
 	if repo.clients["accounts"] != updated {
 		t.Fatal("reconciled client was not persisted")
+	}
+}
+
+func TestEnsureFirstPartyPublicClientSetsAndMergesAudience(t *testing.T) {
+	service, _ := newOperatorService()
+	required := []string{"poker:rooms:read"}
+
+	created, changed, err := service.EnsureFirstPartyPublicClient(
+		context.Background(), "poker-cli", "CTech Poker CLI", "http://127.0.0.1:51789/callback", required,
+		[]string{"https://poker.aoctech.app"},
+	)
+	if err != nil || !changed {
+		t.Fatalf("create: changed=%v err=%v", changed, err)
+	}
+	if len(created.Audience) != 1 || created.Audience[0] != "https://poker.aoctech.app" {
+		t.Fatalf("audience not set on create: %+v", created.Audience)
+	}
+
+	updated, changed, err := service.EnsureFirstPartyPublicClient(
+		context.Background(), "poker-cli", "CTech Poker CLI", "http://127.0.0.1:51789/callback", required,
+		[]string{"https://poker.aoctech.app", "https://extra.example.test"},
+	)
+	if err != nil || !changed {
+		t.Fatalf("reconcile: changed=%v err=%v", changed, err)
+	}
+	if len(updated.Audience) != 2 {
+		t.Fatalf("audience not merged: %+v", updated.Audience)
+	}
+
+	_, changed, err = service.EnsureFirstPartyPublicClient(
+		context.Background(), "poker-cli", "CTech Poker CLI", "http://127.0.0.1:51789/callback", required,
+		[]string{"https://poker.aoctech.app"},
+	)
+	if err != nil || changed {
+		t.Fatalf("idempotent re-run with a subset audience must not report a change: changed=%v err=%v", changed, err)
 	}
 }
 

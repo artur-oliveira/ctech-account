@@ -220,6 +220,7 @@ func main() {
 		"CTech Account",
 		strings.TrimRight(cfg.AppURL, "/")+"/login/callback",
 		selfScopes,
+		nil, // the Account SPA never calls another service's API; its own audience is always prepended
 	)
 	if err != nil {
 		log.Fatalf("bootstrapping Account frontend OAuth client: %v", err)
