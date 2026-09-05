@@ -96,10 +96,25 @@ func (s *OperatorService) CreateResourcePublisher(ctx context.Context, clientID,
 	return s.createM2M(ctx, clientID, name, []string{scopes.InternalAccountScopeRegistryWrite}, strings.TrimSpace(managedResourceID))
 }
 
-// EnsureFirstPartyPublicClient creates or reconciles the Authorization
-// Server's own SPA client. It is intentionally operator-only: promoting an
+// EnsureFirstPartyPublicClient creates or reconciles a first-party public
+// client — originally just the Authorization Server's own SPA, now also used
+// for native/CLI clients of another resource server (see
+// cmd/createpublicclient). It is intentionally operator-only: promoting an
 // arbitrary self-service client to FirstParty would bypass consent.
-func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clientID, name, redirectURI string, requiredScopes []string) (*OAuthClient, bool, error) {
+//
+// audience is optional (nil/empty is valid and preserves the original
+// behavior): every issued access token's aud claim is
+// [this IdP's own audience, client.EffectiveAudience()...], and
+// EffectiveAudience falls back to the client_id itself when Audience is
+// unset. The Account SPA needs nothing else — its own audience is always
+// prepended. A client acting on a *different* resource server's API (e.g.
+// poker-cli calling the poker API) MUST pass that server's ServiceAudience
+// here, or the resource server's JWT verifier rejects every token with a 401
+// (aud mismatch) before scope/first-party checks are ever reached — the
+// symptom is indistinguishable from a bad token, not an authorization
+// failure, which is why this bit us silently until traced end to end
+// (docs/resource-server-scope-registry.md, "Native / CLI clients").
+func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clientID, name, redirectURI string, requiredScopes, audience []string) (*OAuthClient, bool, error) {
 	clientID = strings.TrimSpace(clientID)
 	name = strings.TrimSpace(name)
 	if len(clientID) < minOperatorClientIDLength || len(clientID) > maxOperatorClientIDLength || !operatorClientIDPattern.MatchString(clientID) {
@@ -120,6 +135,7 @@ func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clie
 		client = &OAuthClient{
 			PK: BuildPK(clientID), Name: name, ClientType: TypePublic,
 			RedirectURIs: []string{redirectURI}, AllowedScopes: append([]string(nil), requiredScopes...),
+			Audience:   append([]string(nil), audience...),
 			FirstParty: true, OwnerUserID: SystemOwnerUserID,
 		}
 		if err := s.repo.Create(ctx, client); err != nil {
@@ -144,17 +160,24 @@ func (s *OperatorService) EnsureFirstPartyPublicClient(ctx context.Context, clie
 			allowed = append(allowed, scope)
 		}
 	}
-	if client.Name == name && slices.Equal(redirects, client.RedirectURIs) && slices.Equal(allowed, client.AllowedScopes) {
+	auds := append([]string(nil), client.Audience...)
+	for _, a := range audience {
+		if !slices.Contains(auds, a) {
+			auds = append(auds, a)
+		}
+	}
+	if client.Name == name && slices.Equal(redirects, client.RedirectURIs) && slices.Equal(allowed, client.AllowedScopes) && slices.Equal(auds, client.Audience) {
 		return client, false, nil
 	}
 	if err := s.repo.Update(ctx, clientID, map[string]any{
-		"name": name, "redirect_uris": redirects, "allowed_scopes": allowed,
+		"name": name, "redirect_uris": redirects, "allowed_scopes": allowed, "audience": auds,
 	}); err != nil {
 		return nil, false, fmt.Errorf("updating first-party public client: %w", err)
 	}
 	client.Name = name
 	client.RedirectURIs = redirects
 	client.AllowedScopes = allowed
+	client.Audience = auds
 	return client, true, nil
 }
 

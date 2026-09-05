@@ -27,6 +27,7 @@ api/
 │   ├── api/            # Entry point — Fiber wiring, route registration, error handler, health
 │   ├── rotatekeys/     # One-time / forced JWKS key rotation (SSM)
 │   ├── createclient/   # Provision a first-party confidential M2M client
+│   ├── createpublicclient/ # Provision a first-party public client (Authorization Code + PKCE, no secret)
 │   ├── seedscopes/     # Seed the platform scope catalog into DynamoDB
 │   └── kyc/            # CLI KYC reviewer (list / show / approve / reject)
 └── internal/
