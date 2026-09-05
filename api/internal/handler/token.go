@@ -306,10 +306,16 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	h.setRefreshCookie(c, clientID, newRefreshToken, refreshTokenMaxAge)
 	setAuthHintCookie(c, h.cfg, refreshTokenMaxAge)
 
-	// Public (SPA) clients receive the refresh token only in the HttpOnly
-	// ctech_rt cookie set above — never in the JSON body, which JS can read and
-	// an XSS could exfiltrate. Confidential clients (server-side) get it in the
-	// body because they have no usable cookie jar.
+	// Public browser-SPA clients receive the refresh token only in the
+	// HttpOnly ctech_rt cookie set above — never in the JSON body, which JS
+	// can read and an XSS could exfiltrate. Confidential clients (server-side)
+	// get it in the body because they have no usable cookie jar. Public
+	// *native/CLI* clients (IsNativeClient — loopback redirect_uri, RFC 8252)
+	// also get it in the body: they have no cookie jar either, and unlike a
+	// browser SPA they have no XSS threat model at all (no DOM, no JS) — the
+	// cookie-only rule exists to protect against that, so it protects nothing
+	// here and would only ever produce a client that can never refresh
+	// (forcing a full re-login on every 15-minute access-token expiry).
 	response := fiber.Map{
 		"access_token": accessToken,
 		"token_type":   "Bearer",
@@ -317,7 +323,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		"id_token":     idToken,
 		"scope":        strings.Join(ac.Scopes, " "),
 	}
-	if !oauthClient.IsPublic() {
+	if !oauthClient.IsPublic() || oauthClient.IsNativeClient() {
 		response["refresh_token"] = newRefreshToken
 	}
 	return c.JSON(response)
