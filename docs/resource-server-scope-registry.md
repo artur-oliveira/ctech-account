@@ -98,6 +98,30 @@ For legacy data, run `go run ./cmd/migratescopes` first as a dry run, then with
 -revision 3 -expected-revision 7`; restoration creates a new revision rather
 than rewriting history.
 
+## Native / CLI clients of a resource (not the resource's own web SPA)
+
+Publishing a manifest auto-reconciles scopes only onto the first-party public
+client whose `client_id` equals the Resource Server ID (`poker` → `poker`,
+the web SPA). A *different* client that needs the same resource's public
+scopes — e.g. a native app or terminal client using Authorization Code + PKCE
+with its own `client_id` and a non-HTTPS loopback redirect — is provisioned
+once with `go run ./cmd/createpublicclient`:
+
+```bash
+AWS_REGION=us-east-1 TABLE_PREFIX=prod go run ./cmd/createpublicclient \
+  -client-id poker-cli -name "CTech Poker CLI" \
+  -redirect-uri http://127.0.0.1:51789/callback \
+  -scopes poker:rooms:read,poker:players:read,poker:sessions:read,poker:hands:read,poker:achievements:read,poker:stats:read
+```
+
+It is idempotent (safe to re-run per environment) and marks the client
+`first_party: true` — the interactive (non-GET) authorization boundary on
+poker's own side keys off client id, not scope, so first-party status there is
+what lets this client's user tokens perform interactive operations at all. Redirect
+URIs for `http://`/loopback clients must be registered as an **exact** string —
+`OAuthClient.IsRedirectURIAllowed` does not do RFC 8252 §7.3 port-agnostic
+matching, so a native app that needs one must bind a fixed port.
+
 ## Manifest schema
 
 ```json
