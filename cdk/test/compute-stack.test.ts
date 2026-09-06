@@ -36,7 +36,7 @@ function userDataText(): string {
 
 test('compute user data is script invocations, not inline files', () => {
   const text = userDataText()
-  expect(text).toContain("ctech_run setup-nginx.sh '8080' '8000' '/v1.0/health-check' '20' '5m'")
+  expect(text).toContain("ctech_run setup-nginx.sh '8080' '8000' '/v1.0/health' '20' '5m'")
   expect(text).toContain("ctech_run setup-app-service.sh 'CTech Account API' 'bootstrap'")
   // nginx.conf, start.sh, deploy.sh and upload-logs.sh are no longer inline.
   expect(text).not.toContain('limit_req_zone')

@@ -342,6 +342,7 @@ func main() {
 
 	v1 := app.Group("/v1.0")
 	handler.RegisterSupportWS(v1, supportSvc, userSvc, jwtSvc, supportWSRegistry, allowedOrigins)
+	v1.Get("/health", livenessHandler(cfg.AppVersion))
 	v1.Get("/health-check", healthHandler(db, database.TableName(cfg.TablePrefix, "account_users"), valkeyClient, cfg.AppVersion, valkeyRequired))
 
 	// Rate limiting (Valkey-backed; no-op when Valkey is disabled).
