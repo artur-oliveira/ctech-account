@@ -8,10 +8,10 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: **ten**
+Defines and deploys all AWS infrastructure for the ctech-account service: **fourteen**
 DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**, S3 + CloudFront
-(frontend), IAM roles, GitHub Actions OIDC, a private KYC documents bucket, and the
-shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
+(frontend, retired — see README §6), IAM roles, GitHub Actions OIDC, a private KYC documents
+bucket, and the shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
 `README.md`; this file is the quick reference.
 
 ---
@@ -24,14 +24,14 @@ cdk/
 │   └── ctech-account.ts        # CDK app entry — instantiates the 7 stacks
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
-│   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
+│   ├── dynamodb-stack.ts       # FOURTEEN DynamoDB tables + GSIs (OnDemand)
 │   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
-│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
+│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app) — retired
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
 │   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
 │   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets instead)
-└── test/                       # ABSENT — `test: jest` exists but no tests written
+└── test/                       # compute-stack.test.ts, dynamodb-stack.test.ts, oidc-stack.test.ts
 ```
 
 ---
@@ -62,9 +62,9 @@ cdk/
 
 | Environment | Removal Policy    | PITR   | Tables                          |
 |-------------|-------------------|--------|---------------------------------|
-| development | `DESTROY`         | No     | 10 × `{env}_account_*` / `_ctech_scopes` |
-| staging     | `RETAIN`          | No     | 10 × `{env}_account_*` / `_ctech_scopes` |
-| production  | `RETAIN`          | Yes    | 10 × `{env}_account_*` / `_ctech_scopes` |
+| development | `DESTROY`         | No     | 14 × `{env}_account_*` / `_ctech_scopes` |
+| staging     | `RETAIN`          | No     | 14 × `{env}_account_*` / `_ctech_scopes` |
+| production  | `RETAIN`          | Yes    | 14 × `{env}_account_*` / `_ctech_scopes` |
 
 Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no single
 `ctech-account-{environment}` table.

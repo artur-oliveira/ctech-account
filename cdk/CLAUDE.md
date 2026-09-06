@@ -8,9 +8,10 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: **eight**
+Defines and deploys all AWS infrastructure for the ctech-account service: **fourteen**
 DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**,
-S3 + CloudFront (frontend), IAM roles, GitHub Actions OIDC, a private KYC documents
+S3 + CloudFront (frontend, retired — see `README.md` §6, replaced by Cloudflare
+Workers Static Assets), IAM roles, GitHub Actions OIDC, a private KYC documents
 bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
 
 There is **no Lambda and no API Gateway** — the API is a long-running Go binary on the
@@ -33,14 +34,15 @@ cdk/
 │   └── ctech-account.ts        # CDK app entry point — instantiates the 7 stacks
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
-│   ├── dynamodb-stack.ts       # EIGHT DynamoDB tables + GSIs (OnDemand)
+│   ├── dynamodb-stack.ts       # FOURTEEN DynamoDB tables + GSIs (OnDemand), incl. platform
+│   │                           #   organizations/memberships/invitations/companies
 │   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
-│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app)
+│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app) — retired, see README §6
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
 │   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
 │   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets used instead)
-└── test/                       # ABSENT — `test: jest` exists but no tests are written
+└── test/                       # compute-stack.test.ts, dynamodb-stack.test.ts, oidc-stack.test.ts
 ```
 
 > `S3Stack` (`lib/s3-stack.ts`) is defined but **not instantiated** in
@@ -109,9 +111,11 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 
 ### DynamoDB
 
-- **Eight separate tables**, one per environment prefix (`{env}_account_users`,
+- **Fourteen separate tables**, one per environment prefix (`{env}_account_users`,
   `_account_sessions`, `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`,
-  `_account_passkeys`, `_account_audit`, `_ctech_scopes`). See `lib/dynamodb-stack.ts`.
+  `_account_passkeys`, `_account_audit`, `_account_support_tickets`, `_account_support_metrics`,
+  `_ctech_scopes`, `_account_organizations`, `_account_memberships`, `_account_invitations`,
+  `_account_companies`). See `lib/dynamodb-stack.ts`.
 - All tables are **OnDemand** with warm-throughput caps (1000 RU/WU each).
 - GSIs are justified by access patterns in `lib/dynamodb-stack.ts` (email lookup,
   refresh-token hash, owner index, API-key hash).
@@ -127,21 +131,30 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 - **No custom CloudWatch metrics.** The CloudWatch agent config is logs-only and there are
   no `logs.MetricFilter`s — EC2 already publishes CPUUtilization/CPUCreditBalance for free.
   Don't reintroduce `buildCloudWatchAgentConfig`'s `metricNamespace` here.
-- **Deploys replace instances.** `.github/workflows/api.yml` uploads the artifact and calls
-  `autoscaling start-instance-refresh` with `MinHealthyPercentage: 0` — no replacement is
-  launched before the old instance goes away, so the service is **down** for the length of the
-  refresh. `SkipMatching` must stay `false`: a deploy does not change the launch template.
-- **SSM agent is off by default**: `ENABLE_SSM_AGENT` (env) → `ApiStack.enableSsmAgent`,
-  default `false`. Nothing needs RunCommand now that deploys are instance refreshes, and the
-  agent costs ~70 MiB of RSS on a t4g.nano. Set it to `true` for a debugging shell. The role
-  keeps `AmazonSSMManagedInstanceCore` either way (IAMStack does not see the flag).
-- **Daytime-only schedule.** Scheduled actions bring the ASG up at **11:55** and take it
+- **Deploys are a rolling SSM RunCommand restart, not an instance refresh.**
+  `.github/workflows/api.yml` uploads the artifact to S3, then calls `ctech-cdk`'s reusable
+  `deploy-backend` action, which runs `aws ssm send-command` (`AWS-RunShellScript`,
+  `/opt/app/deploy.sh <artifact-key>`) against every InService instance in the ASG. No
+  instances are replaced. `autoscaling:StartInstanceRefresh`/`DescribeInstanceRefreshes`/
+  `CancelInstanceRefresh` permissions exist on the deploy role only as an unused
+  operational fallback (see `README.md` §First Deploy / IAM).
+- **SSM agent is on**: `bin/ctech-account.ts` hardcodes `ENABLE_SSM_AGENT = true` (overriding
+  `ApiStack.enableSsmAgent`'s own `false` default) because the deploy mechanism above depends
+  on RunCommand reaching every instance. Don't disable it without replacing the deploy path.
+- **Daytime-only schedule is currently disabled.** `api-stack.ts` has the
+  `schedule: {enableCron: '55 11 * * *', disableCron: '15 13 * * *'}` line commented out, so
+  the ASG runs continuously today. The rest of this bullet describes the schedule as designed,
+  not as currently wired — verify the live line before relying on either behavior: Scheduled
+  actions would bring the ASG up at **11:55** and take it
   down at **13:15** America/Sao_Paulo. Outside that window the service is off: nothing is
   reachable and inbound webhooks fail. A deploy that lands outside it exits early — the
   next scheduled instance boots the artifact from S3.
 
-### CloudFront (frontend-stack)
+### CloudFront (frontend-stack) — retired
 
+- **Nothing routes through this stack** — `accounts.aoctech.app` is served by Cloudflare
+  Workers Static Assets instead. See `README.md` §6. Kept deployed pending teardown
+  (Phase 4 of `ctech-cdk/docs/plans/2026-08-20-frontend-cloudflare-migration.md`).
 - S3 origin with OAC (Origin Access Control) — bucket not publicly accessible.
 - Custom domain: `accounts.aoctech.app`.
 
@@ -201,7 +214,7 @@ See `../README.md` §First Deploy for the full ordered checklist.
 - Go binary must be named `ctech-account` on EC2 (systemd service name matches).
 - CloudFront distribution requires ACM certificate in `us-east-1` regardless of deploy region.
 - `S3Stack` is unused; deployments/logs buckets are shared `ctech-cdk` buckets.
-- No jest tests exist despite the `test` script. `cdk synth` is the only automated gate.
+- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `oidc-stack`) — run `npm test` in addition to `cdk synth`.
 
 ---
 

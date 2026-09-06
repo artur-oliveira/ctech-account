@@ -7,7 +7,7 @@ before trusting any doc.**
 Entry point: `bin/ctech-account.ts`. App: `CtechAccount-{ENV}-<Stack>`.
 
 > **Divergence vs older CLAUDE.md/AGENTS.md (now fixed):** this repo does **not**
-> use a single-table design. It provisions **eight separate DynamoDB tables** (see
+> use a single-table design. It provisions **fourteen separate DynamoDB tables** (see
 > §Tables). There is **no Lambda and no API Gateway** anywhere in this CDK — the API
 > runs on an **EC2 Auto Scaling Group routed by the CTech HAProxy edge load balancer**, and
 > the SSM signing-key path is `/ctech-account/{env}/jwk/*` (not `rsa-private-key`).
@@ -23,7 +23,7 @@ All stacks are instantiated in `bin/ctech-account.ts`. `Environment` ∈
 | Stack | File | Resources |
 |-------|------|-----------|
 | `OidcStack` (global, deployed once) | `lib/oidc-stack.ts` | GitHub Actions OIDC deploy role + infra role (`AdministratorAccess`) |
-| `DynamoDBStack` | `lib/dynamodb-stack.ts` | 8 DynamoDB tables + GSIs (OnDemand) |
+| `DynamoDBStack` | `lib/dynamodb-stack.ts` | 14 DynamoDB tables + GSIs (OnDemand) |
 | `KYCStack` | `lib/kyc-stack.ts` | 1 private S3 bucket for KYC identity documents |
 | `IAMStack` | `lib/iam-stack.ts` | EC2 instance profile + least-privilege inline policies |
 | `ApiStack` | `lib/api-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
@@ -58,7 +58,9 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   3-GiB gp3 root volume, private IPv4,
   and IPv6 egress (no NAT gateway). Account-specific nginx, bootstrap/deploy
   scripts and alarms remain local.
-- **Capacity:** min 1, max **3 in prod**, max 1 otherwise.
+- **Capacity:** min 1, max **2** in every environment (`api-stack.ts:279-283`) — the
+  extra instance gives `CapacityRebalance` headroom to launch a replacement before
+  terminating a spot-interrupted instance, not prod-specific scaling.
 - **Health check:** HAProxy probes `/v1.0/health-check` and accepts HTTP 200. With
   `autoHeal: true`, three unhealthy reconciliations request ASG replacement.
 - **User data** installs nginx + CloudWatch/SSM agents, downloads only the
@@ -95,22 +97,28 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 
 ---
 
-## 3. DynamoDB — eight tables (`lib/dynamodb-stack.ts`)
+## 3. DynamoDB — fourteen tables (`lib/dynamodb-stack.ts`)
 
 All `TableV2`, **OnDemand billing** with warm throughput caps
 (`maxReadRequestUnits`/`maxWriteRequestUnits` = 1000 each). PITR + `RETAIN` **only in
 prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}`.
 
-| Logical key | Table name | PK / SK | TTL attr | GSIs | File |
-|-------------|-----------|---------|----------|------|------|
-| `account_users` | `{env}_account_users` | `pk` (string) | — | `email-index` (pk=`email`); `kyc-level-index` (pk=`kyc_level`, sk=`kyc_submitted_at`) | `:24` |
-| `account_sessions` | `{env}_account_sessions` | `pk` / `sk` | `expires_at` | `token-hash-index` (pk=`refresh_token_hash`) | `:48` |
-| `account_oauth_clients` | `{env}_account_oauth_clients` | `pk` | — | `owner-index` (pk=`owner_user_id`) | `:74` |
-| `account_api_keys` | `{env}_account_api_keys` | `pk` / `sk` | `expires_at` | `key-hash-index` (pk=`key_hash`) | `:98` |
-| `account_mfa` | `{env}_account_mfa` | `pk` / `sk` | — | — (TOTP `sk=TOTP_default`, passkey `sk=PASSKEY_{id}`) | `:125` |
-| `account_passkeys` | `{env}_account_passkeys` | `pk` / `sk` | — | — | `:140` |
-| `account_audit` | `{env}_account_audit` | `pk` / `sk` | `expires_at` (400-day) | — (append-only; `pk=USER_{id}|ANON_{ip}`, `sk=EVT_{ts}_{rand}`) | `:157` |
-| `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (`SERVICE` legacy/built-ins, `RESOURCE_SERVER` current manifests, immutable `RESOURCE_SERVER_HISTORY#{id}` revisions) | `:176` |
+| Logical key | Table name | PK / SK | TTL attr | GSIs |
+|-------------|-----------|---------|----------|------|
+| `account_users` | `{env}_account_users` | `pk` (string) | — | `email-index` (pk=`email`); `kyc-level-index` (pk=`kyc_level`, sk=`kyc_submitted_at`) |
+| `account_sessions` | `{env}_account_sessions` | `pk` / `sk` | `expires_at` | `token-hash-index` (pk=`refresh_token_hash`) |
+| `account_oauth_clients` | `{env}_account_oauth_clients` | `pk` | — | `owner-index` (pk=`owner_user_id`) |
+| `account_api_keys` | `{env}_account_api_keys` | `pk` / `sk` | `expires_at` | `key-hash-index` (pk=`key_hash`) |
+| `account_support_tickets` | `{env}_account_support_tickets` | `pk` / `sk` | — | `status-index`, `user-index`, `anon-token-index`, `ticket-number-index` |
+| `account_support_metrics` | `{env}_account_support_metrics` | `pk` / `sk` | — | — (transactional daily/monthly/yearly/all-time aggregates) |
+| `account_mfa` | `{env}_account_mfa` | `pk` / `sk` | — | — (TOTP `sk=TOTP_default`, passkey `sk=PASSKEY_{id}`) |
+| `account_passkeys` | `{env}_account_passkeys` | `pk` / `sk` | — | — |
+| `account_audit` | `{env}_account_audit` | `pk` / `sk` | `expires_at` (400-day) | — (append-only; `pk=USER_{id}|ANON_{ip}`, `sk=EVT_{ts}_{rand}`) |
+| `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (`SERVICE` legacy/built-ins, `RESOURCE_SERVER` current manifests, immutable `RESOURCE_SERVER_HISTORY#{id}` revisions) |
+| `account_organizations` | `{env}_account_organizations` | `pk` / `sk` | — | `lookup-index` (pk=`lookup_pk`, sparse — only rows imported via `SOURCE#{system}#{ref}`) |
+| `account_memberships` | `{env}_account_memberships` | `pk` (`ORG#{id}`) / `sk` (`MEMBER#{user}`) | — | `lookup-index` (pk=`lookup_pk`=`USER#{user}` — "which orgs may I act in") |
+| `account_invitations` | `{env}_account_invitations` | `pk` (`ORG#{id}`) / `sk` (`INVITE#{email}`) | `expires_at` | `lookup-index` (pk=`lookup_pk`=SHA-256 of the invite token, never the raw token) |
+| `account_companies` | `{env}_account_companies` | `pk` (`ORG#{id}`) / `sk` (`COMPANY#`/`TAXID#`/`ACTOR#` rows) | — | `lookup-index` (pk=`lookup_pk`; `USER#{id}` or `SOURCE#{system}#{ref}`, sparse) |
 
 Notes:
 - `account_users` uses `email-index` for login lookup and `kyc-level-index` for the manager review queue. The KYC
@@ -120,6 +128,11 @@ Notes:
 - `ctech_scopes` deliberately breaks the `{env}_account_*` convention because it is
   the platform-wide scope catalog shared by every ctech service. Downstream
   manifests reuse this table; no new table or index is required.
+- `account_organizations`/`account_memberships`/`account_invitations`/`account_companies` back the
+  platform-organizations / membership-unification / platform-companies work (see
+  `../docs/plans/2026-08-29-platform-organizations.md`, `2026-08-29-membership-unification.md`,
+  `2026-08-29-platform-companies.md`). `account_companies` uses a same-transaction `TAXID#{canonical}`
+  lock row to make CNPJ uniqueness race-safe across concurrent registrations.
 
 ---
 
@@ -226,10 +239,14 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
   **SSM Run Command** on each InService instance; the SSM agent is enabled. ASG instance refresh
   permissions remain available as an operational fallback.
   If that fallback is used, `MinHealthyPercentage: 0` means the service is down while the refresh runs.
-- The ASG only runs between **11:55** and **13:15** America/Sao_Paulo. A deploy outside that
-  window exits early and the next scheduled instance picks the artifact up at boot.
-- **There are no `cdk` snapshot/jest tests in this repo** (the `test: jest` script
-  exists but `test/` is absent) — `cdk synth` is the only automated gate.
+- **Daytime-only schedule is currently disabled.** `api-stack.ts:288` has the
+  `schedule: {enableCron: '55 11 * * *', disableCron: '15 13 * * *'}` line commented out,
+  so the ASG runs continuously — it does **not** currently go up at 11:55 / down at
+  13:15 America/Sao_Paulo. Treat any doc/comment describing that window as the intended
+  behavior if re-enabled, not the current one; verify against the live line before relying
+  on it either way.
+- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `oidc-stack`) —
+  run `npm test` in addition to `cdk synth`.
 
 ### First-deploy prerequisites (outside CDK)
 1. From `ctech-cdk`, create/update the shared service URL parameters:

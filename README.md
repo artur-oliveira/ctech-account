@@ -26,8 +26,10 @@ exchange or refresh.
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)
 - **RFC 7807 Problem Details** — All error responses use `application/problem+json`
 - **RFC Health Check** — `GET /v1.0/health-check` responds with `application/health+json`
-- **DynamoDB** — Ten tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
-  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `account_support_metrics`, `ctech_scopes`
+- **DynamoDB** — Fourteen tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
+  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `account_support_metrics`, `ctech_scopes`,
+  `account_organizations`, `account_memberships`, `account_invitations`, `account_companies` (platform organizations/companies,
+  added in the membership-unification / platform-organizations work — see `cdk/lib/dynamodb-stack.ts`)
 - **Valkey** — Required in non-dev (see §Configuration): OAuth codes, MFA/passkey challenges, recovery tokens and rate
   limiting live in Valkey with no DynamoDB fallback; the API refuses to boot without it outside dev
 
@@ -681,15 +683,18 @@ the CTech HAProxy edge load balancer, IAM roles, and SSM read permissions. There
 Lambda or API Gateway. The frontend is not in CDK — it is deployed to Cloudflare by
 `.github/workflows/frontend.yml`.
 
-The SSM agent is **disabled by default** on the API instances: deploys replace them
-through an ASG instance refresh rather than running anything over RunCommand, and the
-agent holds ~70 MiB of RSS, which is material on a t4g.nano. `ENABLE_SSM_AGENT=true npx
-cdk deploy` puts it back when you need a Session Manager shell (the boxes have no public
-IPv4 and no SSH). Changing it replaces the instances (user data change).
+The SSM agent is **on** (`bin/ctech-account.ts` hardcodes `ENABLE_SSM_AGENT = true`,
+overriding `ApiStack.enableSsmAgent`'s own `false` default): deploys are a rolling
+restart over SSM RunCommand (`ctech-cdk`'s `deploy-backend` action runs
+`aws ssm send-command` against every InService instance to execute `/opt/app/deploy.sh`),
+not an ASG instance refresh — no instances are replaced on a normal deploy. The boxes
+have no public IPv4 and no SSH, so the agent is also how you get a Session Manager shell.
+`autoscaling:StartInstanceRefresh` permissions exist as an unused operational fallback.
 
-The ASG is scheduled: **up at 11:55, down at 13:15 America/Sao_Paulo**. Outside that
-window the API is unreachable and inbound webhooks fail — deliberate for a development
-environment.
+**The daytime-only ASG schedule is currently disabled.** `cdk/lib/api-stack.ts` has the
+`schedule: {enableCron: '55 11 * * *', disableCron: '15 13 * * *'}` line commented out, so
+the ASG runs continuously — it does not currently go up at 11:55 / down at 13:15
+America/Sao_Paulo. Verify the live line before assuming either behavior.
 
 ### 4 — Seed the bootstrap scope catalog
 
