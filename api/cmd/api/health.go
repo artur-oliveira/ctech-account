@@ -39,6 +39,18 @@ type healthResponse struct {
 	Checks      map[string]healthEntry `json:"checks"`
 }
 
+type livenessResponse struct {
+	Status    string `json:"status"`
+	ReleaseID string `json:"releaseId"`
+	ServiceID string `json:"serviceId"`
+}
+
+func livenessHandler(releaseID string) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		return c.JSON(livenessResponse{Status: "pass", ReleaseID: releaseID, ServiceID: "ctech-account"})
+	}
+}
+
 func healthHandler(db *dynamodb.Client, pingTable string, valkeyClient *cache.Client, releaseID string, valkeyRequired bool) fiber.Handler {
 
 	return func(c fiber.Ctx) error {

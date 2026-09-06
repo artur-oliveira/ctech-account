@@ -178,12 +178,12 @@ export class ApiStack extends cdk.Stack {
       // app-port-alt (8001) turns on the zero-downtime rolling deploy: a second
       // app process nginx round-robins into, so deploy.sh can restart one unit
       // at a time instead of dropping the health check during a restart.
-      userData.addCommands(`ctech_run setup-nginx.sh 8080 8000 /v1.0/health-check 20 5m 8001`);
+      userData.addCommands(`ctech_run setup-nginx.sh 8080 8000 /v1.0/health 20 5m 8001`);
       // Alpine's setup-app-service.sh has no After=-units argument — OpenRC
       // services here only ever declare `need net`.
       userData.addCommands(`ctech_run setup-app-service.sh 'CTech Account API' bootstrap 8001`);
       userData.addCommands(
-        `ctech_run setup-deploy.sh ${deploymentsBucketName} bootstrap 'http://127.0.0.1:8080/v1.0/health-check'`,
+        `ctech_run setup-deploy.sh ${deploymentsBucketName} bootstrap 'http://127.0.0.1:8080/v1.0/health'`,
       );
       userData.addCommands(
         `ctech_run setup-logs.sh ${logsBucketName} ${svcName} ${svcName} /var/log/app /var/log/nginx`,
@@ -218,11 +218,11 @@ export class ApiStack extends cdk.Stack {
     } else {
       scripts!.run(userData, 'setup-ssm-env.sh', ...ssmEnvArgs);
       scripts!.run(userData, 'setup-realip.sh', vpc.vpcCidrBlock);
-      scripts!.run(userData, 'setup-nginx.sh', '8080', '8000', '/v1.0/health-check', '20', '5m', '8001');
+      scripts!.run(userData, 'setup-nginx.sh', '8080', '8000', '/v1.0/health', '20', '5m', '8001');
       scripts!.run(userData, 'setup-app-service.sh', 'CTech Account API', 'bootstrap',
         'network.target nginx.service', '8001');
       scripts!.run(userData, 'setup-deploy.sh', deploymentsBucketName, 'bootstrap',
-        'http://127.0.0.1:8080/v1.0/health-check');
+        'http://127.0.0.1:8080/v1.0/health');
       scripts!.run(userData, 'setup-logs.sh', logsBucketName, svcName, svcName,
         '/var/log/app', '/var/log/nginx');
 
