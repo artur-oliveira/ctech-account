@@ -28,7 +28,8 @@ export const DFE_VERSION_HISTORY: LegalDocumentVersion[] = [
 ]
 
 export const WALLET_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '2.2', updatedAt: '16 de agosto de 2026', href: '/products/wallet'},
+  {version: '3.0', updatedAt: '8 de setembro de 2026', href: '/products/wallet'},
+  {version: '2.2', updatedAt: '16 de agosto de 2026', href: '/products/wallet/v3'},
   {version: '2.0', updatedAt: '19 de julho de 2026', href: '/products/wallet/v2'},
   {version: '1.0', updatedAt: '11 de julho de 2026', href: '/products/wallet/v1'},
 ]
