@@ -23,7 +23,7 @@ export default function TermsPage() {
         <p>
           A plataforma compreende o serviço de identidade digital
           <strong> CTech Account</strong> e os demais produtos e serviços
-          integrados, incluindo, entre outros, CTech DF-e, CTech Wallet,
+          integrados, incluindo, entre outros, CTech DF-e, CTech Ledger,
           CTech Billing e futuros serviços disponibilizados pela CTech.
         </p>
       </LegalSection>

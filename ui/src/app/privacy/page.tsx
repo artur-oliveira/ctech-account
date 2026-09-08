@@ -175,7 +175,7 @@ export default function PrivacyPage() {
           <li>prestadores de serviços de infraestrutura;</li>
           <li>provedores de autenticação;</li>
           <li>instituições financeiras parceiras;</li>
-          <li>o parceiro de pagamentos e a CTech Wallet para geração e
+          <li>o parceiro de pagamentos e a CTech Ledger para geração e
             confirmação de cobranças Pix;</li>
           <li>prestadores de entrega de e-mail para comunicações de cobrança;</li>
           <li>autoridades públicas e órgãos reguladores;</li>

@@ -21,6 +21,7 @@ export type LegalDocumentId =
   | 'wallet'
   | 'wallet-v1'
   | 'wallet-v2'
+  | 'wallet-v3'
   | 'wallet-gaming'
   | 'wallet-gaming-v1'
   | 'poker'
@@ -334,10 +335,61 @@ export const legalDocuments: Record<LegalDocumentId, LegalDocument> = {
     ],
   },
   wallet: {
-    title: 'Termos Adicionais — CTech Wallet',
+    title: 'Termos Adicionais — CTech Ledger',
     description: 'Condições de saldo, Pix, saques e pagamentos internos.',
+    version: '3.0',
+    updatedAt: '8 de setembro de 2026',
+    versions: WALLET_VERSION_HISTORY,
+    intro: 'A Ledger utiliza a infraestrutura financeira da ASAAS Gestão Financeira Instituição de Pagamento S.A. (código 461, CNPJ 19.540.550/0001-21). Cada usuário possui conta de pagamento individual e segregada junto ao parceiro. A CTech não é instituição financeira e a Ledger não constitui conta bancária.',
+    sections: [
+      {
+        heading: '1. Contas individuais e segregação',
+        paragraphs: [
+          'Cada usuário com identidade verificada possui uma conta de pagamento digital individual junto ao parceiro financeiro, vinculada ao seu CPF. Os recursos do usuário são mantidos segregados do patrimônio da CTech e dos demais usuários.',
+          'O saldo não constitui depósito bancário, investimento, crédito ou rendimento. Não há incidência de juros, correção monetária ou qualquer remuneração sobre o saldo.'
+        ]
+      },
+      {
+        heading: '2. Depósitos e identificação',
+        paragraphs: [
+          'Depósitos são realizados exclusivamente por Pix para a conta digital individual do usuário. O valor somente é creditado após confirmação pelo parceiro financeiro e conciliação automática.',
+          'O CPF do pagador deve coincidir com o CPF verificado na conta CTech. Depósitos de terceiros são recusados e devolvidos automaticamente à origem, deduzidos eventuais custos operacionais.'
+        ]
+      },
+      {
+        heading: '3. Saques',
+        paragraphs: [
+          'Saques são realizados por Pix a partir da conta digital individual do usuário. A chave Pix de destino deve pertencer ao mesmo CPF verificado na conta.',
+          'O valor mínimo de saque e as tarifas aplicáveis são exibidos antes da confirmação. A tarifa de saque cobre os custos operacionais da transação e é debitada do saldo do usuário no momento do saque.'
+        ]
+      },
+      {
+        heading: '4. Pagamentos internos',
+        paragraphs: [
+          'O saldo pode ser utilizado para pagar serviços integrados ao ecossistema CTech, incluindo taxas de inscrição em torneios, aluguel de salas e compra de créditos de entretenimento.',
+          'As movimentações internas entre contas de usuários e contas de custódia de torneios são processadas pelo parceiro financeiro e registradas no extrato do usuário.'
+        ]
+      },
+      {
+        heading: '5. MED, bloqueios e retenções',
+        paragraphs: [
+          'Operações podem ser bloqueadas, devolvidas ou ajustadas em razão do Mecanismo Especial de Devolução (MED), ordem judicial ou administrativa, suspeita de fraude, erro operacional ou obrigação regulatória do parceiro financeiro.',
+          'A CTech preservará evidências e, quando permitido por lei ou pelo regulador, notificará o usuário sobre a medida aplicada.'
+        ]
+      },
+      {
+        heading: '6. Encerramento',
+        paragraphs: [
+          'Antes do encerramento da conta, o saldo disponível deve ser sacado pelo usuário. Saldos residuais inferiores ao valor mínimo de saque poderão ser utilizados em serviços CTech ou, após 90 dias de inatividade, revertidos como receita operacional, respeitado o direito de solicitação de saque pelo titular.'
+        ]
+      },
+    ],
+  },
+  'wallet-v3': {
+    title: 'Termos Adicionais — CTech Wallet',
+    description: 'Versão histórica dos termos específicos da CTech Wallet.',
     version: '2.2',
-    updatedAt: '25 de julho de 2026',
+    updatedAt: '16 de agosto de 2026',
     versions: WALLET_VERSION_HISTORY,
     intro: 'A Wallet utiliza a infraestrutura financeira da ASAAS Gestão Financeira Instituição de Pagamento S.A. (código 461, CNPJ 19.540.550/0001-21). Cada usuário possui conta de pagamento individual e segregada junto ao parceiro. A CTech não é instituição financeira e a Wallet não constitui conta bancária.',
     sections: [
@@ -801,7 +853,7 @@ export const legalGroups = [
   {
     title: 'Produtos', links: [
       {href: '/products/dfe', label: 'CTech DF-e', description: legalDocuments.dfe.description},
-      {href: '/products/wallet', label: 'CTech Wallet', description: legalDocuments.wallet.description},
+      {href: '/products/wallet', label: 'CTech Ledger', description: legalDocuments.wallet.description},
       {
         href: '/products/wallet-gaming',
         label: 'Wallet para Jogos',
