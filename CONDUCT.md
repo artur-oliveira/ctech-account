@@ -32,3 +32,5 @@ Instances of abusive, harassing, or otherwise unacceptable behaviour may be repo
 ## Attribution
 
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
+
+Native OAuth clients use PKCE and exact registered reverse-domain callbacks. Never embed confidential client secrets in mobile binaries or grant first-party status through self-service registration.

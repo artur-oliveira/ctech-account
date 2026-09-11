@@ -790,3 +790,18 @@ curl -sI https://accounts.aoctech.app/login  # expect 200
 ## License
 
 Elastic License 2.0 — see [LICENSE.md](LICENSE.md).
+
+### Native OAuth callbacks
+
+OAuth redirect registration also accepts reverse-domain private-use schemes,
+for example `app.aoctech.poker:/oauth/callback`, with an absolute path and no
+host, query or fragment. Registered callbacks still match exactly and public
+clients still require PKCE. This does not grant first-party status, scopes, or
+change cookie-based refresh delivery. CTech Poker's Flutter client captures its
+own refresh cookie in native HTTP and stores it in platform secure storage.
+
+Cross-project impact: enables registration for Poker Android/iOS; existing
+Accounts, DFe, Wallet and Billing HTTPS callbacks remain unchanged. No CDK or
+frontend deployment is required by the validator itself. Operator registration
+of `poker-mobile` remains a separate data action; do not embed a client secret in
+mobile applications.
