@@ -18,7 +18,7 @@ const (
 
 var ErrForbidden = errors.New("client does not belong to this user")
 var ErrInvalidClientType = errors.New("client_type must be public or confidential")
-var ErrInvalidRedirectURI = errors.New("redirect URIs must be absolute https URLs (http allowed for localhost only)")
+var ErrInvalidRedirectURI = errors.New("redirect URIs must be https, localhost http, or a reverse-domain native application scheme")
 var ErrNotConfidential = errors.New("only confidential clients have a secret")
 
 // ErrInvalidScope wraps the first malformed scope for caller-facing messages.
@@ -180,11 +180,19 @@ func generateSecret() (string, error) {
 }
 
 // validateRedirectURIs enforces absolute https redirect URIs, permitting plain
-// http only for localhost development callbacks.
+// http only for localhost development callbacks. Native apps may register a
+// private-use reverse-domain scheme (RFC 8252 section 7.1). Exact registration
+// matching and PKCE still apply; this grants no first-party status or scopes.
 func validateRedirectURIs(uris []string) error {
 	for _, u := range uris {
 		parsed, err := url.Parse(u)
-		if err != nil || parsed.Host == "" {
+		if err != nil {
+			return ErrInvalidRedirectURI
+		}
+		if validNativeRedirect(parsed) {
+			continue
+		}
+		if parsed.Host == "" {
 			return ErrInvalidRedirectURI
 		}
 		switch parsed.Scheme {
@@ -199,4 +207,29 @@ func validateRedirectURIs(uris []string) error {
 		}
 	}
 	return nil
+}
+
+// validNativeRedirect accepts only reverse-domain private-use schemes with an
+// absolute path and no authority, opaque payload, query, credentials or fragment.
+// Browser/executable schemes cannot satisfy this shape. HTTPS app links continue
+// to use the existing HTTPS branch above.
+func validNativeRedirect(uri *url.URL) bool {
+	if uri.Host != "" || uri.User != nil || uri.Opaque != "" || uri.RawQuery != "" || uri.Fragment != "" || !strings.HasPrefix(uri.Path, "/") || uri.Path == "/" {
+		return false
+	}
+	parts := strings.Split(uri.Scheme, ".")
+	if len(parts) < 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || part[0] < 'a' || part[0] > 'z' {
+			return false
+		}
+		for _, ch := range part {
+			if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
