@@ -69,6 +69,8 @@ export class ApiStack extends cdk.Stack {
     // fetched from S3 at boot; the S3 key prefix is their content hash, read from
     // SSM at deploy time, so editing a shared script versions this launch template.
     const userData = ec2.UserData.forLinux();
+    // Version the launch template so the migration also replaces existing Spot hosts.
+    userData.addCommands('# EC2 capacity: t4g.nano On-Demand');
     let scripts: Ec2ScriptRunner | undefined;
 
     if (isAlpine) {
