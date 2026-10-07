@@ -62,7 +62,8 @@ account                       SNS user-erasure topic           SQS <svc>-erasure
 `organizations` lists the organizations where the user is the **only member**. They are
 erased in full with the user (overview D4). It is frozen when the request reaches LOCKED
 (computed by ctech-account, which owns tenancy) and never recomputed by participants.
-Participants that hold org-scoped data (today: dfe) erase everything keyed by those ids,
+Participants that hold org-scoped data (today: dfe, and billing's finance module under
+`{organization_id}#{mode}`) erase everything keyed by those ids,
 and the consumer tombstones each org (`ORG#{org_id}` in the erasure-state table, §4.5) so jobs and webhooks for it are dropped.
 Empty for `service` scope.
 

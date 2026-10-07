@@ -137,6 +137,21 @@ Bucket: `*-documents`.
 | Payment methods / tokens at the gateway | Erase (ask gateway to delete the customer/token) | art. 18 §6 |
 | Subscriptions | Cancel, then Erase metadata not tied to an invoice | — |
 
+**Finance module ("mini ERP",** `ctech-billing/docs/specs/2026-10-07-finance-erp-design.md`,
+ADR 0026). Tables `{env}_billing_ledger_accounts`, `ledger_transactions`, `bills`,
+`recurrences`, `cards`, `imports`; every partition key starts with the space `S`.
+
+| Item | Treatment | Basis |
+|---|---|---|
+| **Personal space** (`S = USER#{sub}#live` and `USER#{sub}#test`): ledger accounts, transactions, entries, summaries, bills, recurrences, cards, statements, purchases, import locks, personal-space finance audit rows | **Erase** everything under both prefixes, in every finance table (ADR 0026: no TTL, purge on account deletion) | Management notes of the person about their own money; no legal floor (ADR 0026 "Limits accepted") |
+| **Organization space** (`S = {organization_id}#{mode}`) of an organization that **survives** | Untouched: the data is the organization's | — |
+| **Organization space** of an organization erased with the user (`organizations[]`, D4) | **Erase** everything under `{organization_id}#live` and `#test` | Same purge path ADR 0026 defines for "organization closed" |
+| The seeded *Assinaturas CTech* payable in the personal space | Erased with the space. The CTech invoice it mirrors stays in tenant zero (retained, fiscal) | — |
+| Import batches/lines | TTL 90 days already; erased with the space if still present | — |
+
+Billing's purge test must list every finance table and assert each one is covered (ADR 0026
+consequence); the `PurgeFunc` reuses that per-prefix job.
+
 **Blockers:** open/overdue invoice; active subscription that cannot be cancelled
 immediately (cancel it as part of the confirmation flow); payment in dispute.
 
