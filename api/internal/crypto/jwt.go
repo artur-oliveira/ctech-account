@@ -15,6 +15,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/utils"
+	commoncache "gopkg.aoctech.app/api-commons/cache"
 )
 
 // JWTService signs with the active key and verifies against active+previous,
@@ -30,6 +31,7 @@ type JWTService struct {
 	issuer         string        // Verify() rejects tokens whose iss doesn't match this value
 	accessTokenTTL time.Duration
 	idTokenTTL     time.Duration
+	revocation     commoncache.Backend // nil disables the revocation check; see SetRevocation
 }
 
 // NewJWTService wraps the single key loaded by config (RSA_PRIVATE_KEY or
