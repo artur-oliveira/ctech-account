@@ -186,3 +186,39 @@ func TestRateLimit_DisabledCacheIsNoop(t *testing.T) {
 		}
 	}
 }
+
+// CountOnlySuccesses budgets an action, not attempts: rejected attempts (typos,
+// a wrong password, a returned problem) must not use up the budget.
+func TestRateLimit_CountOnlySuccesses(t *testing.T) {
+	c := cache.NewInMemory()
+	mw := RateLimit(RateLimitConfig{
+		Cache: c, Prefix: "deletion_req", Max: 2, Window: time.Minute,
+		KeyFunc: staticKey, CountOnlySuccesses: true,
+	})
+	status := fiber.StatusBadRequest
+	app := fiber.New()
+	app.Post("/x", mw, func(c fiber.Ctx) error {
+		if status == fiber.StatusTeapot {
+			return fiber.NewError(fiber.StatusTeapot) // a returned error is a failure too
+		}
+		return c.SendStatus(status)
+	})
+	for i := 0; i < 5; i++ {
+		if got := doPost(t, app); got != fiber.StatusBadRequest {
+			t.Fatalf("failure %d: want 400, got %d", i+1, got)
+		}
+	}
+	status = fiber.StatusTeapot
+	for i := 0; i < 3; i++ {
+		_ = doPost(t, app)
+	}
+	status = fiber.StatusAccepted
+	for i := 0; i < 2; i++ {
+		if got := doPost(t, app); got != fiber.StatusAccepted {
+			t.Fatalf("success %d: want 202, got %d", i+1, got)
+		}
+	}
+	if got := doPost(t, app); got != fiber.StatusTooManyRequests {
+		t.Fatalf("third success: want 429, got %d", got)
+	}
+}

@@ -25,9 +25,11 @@ func NewDeletionHandler(svc *deletion.Service, users *user.Service, auditSvc *au
 }
 
 // Register mounts the signed-in routes on account and the e-mail-link routes
-// on auth (public: the link token is the credential).
-func (h *DeletionHandler) Register(account, auth fiber.Router, requestLimiter fiber.Handler) {
-	account.Post("/deletion", middleware.RequireScope(scopes.AccountDeletionWrite), requestLimiter, h.request)
+// on auth (public: the link token is the credential). selfOnly restricts the
+// request to this service's own frontend (spec §4): a third-party app granted
+// the scope must not be able to start a deletion.
+func (h *DeletionHandler) Register(account, auth fiber.Router, selfOnly, requestLimiter fiber.Handler) {
+	account.Post("/deletion", middleware.RequireScope(scopes.AccountDeletionWrite), selfOnly, requestLimiter, h.request)
 	account.Get("/deletion", middleware.RequireScope(scopes.AccountProfileRead), h.status)
 	auth.Post("/deletion/confirm", h.confirm)
 	auth.Post("/deletion/cancel", h.cancel)

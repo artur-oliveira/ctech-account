@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 )
 
 const deletionPhrase = "EXCLUIR MINHA CONTA"
@@ -79,5 +82,21 @@ func TestDeletion_BadLinks(t *testing.T) {
 	}
 	if resp := ta.do("POST", "/v1.0/auth/deletion/cancel", map[string]string{"request_id": "nope", "token": "nope"}); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unknown cancel link: %d, want 401", resp.StatusCode)
+	}
+}
+
+// A third-party client granted account:deletion:write must not be able to
+// start a deletion (spec §4: self client only).
+func TestDeletion_RequiresSelfClient(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "third@example.com", "Sup3rSecret!", "Ana")
+	now := time.Now().Unix()
+	token, err := ta.jwtSvc.SignAccessToken(u.ID(), "sess-test", "third-party-app", testAccountScopes(), "http://localhost", []string{"http://localhost"}, now, now, []string{sessionDomain.AMRPassword, sessionDomain.AMRTOTP}, "")
+	if err != nil {
+		t.Fatalf("signing token: %v", err)
+	}
+	resp := ta.doWithToken("POST", "/v1.0/account/deletion", map[string]string{"confirmation_phrase": deletionPhrase}, token)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("third-party client: %d %s, want 403", resp.StatusCode, bodyString(resp))
 	}
 }

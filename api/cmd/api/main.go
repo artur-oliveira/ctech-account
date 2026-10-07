@@ -460,9 +460,10 @@ func main() {
 		)
 		deletionLimiter := middleware.RateLimit(middleware.RateLimitConfig{
 			Cache: valkeyClient, Prefix: "deletion_req", Max: 3, Window: 30 * 24 * time.Hour,
-			KeyFunc: middleware.GetUserID, CountOnlyFailures: false, FailClosed: true,
+			KeyFunc: middleware.GetUserID, CountOnlySuccesses: true, FailClosed: true,
 		})
-		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"), deletionLimiter)
+		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
+			middleware.RequireClientID(cfg.SelfClientID), deletionLimiter)
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment
 		go deletion.RunWorker(ctx, deletionSvc, func(ctx context.Context) (bool, error) {
 			if !valkeyClient.Enabled() {
