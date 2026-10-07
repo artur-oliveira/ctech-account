@@ -1,5 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import {Construct} from 'constructs';
 import {Environment} from './types';
@@ -109,6 +111,17 @@ export class IAMStack extends cdk.Stack {
         `arn:aws:s3:::${environment}-ctech-ec2-scripts-alpine/*`,
       ],
     }));
+
+    // Account-deletion saga fan-out (docs/specs/2026-10-06-account-deletion-saga-protocol.md §3).
+    // Participants subscribe their own SQS queues; the ARN is published in SSM for them.
+    const erasureTopic = new sns.Topic(this, 'UserErasureTopic', {
+      topicName: `${environment}-account-user-erasure`,
+    });
+    erasureTopic.grantPublish(appRole);
+    new ssm.StringParameter(this, 'UserErasureTopicArn', {
+      parameterName: `/ctech/${environment}/account/erasure-topic-arn`,
+      stringValue: erasureTopic.topicArn,
+    });
 
     this.instanceProfileName = `${environment}-ctech-account-instance-profile`;
 

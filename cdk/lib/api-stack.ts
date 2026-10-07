@@ -126,6 +126,7 @@ export class ApiStack extends cdk.Stack {
       `AWS_USE_DUALSTACK_ENDPOINT=true`,
       `PORT=8000`,
       `KYC_DOCUMENTS_BUCKET=${kycDocumentsBucketName}`,
+      `ACCOUNT_ERASURE_TOPIC_ARN=arn:aws:sns:${this.region}:${this.account}:${environment}-account-user-erasure`,
       `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
       `TRUSTED_PROXIES=127.0.0.1`,
       `ENV`,
