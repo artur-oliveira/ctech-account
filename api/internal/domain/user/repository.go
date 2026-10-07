@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
 	"gopkg.aoctech.app/api-commons/observability"
@@ -25,6 +26,9 @@ type Repository interface {
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Create(ctx context.Context, u *User) error
 	Update(ctx context.Context, userID string, updates map[string]any) error
+	// ClearDeletionIfRequest removes the deletion block only while it still
+	// belongs to requestID (conditional write); otherwise it is a no-op.
+	ClearDeletionIfRequest(ctx context.Context, userID, requestID string) error
 }
 
 type dynamoRepository struct {
@@ -124,4 +128,17 @@ func (r *dynamoRepository) Update(ctx context.Context, userID string, updates ma
 	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	_, err := r.table.UpdateItem(ctx, BuildPK(userID), nil, updates)
 	return err
+}
+
+func (r *dynamoRepository) ClearDeletionIfRequest(ctx context.Context, userID, requestID string) error {
+	_, err := database.ConditionalUpdate(ctx, r.db, r.tableName, BuildPK(userID), nil,
+		map[string]any{
+			"deletion_state":      nil,
+			"deletion_request_id": nil,
+			"updated_at":          time.Now().UTC().Format(time.RFC3339),
+		},
+		"#deletion_request_id = :rid", nil,
+		map[string]types.AttributeValue{":rid": &types.AttributeValueMemberS{Value: requestID}},
+	)
+	return err // a failed condition means a newer request owns the block: nothing to do
 }

@@ -372,18 +372,10 @@ func (s *Service) MarkPendingDeletion(ctx context.Context, userID, requestID str
 }
 
 // ClearPendingDeletion lifts the block only while it still belongs to
-// requestID, so a late unlock of an old request cannot free a newer one.
-// ponytail: read-then-write, not a conditional update; only the deletion flow
-// writes these fields and a user has at most one open request.
+// requestID (conditional write), so a late unlock of an old request cannot
+// free a newer one.
 func (s *Service) ClearPendingDeletion(ctx context.Context, userID, requestID string) error {
-	u, err := s.repo.GetByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if u.DeletionRequestID != requestID {
-		return nil
-	}
-	return s.repo.Update(ctx, userID, map[string]any{"deletion_state": nil, "deletion_request_id": nil})
+	return s.repo.ClearDeletionIfRequest(ctx, userID, requestID)
 }
 
 // CheckPassword proves the caller knows the account password (identity check

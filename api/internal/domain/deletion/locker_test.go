@@ -2,11 +2,14 @@ package deletion
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/apikey"
+	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/erasure"
+	"gopkg.aoctech.app/api-commons/jwtverify"
 )
 
 type fakeBlocker struct{ marked, cleared string }
@@ -35,10 +38,9 @@ func (f *fakeKeys) Revoke(_ context.Context, _, id string) error {
 	return nil
 }
 
-type fakeTokens struct{ revoked, unrevoked int }
+type fakeTokens struct{ revoked int }
 
 func (f *fakeTokens) Revoke(context.Context, string, time.Time) error { f.revoked++; return nil }
-func (f *fakeTokens) Unrevoke(context.Context, string) error          { f.unrevoked++; return nil }
 
 type fakePub struct{ msgs []erasure.Message }
 
@@ -78,8 +80,8 @@ func TestAccountLocker_UnlockAndErasePublishWithTheirOwnTimestamps(t *testing.T)
 	if err := l.Erase(context.Background(), r); err != nil {
 		t.Fatalf("Erase: %v", err)
 	}
-	if users.cleared != "r1" || tokens.unrevoked != 1 || len(pub.msgs) != 2 {
-		t.Fatalf("cleared=%q unrevoked=%d msgs=%d", users.cleared, tokens.unrevoked, len(pub.msgs))
+	if users.cleared != "r1" || tokens.revoked != 0 || len(pub.msgs) != 2 {
+		t.Fatalf("cleared=%q revoked=%d msgs=%d", users.cleared, tokens.revoked, len(pub.msgs))
 	}
 	if pub.msgs[0].Type != erasure.TypeUnlocked || !pub.msgs[0].IssuedAt.Equal(parseTime(r.CancelledAt)) ||
 		pub.msgs[1].Type != erasure.TypeErase || !pub.msgs[1].IssuedAt.Equal(parseTime(r.LockedAt)) {
@@ -95,5 +97,25 @@ func TestAccountLocker_NoServicesPublishesNothing(t *testing.T) {
 	}
 	if len(pub.msgs) != 0 {
 		t.Fatal("with no participants configured nothing is published")
+	}
+}
+
+// A late (retried) unlock of an old request must not lift the revocation a
+// newer request wrote. New tokens after a cancel are issued after the cutoff,
+// so nothing ever needs the entry removed early.
+func TestAccountLocker_StaleUnlockKeepsNewerRevocation(t *testing.T) {
+	ctx := context.Background()
+	backend := commoncache.NewMemoryBackend(16)
+	l := NewAccountLocker(&fakeBlocker{}, &fakeSessions{}, &fakeKeys{}, NewJWTRevoker(backend), &fakePub{}, nil)
+	newer := &Request{ID: "r2", UserID: "u1", ConfirmedAt: ts(time.Now())}
+	if err := l.Lock(ctx, newer); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	stale := &Request{ID: "r1", UserID: "u1", CancelledAt: ts(time.Now().Add(-time.Hour))}
+	if err := l.Unlock(ctx, stale); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	if err := jwtverify.CheckRevoked(ctx, backend, "u1", time.Now().Add(-time.Minute).Unix()); !errors.Is(err, jwtverify.ErrTokenRevoked) {
+		t.Fatalf("pre-lock token must stay revoked, got %v", err)
 	}
 }

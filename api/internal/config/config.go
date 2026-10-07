@@ -94,6 +94,13 @@ type Config struct {
 	// always agree (BUG-027). Defaults to 15 minutes.
 	AccessTokenTTL time.Duration
 
+	// Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md).
+	// Disabled unless ACCOUNT_DELETION_ENABLED=true; ERASURE_SERVICES lists the
+	// participants that must ack (empty until Phase 3).
+	AccountDeletionEnabled bool
+	ErasureTopicARN        string
+	ErasureServices        []string
+
 	// Account lockout settings
 	AccountLockoutThreshold       int  // ACCOUNT_LOCKOUT_THRESHOLD env var
 	AccountLockoutDurationMinutes int  // ACCOUNT_LOCKOUT_DURATION_MINUTES env var
@@ -173,6 +180,15 @@ func Load() (*Config, error) {
 		log.Printf("config: WEBAUTHN_RPID %q does not match any RPOrigins entry %v — WebAuthn ceremonies will fail with a SecurityError", rpid, rpOrigins)
 	}
 
+	var erasureServices []string
+	if raw := os.Getenv("ERASURE_SERVICES"); raw != "" {
+		for _, s := range strings.Split(raw, ",") {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				erasureServices = append(erasureServices, trimmed)
+			}
+		}
+	}
+
 	return &Config{
 		AppVersion:    getEnv("APP_VERSION", DefaultAppVersion),
 		Environment:   getEnv("ENVIRONMENT", "dev"),
@@ -182,28 +198,31 @@ func Load() (*Config, error) {
 		SigningKey:    signingKey,
 		SigningKeyAlg: signingAlg,
 
-		PublicKeyKID:       kid,
-		BaseURL:            baseURL,
-		Audience:           getEnv("AUDIENCE", appURL),
-		AllowedOrigins:     origins,
-		Port:               port,
-		CookieSecure:       getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
-		CookieDomain:       os.Getenv("COOKIE_DOMAIN"),
-		RPID:               rpid,
-		RPOrigins:          rpOrigins,
-		FromEmail:          getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
-		AppURL:             appURL,
-		TurnstileSecretKey: os.Getenv("TURNSTILE_SECRET_KEY"),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		MaxMindAccountID:   os.Getenv("MAXMIND_ACCOUNT_ID"),
-		MaxMindLicenseKey:  os.Getenv("MAXMIND_LICENSE_KEY"),
-		MaxMindDBPath:      getEnv("MAXMIND_DB_PATH", "/var/lib/ctech-account/GeoLite2-City.mmdb"),
-		KYCDocumentsBucket: os.Getenv("KYC_DOCUMENTS_BUCKET"),
-		TrustedProxies:     trustedProxies,
-		TOTPIssuer:         TOTPIssuer,
-		SelfClientID:       getEnv("SELF_CLIENT_ID", "accounts"),
-		AccessTokenTTL:     accessTokenTTL,
+		PublicKeyKID:           kid,
+		BaseURL:                baseURL,
+		Audience:               getEnv("AUDIENCE", appURL),
+		AllowedOrigins:         origins,
+		Port:                   port,
+		CookieSecure:           getEnv("ENVIRONMENT", "dev") != "dev" && getEnv("ENVIRONMENT", "dev") != "development",
+		CookieDomain:           os.Getenv("COOKIE_DOMAIN"),
+		RPID:                   rpid,
+		RPOrigins:              rpOrigins,
+		FromEmail:              getEnv("FROM_EMAIL", "no-reply@aoctech.app"),
+		AppURL:                 appURL,
+		TurnstileSecretKey:     os.Getenv("TURNSTILE_SECRET_KEY"),
+		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:     os.Getenv("GOOGLE_CLIENT_SECRET"),
+		MaxMindAccountID:       os.Getenv("MAXMIND_ACCOUNT_ID"),
+		MaxMindLicenseKey:      os.Getenv("MAXMIND_LICENSE_KEY"),
+		MaxMindDBPath:          getEnv("MAXMIND_DB_PATH", "/var/lib/ctech-account/GeoLite2-City.mmdb"),
+		KYCDocumentsBucket:     os.Getenv("KYC_DOCUMENTS_BUCKET"),
+		TrustedProxies:         trustedProxies,
+		TOTPIssuer:             TOTPIssuer,
+		SelfClientID:           getEnv("SELF_CLIENT_ID", "accounts"),
+		AccessTokenTTL:         accessTokenTTL,
+		AccountDeletionEnabled: os.Getenv("ACCOUNT_DELETION_ENABLED") == "true",
+		ErasureTopicARN:        os.Getenv("ACCOUNT_ERASURE_TOPIC_ARN"),
+		ErasureServices:        erasureServices,
 		// Account lockout settings
 		AccountLockoutThreshold:       positiveIntEnv("ACCOUNT_LOCKOUT_THRESHOLD", 5),
 		AccountLockoutDurationMinutes: positiveIntEnv("ACCOUNT_LOCKOUT_DURATION_MINUTES", 15),

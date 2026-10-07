@@ -320,6 +320,11 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
+	// The mfa_token outlives the password check by up to 5 minutes; a deletion
+	// confirmed in that window must still stop the session.
+	if u.DeletionState != "" {
+		return apierror.AccountPendingDeletion(c.Path()).Send(c)
+	}
 
 	loc := geo.Lookup(payload.IP)
 	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), payload.DeviceName, loc.Country)

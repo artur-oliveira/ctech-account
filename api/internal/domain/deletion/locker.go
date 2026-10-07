@@ -25,9 +25,11 @@ type APIKeys interface {
 	Revoke(ctx context.Context, userID, keyID string) error
 }
 
+// TokenRevoker cuts live access tokens. There is no undo on purpose: tokens
+// issued after a cancel are newer than the cutoff, and removing the entry
+// early could lift the revocation of a newer request.
 type TokenRevoker interface {
 	Revoke(ctx context.Context, sub string, cutoff time.Time) error
-	Unrevoke(ctx context.Context, sub string) error
 }
 
 type Publisher interface {
@@ -71,14 +73,12 @@ func (l *AccountLocker) Lock(ctx context.Context, r *Request) error {
 	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt))
 }
 
-// Unlock re-enables sign-in. Revoked sessions and API keys stay revoked: the
-// user signs in again.
+// Unlock re-enables sign-in. Revoked sessions, API keys and the token
+// revocation entry stay as they are: the user signs in again, and the entry
+// expires on its own (jwtverify.RevocationTTL).
 func (l *AccountLocker) Unlock(ctx context.Context, r *Request) error {
 	if err := l.users.ClearPendingDeletion(ctx, r.UserID, r.ID); err != nil {
 		return fmt.Errorf("unblocking sign-in: %w", err)
-	}
-	if err := l.tokens.Unrevoke(ctx, r.UserID); err != nil {
-		return fmt.Errorf("clearing token revocation: %w", err)
 	}
 	return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt))
 }
@@ -106,8 +106,4 @@ func NewJWTRevoker(c commoncache.Backend) *JWTRevoker { return &JWTRevoker{c: c}
 
 func (r *JWTRevoker) Revoke(ctx context.Context, sub string, cutoff time.Time) error {
 	return jwtverify.Revoke(ctx, r.c, sub, cutoff, jwtverify.RevocationTTL)
-}
-
-func (r *JWTRevoker) Unrevoke(ctx context.Context, sub string) error {
-	return jwtverify.Unrevoke(ctx, r.c, sub)
 }

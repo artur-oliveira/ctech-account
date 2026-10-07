@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,7 +165,7 @@ func (s *codeTOTPService) Validate(_ context.Context, _, code string) (bool, err
 // newMFAChallengeApp wires only the /auth/mfa/challenge route against a real
 // (in-memory) cache, so mfa_token issue/consume semantics are exercised for
 // real instead of the disabledCache used by newTestApp.
-func newMFAChallengeApp(t *testing.T) (*fiber.App, *cache.Client, *userDomain.User) {
+func newMFAChallengeApp(t *testing.T) (*fiber.App, *cache.Client, *userDomain.User, *userDomain.Service) {
 	t.Helper()
 
 	memCache := cache.NewInMemory()
@@ -193,7 +194,7 @@ func newMFAChallengeApp(t *testing.T) (*fiber.App, *cache.Client, *userDomain.Us
 	v1 := app.Group("/v1.0")
 	handler.NewAuthHandler(userSvc, sessionSvc, &codeTOTPService{correctCode: "111111"}, nil, memCache, cfg, nil, auditSvc).Register(v1)
 
-	return app, memCache, u
+	return app, memCache, u, userSvc
 }
 
 // TestMFAChallenge_WrongCodeThenRightCode_TokenSurvives is a regression test:
@@ -202,7 +203,7 @@ func newMFAChallengeApp(t *testing.T) (*fiber.App, *cache.Client, *userDomain.Us
 // and the user was stuck. A wrong code must fail with "unauthorized" while
 // leaving the token valid for a subsequent correct attempt.
 func TestMFAChallenge_WrongCodeThenRightCode_TokenSurvives(t *testing.T) {
-	app, memCache, u := newMFAChallengeApp(t)
+	app, memCache, u, _ := newMFAChallengeApp(t)
 
 	rawToken := "test-mfa-token"
 	hashHex := crypto.HashToken(rawToken)
@@ -233,5 +234,26 @@ func TestMFAChallenge_WrongCodeThenRightCode_TokenSurvives(t *testing.T) {
 	right := doChallenge("111111")
 	if right.StatusCode != http.StatusOK {
 		t.Fatalf("correct code after wrong attempt: expected 200, got %d: %s", right.StatusCode, bodyString(right))
+	}
+}
+
+// An mfa_token issued at login stays valid for 5 minutes. A deletion confirmed
+// inside that window must still stop the challenge from opening a session.
+func TestMFAChallenge_PendingDeletionRefused(t *testing.T) {
+	app, memCache, u, userSvc := newMFAChallengeApp(t)
+	rawToken := "test-mfa-token-pending"
+	payload := map[string]string{"user_id": u.ID(), "device_name": "Test Device", "ip": "127.0.0.1", "user_agent": "test-agent", "primary_amr": "pwd"}
+	if err := memCache.Set(context.Background(), "mfa_token:"+crypto.HashToken(rawToken), payload, 5*time.Minute); err != nil {
+		t.Fatalf("seeding mfa_token: %v", err)
+	}
+	if err := userSvc.MarkPendingDeletion(context.Background(), u.ID(), "req-1"); err != nil {
+		t.Fatalf("MarkPendingDeletion: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"mfa_token": rawToken, "code": "111111"})
+	req := httptest.NewRequest(http.MethodPost, "/v1.0/auth/mfa/challenge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := app.Test(req)
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(bodyString(resp), "account-pending-deletion") {
+		t.Fatalf("status %d body %s, want 403 account-pending-deletion", resp.StatusCode, bodyString(resp))
 	}
 }

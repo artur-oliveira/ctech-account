@@ -21,8 +21,9 @@ func (r supportUserRepo) GetByID(_ context.Context, id string) (*user.User, erro
 func (supportUserRepo) GetByEmail(context.Context, string) (*user.User, error) {
 	return nil, user.ErrNotFound
 }
-func (supportUserRepo) Create(context.Context, *user.User) error             { return nil }
-func (supportUserRepo) Update(context.Context, string, map[string]any) error { return nil }
+func (supportUserRepo) Create(context.Context, *user.User) error                     { return nil }
+func (supportUserRepo) Update(context.Context, string, map[string]any) error         { return nil }
+func (supportUserRepo) ClearDeletionIfRequest(context.Context, string, string) error { return nil }
 
 func TestRequireSupportRole(t *testing.T) {
 	t.Parallel()

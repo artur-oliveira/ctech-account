@@ -48,3 +48,10 @@ const (
 	// the accepted versions and the method that captured them.
 	EventTermsAccepted = "auth.terms_accepted"
 )
+
+// Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md §10).
+const (
+	EventDeletionRequested = "account.deletion.requested"
+	EventDeletionConfirmed = "account.deletion.confirmed"
+	EventDeletionCancelled = "account.deletion.cancelled"
+)

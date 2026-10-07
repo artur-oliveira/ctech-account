@@ -27,6 +27,7 @@ const (
 	AccountKYCRead           = "account:kyc:read"
 	AccountKYCWrite          = "account:kyc:write"
 	AccountTermsWrite        = "account:terms:write"
+	AccountDeletionWrite     = "account:deletion:write"
 )
 
 //go:embed account-scope-manifest.json
@@ -66,6 +67,7 @@ func AccountUserScopes() []string {
 		AccountKYCRead,
 		AccountKYCWrite,
 		AccountTermsWrite,
+		AccountDeletionWrite,
 	}
 	sort.Strings(result)
 	return result
