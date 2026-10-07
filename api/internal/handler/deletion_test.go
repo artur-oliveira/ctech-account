@@ -100,3 +100,20 @@ func TestDeletion_RequiresSelfClient(t *testing.T) {
 		t.Fatalf("third-party client: %d %s, want 403", resp.StatusCode, bodyString(resp))
 	}
 }
+
+// The identity check must not become an unlimited password oracle for
+// whoever holds an access token.
+func TestDeletion_PasswordGuessingIsLimited(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "guess@example.com", "Sup3rSecret!", "Ana")
+	stale := ta.issueStaleToken(t, u.ID())
+	body := map[string]string{"confirmation_phrase": deletionPhrase, "password": "wrong"}
+	for i := 0; i < 5; i++ {
+		if resp := ta.doWithToken("POST", "/v1.0/account/deletion", body, stale); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: %d, want 401", i+1, resp.StatusCode)
+		}
+	}
+	if resp := ta.doWithToken("POST", "/v1.0/account/deletion", body, stale); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("6th wrong password: %d, want 429", resp.StatusCode)
+	}
+}

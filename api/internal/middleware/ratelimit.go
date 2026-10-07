@@ -159,3 +159,21 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		return c.Next()
 	}
 }
+
+// DeletionRequestLimiters guard POST /v1.0/account/deletion, per user:
+//   - a budget of 3 accepted requests per 30 days (typos and rejected attempts
+//     do not consume it, so a user who lost the e-mail can always ask again);
+//   - a password brute-force guard on the identity check (failures only), so
+//     the endpoint is no password oracle for a stolen access token.
+func DeletionRequestLimiters(c *cache.Client) []fiber.Handler {
+	return []fiber.Handler{
+		RateLimit(RateLimitConfig{
+			Cache: c, Prefix: "deletion_req", Max: 3, Window: 30 * 24 * time.Hour,
+			KeyFunc: GetUserID, CountOnlySuccesses: true, FailClosed: true,
+		}),
+		RateLimit(RateLimitConfig{
+			Cache: c, Prefix: "deletion_pw", Max: FailedLoginMax, Window: FailedLoginWindow,
+			KeyFunc: GetUserID, CountOnlyFailures: true, FailClosed: true,
+		}),
+	}
+}

@@ -28,8 +28,12 @@ func NewDeletionHandler(svc *deletion.Service, users *user.Service, auditSvc *au
 // on auth (public: the link token is the credential). selfOnly restricts the
 // request to this service's own frontend (spec §4): a third-party app granted
 // the scope must not be able to start a deletion.
-func (h *DeletionHandler) Register(account, auth fiber.Router, selfOnly, requestLimiter fiber.Handler) {
-	account.Post("/deletion", middleware.RequireScope(scopes.AccountDeletionWrite), selfOnly, requestLimiter, h.request)
+func (h *DeletionHandler) Register(account, auth fiber.Router, selfOnly fiber.Handler, limiters ...fiber.Handler) {
+	chain := []any{selfOnly}
+	for _, l := range limiters {
+		chain = append(chain, l)
+	}
+	account.Post("/deletion", middleware.RequireScope(scopes.AccountDeletionWrite), append(chain, h.request)...)
 	account.Get("/deletion", middleware.RequireScope(scopes.AccountProfileRead), h.status)
 	auth.Post("/deletion/confirm", h.confirm)
 	auth.Post("/deletion/cancel", h.cancel)
@@ -55,6 +59,10 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	}
 	userID := middleware.GetUserID(c)
 	if err := h.verifyIdentity(c, userID, req.Password); err != nil {
+		// Sent here, not returned: the rate limiters read the response status.
+		if p, ok := errors.AsType[*apierror.Problem](err); ok {
+			return p.Send(c)
+		}
 		return err
 	}
 	r, err := h.svc.Request(c.Context(), userID)
