@@ -6,6 +6,7 @@ code. **The implementation in `api/`, `ui/`, `cdk/` is always the source of trut
 When a spec disagrees with shipped code, trust the code and flag it.
 
 Cross-links:
+
 - Root [`README.md`](../README.md) — authoritative feature/endpoint/config reference.
 - [`PLAN.md`](../PLAN.md) — current sprint state.
 - Per-layer docs: [`api/ENDPOINTS.md`](../api/ENDPOINTS.md),
@@ -15,35 +16,39 @@ Cross-links:
 
 ## Security reviews
 
-| File | Topic |
-|------|-------|
-| [`2026-07-16-security-review.md`](2026-07-16-security-review.md) | General security review findings |
+| File                                                                                                       | Topic                                       |
+|------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| [`2026-07-16-security-review.md`](2026-07-16-security-review.md)                                           | General security review findings            |
 | [`specs/2026-07-19-api-security-audit-remediation.md`](specs/2026-07-19-api-security-audit-remediation.md) | Remediation plan for the API security audit |
 
 ---
 
 ## Design specs
 
-| File | Topic |
-|------|-------|
-| [`specs/2026-07-10-account-hardening-design.md`](specs/2026-07-10-account-hardening-design.md) | Account-hardening design (sessions, MFA, etc.) |
-| [`specs/2026-07-10-kyc-design.md`](specs/2026-07-10-kyc-design.md) | KYC design (document-based, manual review) |
-| [`specs/2026-07-15-kyc-manual.md`](specs/2026-07-15-kyc-manual.md) | Manual KYC review process |
-| [`specs/2026-07-15-kyc-manual.md`](specs/2026-07-15-kyc-manual.md) | KYC manual-review addendum |
-| [`specs/2026-07-13-cloudfront-ranges-ipv6-design.md`](specs/2026-07-13-cloudfront-ranges-ipv6-design.md) | CloudFront IPv6 / origin-range realip design |
-| [`specs/2026-07-10-kyc-design.md`](specs/2026-07-10-kyc-design.md) | (see above) |
+| File                                                                                                         | Topic                                                            |
+|--------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| [`specs/2026-10-06-account-deletion-overview.md`](specs/2026-10-06-account-deletion-overview.md)             | LGPD account deletion / service unlink — overview (draft)        |
+| [`specs/2026-10-06-account-deletion-data-inventory.md`](specs/2026-10-06-account-deletion-data-inventory.md) | Account deletion — per-service data inventory & retention matrix |
+| [`specs/2026-10-06-account-deletion-saga-protocol.md`](specs/2026-10-06-account-deletion-saga-protocol.md)   | Account deletion — cross-service erasure saga contract           |
+| [`specs/2026-10-06-account-deletion-ctech-account.md`](specs/2026-10-06-account-deletion-ctech-account.md)   | Account deletion — ctech-account implementation                  |
+| [`specs/2026-07-10-account-hardening-design.md`](specs/2026-07-10-account-hardening-design.md)               | Account-hardening design (sessions, MFA, etc.)                   |
+| [`specs/2026-07-10-kyc-design.md`](specs/2026-07-10-kyc-design.md)                                           | KYC design (document-based, manual review)                       |
+| [`specs/2026-07-15-kyc-manual.md`](specs/2026-07-15-kyc-manual.md)                                           | Manual KYC review process                                        |
+| [`specs/2026-07-15-kyc-manual.md`](specs/2026-07-15-kyc-manual.md)                                           | KYC manual-review addendum                                       |
+| [`specs/2026-07-13-cloudfront-ranges-ipv6-design.md`](specs/2026-07-13-cloudfront-ranges-ipv6-design.md)     | CloudFront IPv6 / origin-range realip design                     |
+| [`specs/2026-07-10-kyc-design.md`](specs/2026-07-10-kyc-design.md)                                           | (see above)                                                      |
 
 ---
 
 ## Implementation plans
 
-| File | Topic |
-|------|-------|
-| [`plans/2026-07-10-kyc.md`](plans/2026-07-10-kyc.md) | KYC implementation plan |
-| [`plans/2026-07-10-audit-log.md`](plans/2026-07-10-audit-log.md) | Audit-log implementation plan |
-| [`plans/2026-07-10-step-up-auth.md`](plans/2026-07-10-step-up-auth.md) | Step-up authentication plan |
-| [`plans/2026-07-10-jwks-rotation.md`](plans/2026-07-10-jwks-rotation.md) | JWKS key-rotation plan |
-| [`plans/2026-07-15-kyc-manual.md`](plans/2026-07-15-kyc-manual.md) | Manual KYC plan |
+| File                                                                     | Topic                         |
+|--------------------------------------------------------------------------|-------------------------------|
+| [`plans/2026-07-10-kyc.md`](plans/2026-07-10-kyc.md)                     | KYC implementation plan       |
+| [`plans/2026-07-10-audit-log.md`](plans/2026-07-10-audit-log.md)         | Audit-log implementation plan |
+| [`plans/2026-07-10-step-up-auth.md`](plans/2026-07-10-step-up-auth.md)   | Step-up authentication plan   |
+| [`plans/2026-07-10-jwks-rotation.md`](plans/2026-07-10-jwks-rotation.md) | JWKS key-rotation plan        |
+| [`plans/2026-07-15-kyc-manual.md`](plans/2026-07-15-kyc-manual.md)       | Manual KYC plan               |
 
 ---
 
