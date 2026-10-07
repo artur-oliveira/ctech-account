@@ -656,6 +656,10 @@ func (m *memUserRepo) Update(_ context.Context, userID string, updates map[strin
 			u.PrivacyAcceptedAt, _ = v.(string)
 		case "support_role":
 			u.SupportRole, _ = v.(string)
+		case "deletion_state":
+			u.DeletionState, _ = v.(string) // nil = REMOVE
+		case "deletion_request_id":
+			u.DeletionRequestID, _ = v.(string)
 		}
 	}
 	return nil

@@ -154,6 +154,9 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrEmailNotVerified) {
 			return apierror.EmailNotVerified(c.Path()).Send(c)
 		}
+		if errors.Is(err, user.ErrPendingDeletion) {
+			return apierror.AccountPendingDeletion(c.Path()).Send(c)
+		}
 		if known, getErr := h.userSvc.GetByEmail(c.Context(), strings.ToLower(req.Email)); getErr == nil {
 			recordAudit(c, h.audit, known.ID(), audit.EventLoginFailed, nil)
 		} else {

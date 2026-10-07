@@ -105,6 +105,12 @@ func (m *mockRepo) Update(_ context.Context, userID string, updates map[string]a
 	if v, ok := updates["support_role"].(string); ok {
 		u.SupportRole = v
 	}
+	if _, ok := updates["deletion_state"]; ok {
+		u.DeletionState, _ = updates["deletion_state"].(string) // nil = REMOVE
+	}
+	if _, ok := updates["deletion_request_id"]; ok {
+		u.DeletionRequestID, _ = updates["deletion_request_id"].(string)
+	}
 	return nil
 }
 
@@ -623,5 +629,47 @@ func TestFindOrCreateByGoogle_NoDuplicateUser(t *testing.T) {
 	// The core invariant: exactly one user for the email (no duplicate).
 	if _, err := repo.GetByEmail(context.Background(), email); err != nil {
 		t.Fatalf("expected exactly one user for %s, got: %v", email, err)
+	}
+}
+
+func TestPendingDeletion_BlocksLoginAndClearsOnlyOwnRequest(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, err := svc.Register(ctx, "del@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := svc.MarkEmailVerified(ctx, u.ID()); err != nil {
+		t.Fatalf("MarkEmailVerified: %v", err)
+	}
+	if err := svc.MarkPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("MarkPendingDeletion: %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); !errors.Is(err, user.ErrPendingDeletion) {
+		t.Fatalf("Login err = %v, want ErrPendingDeletion", err)
+	}
+	if err := svc.ClearPendingDeletion(ctx, u.ID(), "req-OTHER"); err != nil {
+		t.Fatalf("ClearPendingDeletion(other): %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); !errors.Is(err, user.ErrPendingDeletion) {
+		t.Fatal("a stale request id must not lift the block")
+	}
+	if err := svc.ClearPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("ClearPendingDeletion: %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); err != nil {
+		t.Fatalf("Login after clear: %v", err)
+	}
+}
+
+func TestCheckPassword(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, _ := svc.Register(ctx, "pw@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err := svc.CheckPassword(ctx, u.ID(), "Sup3rSecret!"); err != nil {
+		t.Fatalf("right password: %v", err)
+	}
+	if err := svc.CheckPassword(ctx, u.ID(), "wrong"); !errors.Is(err, user.ErrInvalidCredentials) {
+		t.Fatalf("wrong password: err = %v", err)
 	}
 }

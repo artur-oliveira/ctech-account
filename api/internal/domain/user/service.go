@@ -15,6 +15,7 @@ import (
 // ErrInvalidCredentials is returned when login credentials are incorrect or the account is disabled.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrAccountDisabled = errors.New("account is disabled")
+var ErrPendingDeletion = errors.New("account is scheduled for deletion")
 var ErrCurrentPasswordIncorrect = errors.New("current password is incorrect")
 
 // ErrEmailNotVerified is returned when the password is correct but the account's
@@ -120,6 +121,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, err
 	// be used as an oracle for which emails are registered.
 	if !u.IsEnabled {
 		return nil, ErrAccountDisabled
+	}
+	if u.DeletionState != "" {
+		return nil, ErrPendingDeletion
 	}
 	if !u.EmailVerified {
 		return nil, ErrEmailNotVerified
@@ -356,4 +360,49 @@ func (s *Service) AcceptTerms(ctx context.Context, userID string, tos, privacy b
 // no self-service path to this — only cmd/supportrole calls it.
 func (s *Service) SetSupportRole(ctx context.Context, userID, role string) error {
 	return s.repo.Update(ctx, userID, map[string]any{"support_role": role})
+}
+
+// MarkPendingDeletion blocks every sign-in for userID on behalf of deletion
+// request requestID.
+func (s *Service) MarkPendingDeletion(ctx context.Context, userID, requestID string) error {
+	return s.repo.Update(ctx, userID, map[string]any{
+		"deletion_state":      DeletionStatePending,
+		"deletion_request_id": requestID,
+	})
+}
+
+// ClearPendingDeletion lifts the block only while it still belongs to
+// requestID, so a late unlock of an old request cannot free a newer one.
+// ponytail: read-then-write, not a conditional update; only the deletion flow
+// writes these fields and a user has at most one open request.
+func (s *Service) ClearPendingDeletion(ctx context.Context, userID, requestID string) error {
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.DeletionRequestID != requestID {
+		return nil
+	}
+	return s.repo.Update(ctx, userID, map[string]any{"deletion_state": nil, "deletion_request_id": nil})
+}
+
+// CheckPassword proves the caller knows the account password (identity check
+// for sensitive actions). ErrInvalidCredentials when wrong or when the account
+// has no password.
+func (s *Service) CheckPassword(ctx context.Context, userID, password string) error {
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.PasswordHash == "" {
+		return ErrInvalidCredentials
+	}
+	ok, err := crypto.VerifyPassword(password, u.PasswordHash)
+	if err != nil {
+		return fmt.Errorf("verifying password: %w", err)
+	}
+	if !ok {
+		return ErrInvalidCredentials
+	}
+	return nil
 }

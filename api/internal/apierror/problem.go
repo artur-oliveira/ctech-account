@@ -193,6 +193,14 @@ func AccountDisabled(instance string) *Problem {
 		"This account has been disabled. Contact support if you believe this is an error.", instance)
 }
 
+// AccountPendingDeletion answers a sign-in for an account with a confirmed
+// deletion request. Sent only after the credentials were proven, so it is not
+// an enumeration oracle.
+func AccountPendingDeletion(instance string) *Problem {
+	return newProblem("account-pending-deletion", "Account Scheduled for Deletion", http.StatusForbidden,
+		"This account is scheduled for deletion. Use the cancel link sent to your e-mail to keep it.", instance)
+}
+
 func ServiceUnavailable(detail, instance string) *Problem {
 	return newProblem("service-unavailable", "Service Unavailable", http.StatusServiceUnavailable, detail, instance)
 }

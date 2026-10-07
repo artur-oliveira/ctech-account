@@ -234,6 +234,10 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		recordAudit(c, h.audit, userID, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
 		return apierror.AccountDisabled(c.Path()).Send(c)
 	}
+	if u.DeletionState != "" {
+		recordAudit(c, h.audit, userID, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
+		return apierror.AccountPendingDeletion(c.Path()).Send(c)
+	}
 
 	// Passkey is the first factor; TOTP (if configured) is required as the second.
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), userID); totpErr == nil && totpSecret.IsSetup() {
