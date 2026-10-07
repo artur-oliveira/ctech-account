@@ -54,6 +54,7 @@ type Request struct {
 	ConfirmTokenHash  string   `dynamodbav:"confirm_token_hash,omitempty"`
 	CancelTokenHashes []string `dynamodbav:"cancel_token_hashes,omitempty"` // one per e-mail that carried a cancel link
 	LockApplied       bool     `dynamodbav:"lock_applied"`
+	ScheduledSent     bool     `dynamodbav:"scheduled_sent"` // the first cancel link went out
 	Reminded          bool     `dynamodbav:"reminded"`
 	RequestedAt       string   `dynamodbav:"requested_at"`
 	ConfirmBy         string   `dynamodbav:"confirm_by"`

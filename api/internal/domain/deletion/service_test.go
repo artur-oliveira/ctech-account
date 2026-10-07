@@ -109,9 +109,9 @@ func (f *fakeLocker) Unlock(context.Context, *Request) error { f.unlocks++; retu
 func (f *fakeLocker) Erase(context.Context, *Request) error  { f.erases++; return nil }
 
 type fakeMailer struct {
-	confirmToken, cancelToken string
-	reminders, cancelled      int
-	confirmErr                error
+	confirmToken, cancelToken           string
+	reminders, cancelled                int
+	confirmErr, scheduledErr, remindErr error
 }
 
 func (f *fakeMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token string) error {
@@ -119,10 +119,16 @@ func (f *fakeMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token 
 	return f.confirmErr
 }
 func (f *fakeMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+	if f.scheduledErr != nil {
+		return f.scheduledErr
+	}
 	f.cancelToken = token
 	return nil
 }
 func (f *fakeMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+	if f.remindErr != nil {
+		return f.remindErr
+	}
 	f.reminders++
 	f.cancelToken = token
 	return nil
@@ -376,5 +382,65 @@ func TestApplyLock_CancelRaceCompensates(t *testing.T) {
 	f.svc.ProcessDue(ctx)
 	if f.stored(t, r.ID).State != StateCancelled || f.locker.unlocks != 2 {
 		t.Fatalf("state=%s unlocks=%d, want cancelled and the stale lock undone", f.stored(t, r.ID).State, f.locker.unlocks)
+	}
+}
+
+// Under ruling R1 the e-mail is the only way to cancel: a failed send of the
+// cancel link must be retried, never forgotten.
+func TestConfirm_ScheduledEmailFailureRetried(t *testing.T) {
+	f := newFixture(t)
+	f.mail.scheduledErr = errors.New("ses down")
+	r := f.confirm(t)
+	if s := f.stored(t, r.ID); s.ScheduledSent || s.NextActionAt != ts(f.now) {
+		t.Fatalf("a failed cancel-link e-mail must stay due now: %+v", s)
+	}
+	f.mail.scheduledErr = nil
+	f.svc.ProcessDue(ctx)
+	if !f.stored(t, r.ID).ScheduledSent || f.mail.cancelToken == "" {
+		t.Fatal("worker must re-send the cancel link")
+	}
+	if _, err := f.svc.Cancel(ctx, r.ID, f.mail.cancelToken); err != nil {
+		t.Fatalf("re-sent cancel link must work: %v", err)
+	}
+}
+
+func TestRemind_FailureRetried(t *testing.T) {
+	f := newFixture(t)
+	r := f.confirm(t)
+	f.now = f.now.Add(GracePeriod - ReminderLead)
+	f.mail.remindErr = errors.New("ses down")
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).Reminded {
+		t.Fatal("a failed reminder must not be recorded as sent")
+	}
+	f.mail.remindErr = nil
+	f.svc.ProcessDue(ctx)
+	if !f.stored(t, r.ID).Reminded || f.mail.reminders != 1 {
+		t.Fatalf("reminder must be retried: reminded=%v sent=%d", f.stored(t, r.ID).Reminded, f.mail.reminders)
+	}
+}
+
+// If undoing a stale lock fails, the cancelled request must stay due so the
+// worker retries the unlock; otherwise the user is locked out for good.
+func TestApplyLock_CompensationFailureRetried(t *testing.T) {
+	f := newFixture(t)
+	f.locker.lockErr = errors.New("valkey down")
+	r := f.confirm(t)
+	f.locker.lockErr = nil
+	cancelToken := f.mail.cancelToken
+	f.locker.onLock = func() {
+		if _, err := f.svc.Cancel(ctx, r.ID, cancelToken); err != nil {
+			t.Errorf("Cancel: %v", err)
+		}
+		f.locker.unlockErr = errors.New("valkey down") // the compensating unlock fails
+	}
+	f.svc.ProcessDue(ctx)
+	if s := f.stored(t, r.ID); s.State != StateCancelled || s.DueState != string(StateCancelled) {
+		t.Fatalf("failed compensation must leave the cancel due: %+v", s)
+	}
+	f.locker.unlockErr = nil
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).DueState != "" {
+		t.Fatal("worker must finish the unlock")
 	}
 }

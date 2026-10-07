@@ -126,11 +126,7 @@ func (s *Service) Confirm(ctx context.Context, id, token string) (*Request, erro
 	if r.State != StateAwaitingConfirmation || !now.Before(parseTime(r.ConfirmBy)) || !tokenMatches(token, r.ConfirmTokenHash) {
 		return nil, ErrInvalidToken
 	}
-	raw, hash, err := s.newToken()
-	if err != nil {
-		return nil, err
-	}
-	r.State, r.ConfirmTokenHash, r.CancelTokenHashes = StatePending, "", []string{hash}
+	r.State, r.ConfirmTokenHash = StatePending, ""
 	r.ConfirmedAt, r.GraceUntil, r.UpdatedAt = ts(now), ts(now.Add(GracePeriod)), ts(now)
 	r.setDue(now) // lock not applied yet
 	if err := s.repo.Save(ctx, r, StateAwaitingConfirmation); err != nil {
@@ -142,12 +138,59 @@ func (s *Service) Confirm(ctx context.Context, id, token string) (*Request, erro
 	if err := s.applyLock(ctx, r); err != nil {
 		observability.Error(ctx, "deletion: lock failed, worker will retry", err, "request_id", r.ID)
 	}
-	if u, err := s.users.GetByID(ctx, r.UserID); err == nil {
-		if mErr := s.mail.SendDeletionScheduledEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil)); mErr != nil {
-			observability.Error(ctx, "deletion: scheduled e-mail failed", mErr, "request_id", r.ID)
-		}
+	if err := s.sendCancelLink(ctx, r, false); err != nil {
+		observability.Error(ctx, "deletion: cancel-link e-mail failed, worker will retry", err, "request_id", r.ID)
 	}
 	return r, nil
+}
+
+// nextDue is when the worker must next look at a pending request: now while
+// the lock or the first cancel link is still owed, then the reminder, then
+// the end of grace.
+func (s *Service) nextDue(r *Request) time.Time {
+	switch {
+	case !r.LockApplied || !r.ScheduledSent:
+		return s.now()
+	case !r.Reminded:
+		return parseTime(r.GraceUntil).Add(-ReminderLead)
+	default:
+		return parseTime(r.GraceUntil)
+	}
+}
+
+// sendCancelLink e-mails a fresh cancel link (the scheduled notice, or the
+// reminder) and records it. Under ruling R1 the e-mail is the only way to
+// cancel, so the token hash is stored before sending and the "sent" flag only
+// after: a failed send stays due and is retried, at worst as a duplicate.
+func (s *Service) sendCancelLink(ctx context.Context, r *Request, reminder bool) error {
+	u, err := s.users.GetByID(ctx, r.UserID)
+	if err != nil {
+		return err
+	}
+	raw, hash, err := s.newToken()
+	if err != nil {
+		return err
+	}
+	r.CancelTokenHashes = append(r.CancelTokenHashes, hash)
+	r.UpdatedAt = ts(s.now())
+	if err := s.repo.Save(ctx, r, StatePending); err != nil {
+		return err
+	}
+	send := s.mail.SendDeletionScheduledEmail
+	if reminder {
+		send = s.mail.SendDeletionReminderEmail
+	}
+	if err := send(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil)); err != nil {
+		return err
+	}
+	if reminder {
+		r.Reminded = true
+	} else {
+		r.ScheduledSent = true
+	}
+	r.UpdatedAt = ts(s.now())
+	r.setDue(s.nextDue(r))
+	return s.repo.Save(ctx, r, StatePending)
 }
 
 // applyLock runs the lock, records it and schedules the reminder. If a cancel
@@ -157,11 +200,17 @@ func (s *Service) applyLock(ctx context.Context, r *Request) error {
 		return err
 	}
 	r.LockApplied, r.UpdatedAt = true, ts(s.now())
-	r.setDue(parseTime(r.GraceUntil).Add(-ReminderLead))
+	r.setDue(s.nextDue(r))
 	err := s.repo.Save(ctx, r, StatePending)
 	if errors.Is(err, ErrStateChanged) {
 		if cur, getErr := s.repo.Get(ctx, r.ID); getErr == nil && cur.State == StateCancelled {
-			return s.locker.Unlock(ctx, cur)
+			if uErr := s.locker.Unlock(ctx, cur); uErr != nil {
+				// Keep the cancel due so the worker retries the unlock.
+				cur.UpdatedAt = ts(s.now())
+				cur.setDue(s.now())
+				return errors.Join(uErr, s.repo.Save(ctx, cur, StateCancelled))
+			}
+			return nil
 		}
 	}
 	return err
@@ -253,8 +302,10 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		switch {
 		case !r.LockApplied:
 			return s.applyLock(ctx, r)
+		case !r.ScheduledSent:
+			return s.sendCancelLink(ctx, r, false)
 		case !r.Reminded && now.Before(parseTime(r.GraceUntil)):
-			return s.remind(ctx, r, now)
+			return s.sendCancelLink(ctx, r, true)
 		case !now.Before(parseTime(r.GraceUntil)):
 			r.State, r.LockedAt, r.UpdatedAt = StateLocked, ts(now), ts(now)
 			r.setDue(now)
@@ -273,24 +324,6 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		return s.repo.Save(ctx, r, StateLocked)
 	}
 	return nil
-}
-
-func (s *Service) remind(ctx context.Context, r *Request, now time.Time) error {
-	u, err := s.users.GetByID(ctx, r.UserID)
-	if err != nil {
-		return err
-	}
-	raw, hash, err := s.newToken()
-	if err != nil {
-		return err
-	}
-	r.CancelTokenHashes = append(r.CancelTokenHashes, hash)
-	r.Reminded, r.UpdatedAt = true, ts(now)
-	r.setDue(parseTime(r.GraceUntil))
-	if err := s.repo.Save(ctx, r, StatePending); err != nil {
-		return err
-	}
-	return s.mail.SendDeletionReminderEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil))
 }
 
 func tokenMatches(raw, hash string) bool {
