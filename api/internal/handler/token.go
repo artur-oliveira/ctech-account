@@ -129,6 +129,9 @@ func (h *TokenHandler) apiKeyExchange(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.InvalidGrant("API key is invalid, expired, or revoked.", c.Path()).WithCause(err).Send(c)
 	}
+	if p := h.pendingDeletionProblem(c, k.UserID()); p != nil {
+		return p.Send(c)
+	}
 
 	// aud = this IdP plus every service named by the key's scopes, so one token
 	// works against accounts APIs and e.g. dfe without a second exchange.
@@ -270,6 +273,9 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
+	if u.DeletionState != "" {
+		return apierror.InvalidGrant(pendingDeletionDetail, c.Path()).Send(c)
+	}
 
 	sess, err := h.sessionSvc.Get(c.Context(), ac.UserID, ac.SessionID)
 	if err != nil {
@@ -392,6 +398,10 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 			return apierror.InvalidGrant("This refresh token was not issued to this client.", c.Path()).WithCause(err).Send(c)
 		}
 		return apierror.InvalidGrant("Invalid or expired refresh token.", c.Path()).WithCause(err).Send(c)
+	}
+
+	if p := h.pendingDeletionProblem(c, sess.UserID()); p != nil {
+		return p.Send(c)
 	}
 
 	// Clamp the refresh to the scopes actually granted at authorization time, so
@@ -526,4 +536,25 @@ func verifyPKCE(verifier, challenge string) bool {
 	sum := sha256.Sum256([]byte(verifier))
 	computed := base64.RawURLEncoding.EncodeToString(sum[:])
 	return subtle.ConstantTimeCompare([]byte(computed), []byte(challenge)) == 1
+}
+
+const pendingDeletionDetail = "The account is scheduled for deletion."
+
+// pendingDeletionProblem refuses token issuance for an account with a confirmed
+// deletion request, so a credential that survived a partial lock (a refresh
+// token whose session revocation failed, an API key minted while the lock ran)
+// cannot mint tokens during the grace period. An unknown user is left to the
+// grant's own checks.
+func (h *TokenHandler) pendingDeletionProblem(c fiber.Ctx, userID string) *apierror.Problem {
+	u, err := h.userSvc.GetByID(c.Context(), userID)
+	if errors.Is(err, user.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err)
+	}
+	if u.DeletionState != "" {
+		return apierror.InvalidGrant(pendingDeletionDetail, c.Path())
+	}
+	return nil
 }
