@@ -74,8 +74,8 @@ ACTIVE ──request──▶ PENDING_DELETION ──grace expires──▶ LOCK
 ```
 
 - **PENDING_DELETION** (grace, **7 days**, D8): the account is **already blocked**. No
-  new sessions, all tokens revoked. Only the owner can log in to a restricted
-  "cancel deletion" screen. This protects against a stolen session destroying the account.
+  new sessions, all tokens revoked. The owner cancels through the link in the
+  e-mails. This protects against a stolen session destroying the account.
 - **LOCKED**: grace over, now irreversible. Blockers are checked again and the saga starts.
 - **PURGING**: services erase/anonymize and ack.
 - **PURGED**: only a tombstone is left (sub-spec 3, §6).

@@ -31,9 +31,11 @@ tokens and sessions (login, MFA challenge, passkey login, refresh, authorization
 exchange, client credentials for API keys): any non-empty `DeletionState` other than
 `pending`-with-cancel-scope is refused.
 
-`pending` users may log in only to a **restricted session** (scope `account:deletion:cancel`)
-that can call `GET /deletion` and `POST /deletion/cancel`, nothing else. This needs the same
-MFA as a normal login.
+**Cancel is by e-mail link only** (ruling R1, Phase 1 plan): there is no restricted
+"cancel" session. The cancel link is sent at confirmation and again in the reminder 24 h
+before the lock; support cancels on the user's behalf in Phase 3. Every sign-in path
+(password, MFA challenge, passkey, Google) refuses a pending account with
+`account-pending-deletion`.
 
 ## 4. API
 
@@ -45,8 +47,8 @@ other account-management endpoints.
 | `GET /deletion/eligibility?scope=account\|service&service=wallet` | Fan-out to participants' eligibility endpoints + local blockers. Returns the aggregated blocker list for the UI. |
 | `POST /deletion` `{scope, service?, confirmation_phrase}` | Create the request. Requires **step-up auth** (§5). Returns `request_id` (protocol number) and `grace_until`. |
 | `GET /deletion` | Current request + per-service status (for the status page). |
-| `POST /deletion/cancel` | Cancel during grace. Allowed from the restricted session or from the e-mail link. |
-| `GET /deletion/confirm?token=` | E-mail confirmation link (see §5). |
+| `POST /v1.0/auth/deletion/confirm` `{request_id, token}` | E-mail confirmation link (public; the token is the credential). |
+| `POST /v1.0/auth/deletion/cancel` `{request_id, token}` | Cancel during grace, from the scheduled or reminder e-mail (public). |
 
 Internal (client-credentials, protocol §3):
 
@@ -65,9 +67,9 @@ Support/admin (gated by `SupportRole` = `admin`, reusing the support-tickets gua
 
 ## 5. Anti-fraud on the request
 
-1. **Step-up authentication**: password re-entry, or `auth_time` within the last 5 minutes
-   (`max_age=300`), **plus** TOTP/passkey if MFA is enabled. Google-only users repeat the
-   Google login (`prompt=login`).
+1. **Identity check** (ruling R2): a recent MFA proof (`last_mfa_at` within 5 minutes) **or**
+   the account password. A password-less (Google-only) account relies on the e-mail
+   confirmation (item 3).
 2. **Typed confirmation** ("EXCLUIR MINHA CONTA") and an explicit checklist of
    consequences in the UI, listing per service what is erased vs retained (from the
    inventory).
@@ -96,7 +98,8 @@ Support/admin (gated by `SupportRole` = `admin`, reusing the support-tickets gua
 **On confirmation (enter `pending_deletion`):**
 1. Conditional update request → `pending_deletion`, user → `DeletionState=pending`.
 2. Revoke all sessions and refresh tokens (`session` revoke-all), disable API keys.
-3. Write the revocation entry to Valkey (protocol §5).
+3. Write the revocation entry to Valkey (protocol §5). The account's own API honours it too
+   (ruling R3), so a pre-lock access token cannot mint an API key during grace.
 4. Publish `user.locked` (participants block writes during grace too; cancel sends
    `user.unlocked`).
 5. Audit event `account.deletion.requested`.
@@ -204,8 +207,8 @@ Metrics: requests by state, time-to-purge, acks by service, DLQ depth (participa
 
 - Unit: state machine, every transition is conditional (races: cancel vs lock, double
   worker).
-- Handler tests: step-up required; restricted session can do nothing but cancel; token
-  issuance refused for every non-active state across all grant types.
+- Handler tests: identity check (MFA or password); cancel by link; token issuance refused
+  for a pending account on every sign-in path (password, MFA challenge, passkey, Google).
 - Integration (DynamoDB local + fake participants): happy path, blocked at LOCKED, a
   participant that never acks (reconciler backs off, alarm metric), a participant acking
   twice, purge re-run after a crash at each step of §7.

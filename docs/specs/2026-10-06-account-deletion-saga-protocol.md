@@ -153,7 +153,9 @@ user keeps working for up to 15 minutes, which is unacceptable for withdrawals.
 
 - On lock, ctech-account writes `ctech:jwt:revoked_sub:{sub}` (value: cut-off unix
   seconds) with TTL = access-token TTL + clock skew (20 min, `jwtverify.RevocationTTL`),
-  through `jwtverify.Revoke`. Cancel removes it (`jwtverify.Unrevoke`).
+  through `jwtverify.Revoke`. A cancel does **not** remove it: tokens issued after the cancel
+  are newer than the cut-off, and an early removal could lift a newer request's entry. It
+  expires with its TTL.
 - **Which Valkey DB.** The family shares one Valkey server, but each service selects its
   own logical DB (`account`, `dfe`, `poker`: DB 0, the base URL; `wallet`: DB 2;
   `billing`: DB 3). A key written by account in DB 0 is invisible from DB 2. Revocation
