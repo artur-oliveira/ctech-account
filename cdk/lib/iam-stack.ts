@@ -118,6 +118,15 @@ export class IAMStack extends cdk.Stack {
       topicName: `${environment}-account-user-erasure`,
     });
     erasureTopic.grantPublish(appRole);
+    // grantPublish only adds an identity policy; deny everyone else at the topic,
+    // since user.erase is irreversible (saga protocol §3: only the account role publishes).
+    erasureTopic.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['sns:Publish'],
+      resources: [erasureTopic.topicArn],
+      conditions: {ArnNotEquals: {'aws:PrincipalArn': appRole.roleArn}},
+    }));
     new ssm.StringParameter(this, 'UserErasureTopicArn', {
       parameterName: `/ctech/${environment}/account/erasure-topic-arn`,
       stringValue: erasureTopic.topicArn,
