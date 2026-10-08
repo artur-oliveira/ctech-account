@@ -53,6 +53,7 @@ Cross-links:
 | [`plans/2026-10-07-account-deletion-phase2a-purge-core.md`](plans/2026-10-07-account-deletion-phase2a-purge-core.md) | Account deletion phase 2a (blockers, purge, tombstone) |
 | [`plans/2026-10-07-account-deletion-phase2b-purge-data.md`](plans/2026-10-07-account-deletion-phase2b-purge-data.md) | Account deletion phase 2b (organizations, support, audit, KYC documents) |
 | [`plans/2026-10-07-account-deletion-phase3-participants.md`](plans/2026-10-07-account-deletion-phase3-participants.md) | Account deletion phase 3 (participants, acks, admin) |
+| [`plans/2026-10-07-account-deletion-phase4-ui.md`](plans/2026-10-07-account-deletion-phase4-ui.md) | Account deletion phase 4 (UI, privacy policy 3.3) |
 
 ---
 
