@@ -94,3 +94,50 @@ func TestANonMemberAndAnUnknownOrganizationAnswerAlike(t *testing.T) {
 		t.Fatalf("distinguishable or carries more than the refusal:\n  refused: %s\n  unknown: %s", rb, ub)
 	}
 }
+
+func TestAServiceCanListAUsersOrganizationsWithRoles(t *testing.T) {
+	a := newInternalMembershipApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "list-orgs@example.com")
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountOrgMember})
+
+	resp := a.do(t, http.MethodGet, "/v1.0/internal/users/"+ownerID+"/organizations", internal, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Organizations []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+			Role        string `json:"role"`
+		} `json:"organizations"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Organizations) != 1 || body.Organizations[0].ID != orgID || body.Organizations[0].Role != "owner" {
+		t.Fatalf("got %+v, want the one organization with role owner", body.Organizations)
+	}
+}
+
+func TestListingOrganizationsNeedsTheMembershipScope(t *testing.T) {
+	a := newInternalMembershipApp(t)
+	_, ownerID, _ := a.seedOrg(t, "list-gate@example.com")
+	path := "/v1.0/internal/users/" + ownerID + "/organizations"
+	user := a.registerUser(t, "list-gate-user@example.com", "Sup3rSecret!pass", "Sem escopo")
+	if resp := a.do(t, http.MethodGet, path, a.issueToken(t, user.ID()), ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a user token listed organizations: %d", resp.StatusCode)
+	}
+	reach := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+	if resp := a.do(t, http.MethodGet, path, reach, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("the company-actor scope listed organizations: %d", resp.StatusCode)
+	}
+}
+
+func TestAnUnknownUserHasNoOrganizationsAndIsNotA404(t *testing.T) {
+	a := newInternalMembershipApp(t)
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountOrgMember})
+	resp := a.do(t, http.MethodGet, "/v1.0/internal/users/usr_nobody/organizations", internal, "")
+	if resp.StatusCode != http.StatusOK || bodyString(resp) != `{"organizations":[]}` {
+		t.Fatalf("status %d body %s, want 200 {\"organizations\":[]}", resp.StatusCode, bodyString(resp))
+	}
+}
