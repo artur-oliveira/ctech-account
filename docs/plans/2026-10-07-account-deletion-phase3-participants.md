@@ -37,6 +37,7 @@
   - `internal:account:erasure-ack` — granted to each participant's confidential client;
   - `internal:account:erasure-subject` — granted to `dfe` only;
   - `internal:{service}:erasure-eligibility` — carried by the token account mints for each participant.
+- Each participant's `client_id` is a **dedicated confidential client used only for erasure** (decision of 2026-10-08), not the service's regular client. The operator grants it `internal:account:erasure-ack` (and dfe's also `internal:account:erasure-subject`).
 - Ack backoff after the first dispatch: 15 min, 1 h, 6 h, then every 24 h. Log an `ERROR` "participant ack overdue" on every reconcile once 48 h have passed since the first dispatch.
 - Eligibility calls: 5 s timeout. Any error or non-2xx is **not** "eligible":
   - at request it is a `503`;
@@ -1093,14 +1094,89 @@ Also wire the eligibility: replace `.WithOwnership(deletion.NewAccountOwnership(
 				deletion.NewAccountOwnership(orgSvc, oauthClientRepo),
 				erasurepub.NewEligibility(&http.Client{}, cfg.ErasureParticipants, func(aud, scope string) (string, error) {
 					now := time.Now().Unix()
-					return jwtSvc.SignAccessToken("ctech-account", "", cfg.SelfClientID, []string{scope}, cfg.BaseURL, []string{aud}, now, now, nil, "")
+					return jwtSvc.SignAccessToken("ctech-account", "", cfg.SelfClientID, []string{scope}, cfg.AppURL, []string{aud}, now, now, nil, "")
 				}))).
 ```
 
-Check that `cfg.BaseURL` is the issuer the participants verify (it is the `iss` used for every token this service signs; match whatever `tokenH` passes as `issuerURL`).
+The issuer is `cfg.AppURL`, the same `issuerURL` that `main.go` passes to `handler.NewTokenHandler`. Every participant verifies `iss` against its `CTECH_ISSUER_URL`. **Deployment check:** that value must equal ctech-account's `APP_URL`, otherwise every eligibility call is rejected and every deletion request answers 503.
 
 - [ ] **Step 4: Pass** — `go vet ./... && go test ./... 2>&1 | tail -30` → `ok`.
 - [ ] **Step 5: Commit** — `git add internal/scopes internal/domain internal/handler cmd/api/main.go && git commit -m "feat(api): erasure ack and subject endpoints for participants"`
+
+---
+
+### Task 5b: `cpf_hmac` on the internal KYC endpoint (wallet self-exclusion)
+
+ctech-wallet keys a deleted account's self-exclusion by the same CPF keyed hash ctech-account keeps on the tombstone (overview D13; approved by the user 2026-10-08). The wallet never receives the key: ctech-account computes the hash and returns it next to the CPF that `GET /v1.0/internal/kyc/:user_id` already returns to the wallet.
+
+**Files:** Modify `api/internal/handler/kyc.go`, `api/internal/handler/testhelpers_test.go`, `api/cmd/api/main.go`; Test `api/internal/handler/kyc_test.go`.
+
+**Interfaces:** Produces `func (h *KYCHandler) WithCPFMAC(mac func(cpf string) string) *KYCHandler`. The internal GET gains a `cpf_hmac` field, present only when the user has a CPF and a MAC is configured.
+
+- [ ] **Step 1: Failing test** — append to `api/internal/handler/kyc_test.go`:
+
+```go
+func TestInternalKYCReturnsCPFHMAC(t *testing.T) {
+	ta := newTestApp(t)
+	withCPF := ta.registerUser(t, "kyc-hmac@example.com", "Password!123", "Fulano")
+	ta.userRepo.byID[withCPF.ID()].CPF = "12345678909"
+	noCPF := ta.registerUser(t, "kyc-nocpf@example.com", "Password!123", "Ciclano")
+	m2m := ta.issueMachineToken(t, "wallet", []string{scopes.InternalWalletConfirmDeposit})
+
+	var body map[string]any
+	readJSON(t, ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+withCPF.ID(), nil, m2m), &body)
+	if body["cpf_hmac"] != "mac:12345678909" {
+		t.Fatalf("cpf_hmac = %v, want the keyed hash of the CPF", body["cpf_hmac"])
+	}
+	body = nil
+	readJSON(t, ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+noCPF.ID(), nil, m2m), &body)
+	if _, ok := body["cpf_hmac"]; ok {
+		t.Fatal("a user without CPF must not get a cpf_hmac")
+	}
+}
+```
+
+In `testhelpers_test.go` change `kycH := handler.NewKYCHandler(kycSvc, auditSvc)` to `kycH := handler.NewKYCHandler(kycSvc, auditSvc).WithCPFMAC(func(cpf string) string { return "mac:" + cpf })`.
+
+- [ ] **Step 2: Fail** — `cd api && go test ./internal/handler/ -run TestInternalKYCReturnsCPFHMAC -count=1` → build FAIL `WithCPFMAC undefined`.
+
+- [ ] **Step 3: Implement** — `handler/kyc.go`: add the field `cpfMAC func(string) string` to `KYCHandler`, plus:
+
+```go
+// WithCPFMAC enables cpf_hmac on the internal KYC read: the keyed hash
+// ctech-wallet uses to carry a self-exclusion across account deletion (D13).
+// The key never leaves ctech-account.
+func (h *KYCHandler) WithCPFMAC(mac func(cpf string) string) *KYCHandler {
+	h.cpfMAC = mac
+	return h
+}
+```
+
+In `internalGet`, build the response map first and add the hash:
+
+```go
+	resp := fiber.Map{
+		"level":        u.KYCLevel,
+		"status":       u.KYCStatus,
+		"cpf":          u.CPF,
+		"legal_name":   u.LegalName,
+		"birth_date":   u.BirthDate,
+		"email":        u.Email,
+		"phone_number": u.PhoneNumber,
+		"address":      u.Address,
+	}
+	if u.CPF != "" && h.cpfMAC != nil {
+		resp["cpf_hmac"] = h.cpfMAC(u.CPF)
+	}
+	return c.JSON(resp)
+```
+
+`main.go`: `kycH := handler.NewKYCHandler(kycSvc, auditSvc).WithCPFMAC(func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) })`. It must use the same label as Phase 2a's tombstone, so both sides compute one value.
+
+- [ ] **Step 4: Pass** — `go vet ./... && go test ./internal/handler/ -count=1` → `ok`.
+- [ ] **Step 5: Commit** — `git add internal/handler cmd/api/main.go && git commit -m "feat(api): cpf_hmac on the internal KYC read for wallet self-exclusion"`
+
+Document the new field in `api/ENDPOINTS.md` (internal KYC section) in Task 8.
 
 ---
 
@@ -1329,6 +1405,7 @@ In `status`, add `"legal_hold": r.LegalHold` to the response.
 
 - [ ] **`api/ENDPOINTS.md`**:
   - the internal routes (`ack`, `subject`) with scopes and bodies;
+  - `cpf_hmac` on `GET /v1.0/internal/kyc/:user_id` (Task 5b);
   - the admin routes;
   - `legal_hold` in `GET /account/deletion`;
   - `503` when a participant cannot be reached.
