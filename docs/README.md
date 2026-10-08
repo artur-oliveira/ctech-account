@@ -50,6 +50,13 @@ Cross-links:
 | [`plans/2026-07-10-jwks-rotation.md`](plans/2026-07-10-jwks-rotation.md) | JWKS key-rotation plan        |
 | [`plans/2026-07-15-kyc-manual.md`](plans/2026-07-15-kyc-manual.md)       | Manual KYC plan               |
 | [`plans/2026-10-07-account-deletion-phase1-lifecycle.md`](plans/2026-10-07-account-deletion-phase1-lifecycle.md) | Account deletion phase 1 (lifecycle + lock) |
+<<<<<<< HEAD
+=======
+| [`plans/2026-10-07-account-deletion-phase2a-purge-core.md`](plans/2026-10-07-account-deletion-phase2a-purge-core.md) | Account deletion phase 2a (blockers, purge, tombstone) |
+| [`plans/2026-10-07-account-deletion-phase2b-purge-data.md`](plans/2026-10-07-account-deletion-phase2b-purge-data.md) | Account deletion phase 2b (organizations, support, audit, KYC documents) |
+| [`plans/2026-10-07-account-deletion-phase3-participants.md`](plans/2026-10-07-account-deletion-phase3-participants.md) | Account deletion phase 3 (participants, acks, admin) |
+| [`plans/2026-10-07-account-deletion-phase4-ui.md`](plans/2026-10-07-account-deletion-phase4-ui.md) | Account deletion phase 4 (UI, privacy policy 3.3) |
+>>>>>>> 602f8e2274f241adf37db0f85fea4efae2d328c5
 
 ---
 

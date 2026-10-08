@@ -191,6 +191,15 @@
       },
       "visibility": "public",
       "status": "active"
+    },
+    {
+      "name": "internal:account:org-member",
+      "descriptions": {
+        "en": "Check whether a user belongs to an organization and with which role.",
+        "pt-BR": "Verificar se um usuário pertence a uma organização e com qual papel."
+      },
+      "visibility": "internal",
+      "status": "active"
     }
   ]
 }

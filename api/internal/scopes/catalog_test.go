@@ -28,6 +28,7 @@ func TestEveryInternalAccountScopeIsInTheManifest(t *testing.T) {
 		InternalAccountKYC,
 		InternalAccountScopeRegistryWrite,
 		InternalAccountCompanyActor,
+		InternalAccountOrgMember,
 	} {
 		entry, ok := published[scope]
 		if !ok {
@@ -57,6 +58,7 @@ func TestEveryInternalManifestScopeHasAConstant(t *testing.T) {
 		InternalAccountKYC:                true,
 		InternalAccountScopeRegistryWrite: true,
 		InternalAccountCompanyActor:       true,
+		InternalAccountOrgMember:          true,
 	}
 	for _, s := range manifest.Scopes {
 		if !strings.HasPrefix(s.Scope, "internal:") {
