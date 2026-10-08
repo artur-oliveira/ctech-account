@@ -200,6 +200,15 @@
       },
       "visibility": "internal",
       "status": "active"
+    },
+    {
+      "name": "internal:account:user-organizations",
+      "descriptions": {
+        "en": "List the organizations a user belongs to, with the role in each.",
+        "pt-BR": "Listar as organizações de um usuário, com o papel em cada uma."
+      },
+      "visibility": "internal",
+      "status": "active"
     }
   ]
 }

@@ -492,7 +492,9 @@ func main() {
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
 	companyH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountCompanyActor))
-	orgH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountOrgMember))
+	orgH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc),
+		middleware.RequireInternalScope(scopesPkg.InternalAccountOrgMember),
+		middleware.RequireInternalScope(scopesPkg.InternalAccountUserOrganizations))
 	scopeRegistryH.Register(v1,
 		middleware.RequireAuth(jwtSvc),
 		middleware.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),
