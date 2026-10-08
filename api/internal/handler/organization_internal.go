@@ -19,8 +19,36 @@ func (h *OrganizationHandler) RegisterInternal(v1 fiber.Router, internalAuth ...
 	for _, m := range internalAuth {
 		handlers = append(handlers, m)
 	}
+	guards := append([]any(nil), handlers...)
 	handlers = append(handlers, h.internalMember)
 	v1.Get("/internal/organizations/:organization_id/members/:user_id", handlers[0], handlers[1:]...)
+
+	// The same family of question (who belongs where), so the same scope: a product
+	// that holds it can build a space switcher without the first-party-only
+	// /v1.0/organizations.
+	list := append(guards, h.internalUserOrganizations)
+	v1.Get("/internal/users/:user_id/organizations", list[0], list[1:]...)
+}
+
+// internalUserOrganizations lists the organizations a person belongs to, with
+// their role in each, for a product that builds a space switcher (ctech-billing
+// ADR 0025). It is information, not authorization: the product resolves every
+// request's space through internalMember, so a stale or generous list cannot
+// grant access.
+//
+// An unknown user answers an empty list rather than 404, for the reason the
+// membership route does: asked about ids a caller may not be entitled to, a
+// refusal must not reveal which exist.
+func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
+	workspaces, err := h.svc.ListWorkspaces(c.Context(), c.Params("user_id"))
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	out := make([]fiber.Map, 0, len(workspaces))
+	for _, w := range workspaces {
+		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "role": w.Role})
+	}
+	return c.JSON(fiber.Map{"organizations": out})
 }
 
 // internalMember answers whether one person belongs to one organization, and
