@@ -8,6 +8,9 @@ const (
 	SupportRoleAdmin   = "admin"
 )
 
+// DeletionStatePending marks an account locked by a confirmed deletion request.
+const DeletionStatePending = "pending"
+
 type User struct {
 	PK            string `dynamodbav:"pk"`
 	Email         string `dynamodbav:"email"`
@@ -57,6 +60,12 @@ type User struct {
 	// users. Deliberately scoped to this feature, not a general permissions
 	// field — see docs/specs/2026-08-22-support-tickets-design.md §2.
 	SupportRole string `dynamodbav:"support_role,omitempty"`
+
+	// DeletionState is set while a confirmed deletion request is open
+	// (docs/specs/2026-10-06-account-deletion-ctech-account.md). Every sign-in
+	// path refuses a non-empty value.
+	DeletionState     string `dynamodbav:"deletion_state,omitempty"`
+	DeletionRequestID string `dynamodbav:"deletion_request_id,omitempty"`
 }
 
 // Address is the residential address collected during Basic KYC. It lives

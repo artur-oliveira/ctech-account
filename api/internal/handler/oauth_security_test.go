@@ -917,3 +917,44 @@ func TestRefresh_SelfClientMigratesLegacyAccountPermissions(t *testing.T) {
 		}
 	}
 }
+
+// Credentials that survive a partial lock (a refresh token whose session
+// revocation failed, an API key minted while the lock ran) must not mint
+// tokens for an account pending deletion.
+func TestTokenGrants_RefusePendingDeletion(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	ctx := context.Background()
+	pending := &userDomain.User{PK: userDomain.BuildPK("user-del"), Email: "del@example.com", IsEnabled: true, EmailVerified: true,
+		DeletionState: userDomain.DeletionStatePending, DeletionRequestID: "req-1"}
+	if err := ta.userRepo.Create(ctx, pending); err != nil {
+		t.Fatalf("seeding user: %v", err)
+	}
+
+	_, rawKey, err := ta.apiKeySvc.Create(ctx, "user-del", "ci key", []string{"account:profile:read"}, 0)
+	if err != nil {
+		t.Fatalf("create key: %v", err)
+	}
+	resp := ta.postForm("/v1.0/token", url.Values{"grant_type": {"api_key"}, "api_key": {rawKey}})
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(bodyString(resp), "invalid") {
+		t.Fatalf("api_key grant for pending account: %d %s, want 400 invalid_grant", resp.StatusCode, bodyString(resp))
+	}
+
+	if err := ta.clientRepo.Create(ctx, &oauthclient.OAuthClient{
+		PK: oauthclient.BuildPK("web-del"), ClientType: "public",
+		RedirectURIs: []string{"https://app.example/callback"}, AllowedScopes: []string{"openid"},
+	}); err != nil {
+		t.Fatalf("seeding client: %v", err)
+	}
+	sess, _, err := ta.sessionSvc.Create(ctx, "user-del", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	rawToken, err := ta.sessionSvc.IssueClientToken(ctx, "user-del", sess.ID(), "web-del", []string{"openid"})
+	if err != nil {
+		t.Fatalf("issue client token: %v", err)
+	}
+	resp = ta.postForm("/v1.0/token", url.Values{"grant_type": {"refresh_token"}, "client_id": {"web-del"}, "refresh_token": {rawToken}})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("refresh grant for pending account: %d %s, want 400 invalid_grant", resp.StatusCode, bodyString(resp))
+	}
+}

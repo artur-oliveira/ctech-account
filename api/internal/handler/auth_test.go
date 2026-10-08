@@ -329,3 +329,15 @@ func assertProblemJSON(t *testing.T, resp *http.Response) {
 		t.Errorf("expected Content-Type application/problem+json, got %q", ct)
 	}
 }
+
+func TestLogin_PendingDeletionRefused(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "pending@example.com", "Sup3rSecret!", "Ana")
+	if err := ta.userSvc.MarkPendingDeletion(context.Background(), u.ID(), "req-1"); err != nil {
+		t.Fatalf("MarkPendingDeletion: %v", err)
+	}
+	resp := ta.do("POST", "/v1.0/auth/login", map[string]string{"email": "pending@example.com", "password": "Sup3rSecret!"})
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(bodyString(resp), "account-pending-deletion") {
+		t.Fatalf("status %d body %s, want 403 account-pending-deletion", resp.StatusCode, bodyString(resp))
+	}
+}

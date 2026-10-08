@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gopkg.aoctech.app/account/api/internal/domain/deletion"
+	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,6 +133,7 @@ type testApp struct {
 	passkeyRepo  *memPasskeyRepo
 	supportSvc   *supportDomain.Service
 	supportRepo  *mockSupportRepo
+	deletionMail *fakeDeletionMailer
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -233,6 +237,14 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewActivityHandler(auditSvc).Register(account)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
 	handler.NewTermsHandler(userSvc, auditSvc).Register(account)
+	revocation := commoncache.NewMemoryBackend(1024)
+	jwtSvc.SetRevocation(revocation)
+	deletionMail := &fakeDeletionMailer{}
+	deletionSvc := deletion.NewService(newMemDeletionRepo(), userSvc,
+		deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), nil, nil),
+		deletionMail)
+	handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
+		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)
@@ -248,6 +260,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewSocialHandler(userSvc, sessionSvc, socialCache, cfg, auditSvc, nil).Register(v1)
 
 	return &testApp{
+		deletionMail: deletionMail,
 		app:          app,
 		userSvc:      userSvc,
 		userRepo:     userRepo,
@@ -631,6 +644,13 @@ func (m *memUserRepo) Create(_ context.Context, u *userDomain.User) error {
 	return nil
 }
 
+func (m *memUserRepo) ClearDeletionIfRequest(_ context.Context, userID, requestID string) error {
+	if u, ok := m.byID[userID]; ok && u.DeletionRequestID == requestID {
+		u.DeletionState, u.DeletionRequestID = "", ""
+	}
+	return nil
+}
+
 func (m *memUserRepo) Update(_ context.Context, userID string, updates map[string]any) error {
 	u, ok := m.byID[userID]
 	if !ok {
@@ -656,6 +676,10 @@ func (m *memUserRepo) Update(_ context.Context, userID string, updates map[strin
 			u.PrivacyAcceptedAt, _ = v.(string)
 		case "support_role":
 			u.SupportRole, _ = v.(string)
+		case "deletion_state":
+			u.DeletionState, _ = v.(string) // nil = REMOVE
+		case "deletion_request_id":
+			u.DeletionRequestID, _ = v.(string)
 		}
 	}
 	return nil
@@ -1074,4 +1098,90 @@ func (m *mockSupportRepo) ListByStatus(_ context.Context, status, _ string, _ in
 		}
 	}
 	return out, "", nil
+}
+
+type memDeletionRepo struct {
+	mu      sync.Mutex
+	reqs    map[string]deletion.Request
+	markers map[string]string
+}
+
+func newMemDeletionRepo() *memDeletionRepo {
+	return &memDeletionRepo{reqs: map[string]deletion.Request{}, markers: map[string]string{}}
+}
+
+func (m *memDeletionRepo) Create(_ context.Context, r *deletion.Request) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.markers[r.UserID]; ok {
+		return deletion.ErrOpenRequest
+	}
+	m.markers[r.UserID] = r.ID
+	m.reqs[r.ID] = *r
+	return nil
+}
+
+func (m *memDeletionRepo) Get(_ context.Context, id string) (*deletion.Request, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.reqs[id]
+	if !ok {
+		return nil, deletion.ErrNotFound
+	}
+	r.CancelTokenHashes = append([]string(nil), r.CancelTokenHashes...)
+	return &r, nil
+}
+
+func (m *memDeletionRepo) GetOpen(ctx context.Context, userID string) (*deletion.Request, error) {
+	m.mu.Lock()
+	id, ok := m.markers[userID]
+	m.mu.Unlock()
+	if !ok {
+		return nil, deletion.ErrNotFound
+	}
+	return m.Get(ctx, id)
+}
+
+func (m *memDeletionRepo) Save(_ context.Context, r *deletion.Request, from deletion.State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cur, ok := m.reqs[r.ID]
+	if !ok || cur.State != from {
+		return deletion.ErrStateChanged
+	}
+	m.reqs[r.ID] = *r
+	if from.Open() && !r.State.Open() && m.markers[r.UserID] == r.ID {
+		delete(m.markers, r.UserID)
+	}
+	return nil
+}
+
+func (m *memDeletionRepo) ListDue(_ context.Context, st deletion.State, now time.Time, _ int32) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var ids []string
+	for id, r := range m.reqs {
+		if r.DueState == string(st) && r.NextActionAt <= now.UTC().Format(time.RFC3339) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
+type fakeDeletionMailer struct{ confirmToken, cancelToken string }
+
+func (f *fakeDeletionMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token string) error {
+	f.confirmToken = token
+	return nil
+}
+func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+	f.cancelToken = token
+	return nil
+}
+func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+	f.cancelToken = token
+	return nil
+}
+func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string) error {
+	return nil
 }

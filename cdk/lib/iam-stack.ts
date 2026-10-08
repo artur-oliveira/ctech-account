@@ -1,5 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import {Construct} from 'constructs';
 import {Environment} from './types';
@@ -109,6 +111,26 @@ export class IAMStack extends cdk.Stack {
         `arn:aws:s3:::${environment}-ctech-ec2-scripts-alpine/*`,
       ],
     }));
+
+    // Account-deletion saga fan-out (docs/specs/2026-10-06-account-deletion-saga-protocol.md §3).
+    // Participants subscribe their own SQS queues; the ARN is published in SSM for them.
+    const erasureTopic = new sns.Topic(this, 'UserErasureTopic', {
+      topicName: `${environment}-account-user-erasure`,
+    });
+    erasureTopic.grantPublish(appRole);
+    // grantPublish only adds an identity policy; deny everyone else at the topic,
+    // since user.erase is irreversible (saga protocol §3: only the account role publishes).
+    erasureTopic.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['sns:Publish'],
+      resources: [erasureTopic.topicArn],
+      conditions: {ArnNotEquals: {'aws:PrincipalArn': appRole.roleArn}},
+    }));
+    new ssm.StringParameter(this, 'UserErasureTopicArn', {
+      parameterName: `/ctech/${environment}/account/erasure-topic-arn`,
+      stringValue: erasureTopic.topicArn,
+    });
 
     this.instanceProfileName = `${environment}-ctech-account-instance-profile`;
 

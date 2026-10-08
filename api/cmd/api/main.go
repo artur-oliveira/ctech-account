@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v3"
@@ -28,6 +29,7 @@ import (
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	companyDomain "gopkg.aoctech.app/account/api/internal/domain/company"
 	"gopkg.aoctech.app/account/api/internal/domain/company/registry"
+	"gopkg.aoctech.app/account/api/internal/domain/deletion"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
 	passKeyDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	totpDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
@@ -40,6 +42,7 @@ import (
 	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/erasurepub"
 	"gopkg.aoctech.app/account/api/internal/geoupdater"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
@@ -49,6 +52,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/turnstile"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
+	commoncache "gopkg.aoctech.app/api-commons/cache"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonws "gopkg.aoctech.app/api-commons/ws"
 )
@@ -401,6 +405,7 @@ func main() {
 	v1.Use("/auth/google/callback", googleLimiter, lockoutMiddleware)
 	v1.Use("/token", tokenLimiterBruteForce, tokenLimiterThroughput)
 	v1.Use("/revoke", tokenLimiterBruteForce, tokenLimiterThroughput)
+	v1.Use("/auth/deletion", pwResetLimiter, lockoutMiddleware)
 
 	handler.NewScopesHandler(scopesCatalogSvc).Register(v1)
 	authH.Register(v1)
@@ -425,6 +430,44 @@ func main() {
 	termsH.Register(account)
 	passkeyH.RegisterManagement(account, stepUp)
 	supportH.RegisterAccount(account)
+	if cfg.AccountDeletionEnabled {
+		if emailCli == nil {
+			log.Fatal("ACCOUNT_DELETION_ENABLED requires the e-mail client (FROM_EMAIL / SES)")
+		}
+		var revocation commoncache.Backend = commoncache.NewMemoryBackend(10000)
+		if cfg.ValkeyURL != "" {
+			// DB 0 = the base URL, where every service reads revocations.
+			if revocation, err = commoncache.NewRedisBackend(cfg.ValkeyURL); err != nil {
+				log.Fatalf("connecting revocation backend: %v", err)
+			}
+		}
+		jwtSvc.SetRevocation(revocation)
+		var publisher deletion.Publisher
+		if len(cfg.ErasureServices) > 0 {
+			if cfg.ErasureTopicARN == "" {
+				log.Fatal("ERASURE_SERVICES is set but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+			}
+			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
+			if awsErr != nil {
+				log.Fatalf("loading AWS config for SNS: %v", awsErr)
+			}
+			publisher = erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)
+		}
+		deletionSvc := deletion.NewService(
+			deletion.NewRepository(db, cfg.TablePrefix), userSvc,
+			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServices),
+			emailCli,
+		)
+		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
+			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
+		workerLockKey := "deletion_worker_lock:" + cfg.Environment
+		go deletion.RunWorker(ctx, deletionSvc, func(ctx context.Context) (bool, error) {
+			if !valkeyClient.Enabled() {
+				return true, nil // dev: single instance
+			}
+			return valkeyClient.SetNX(ctx, workerLockKey, "1", deletion.WorkerInterval-5*time.Second)
+		}, deletion.WorkerInterval)
+	}
 	adminAuth := []fiber.Handler{
 		middleware.RequireAuth(jwtSvc),
 		middleware.RequireClientID(cfg.SelfClientID),

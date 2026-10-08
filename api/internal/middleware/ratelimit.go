@@ -57,6 +57,10 @@ type RateLimitConfig struct {
 	// with a 4xx/5xx status (used for brute-force protection on auth endpoints). When false,
 	// every request counts (used for per-user throughput limits).
 	CountOnlyFailures bool
+	// CountOnlySuccesses counts a request only when the handler succeeded (no
+	// returned error, status < 400): a budget for an action (e.g. 3 deletion
+	// requests per 30 days) that typos and rejected attempts must not consume.
+	CountOnlySuccesses bool
 	// FailClosed makes the limiter deny requests when it cannot enforce the limit
 	// (cache disabled, or a Valkey error) instead of silently allowing them. This is the
 	// correct posture for an auth service: a missing cache is a fail-open hole that lets
@@ -110,7 +114,7 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		}
 		key := rateLimitKeyPrefix + cfg.Prefix + ":" + id
 
-		if cfg.CountOnlyFailures {
+		if cfg.CountOnlyFailures || cfg.CountOnlySuccesses {
 			// Brute-force guard: count only failed responses. Admit on the
 			// pre-check, but treat a cache error or an already-saturated bucket
 			// as denial when FailClosed (SEC-003). The window boundary TOCTOU is
@@ -129,9 +133,11 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 
 			err = c.Next()
 			skip, _ := c.Locals(localsSkipRateLimitCount).(bool)
-			if c.Response().StatusCode() >= fiber.StatusBadRequest && !skip {
+			failed := c.Response().StatusCode() >= fiber.StatusBadRequest
+			succeeded := err == nil && !failed
+			if (cfg.CountOnlyFailures && failed && !skip) || (cfg.CountOnlySuccesses && succeeded) {
 				if _, incrErr := cfg.Cache.Incr(c.Context(), key, cfg.Window); incrErr != nil {
-					observability.Error(c.Context(), "rate limit: failed to count rejected request", incrErr, "prefix", cfg.Prefix)
+					observability.Error(c.Context(), "rate limit: failed to count request", incrErr, "prefix", cfg.Prefix)
 				}
 			}
 			return err
@@ -151,5 +157,23 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
 		}
 		return c.Next()
+	}
+}
+
+// DeletionRequestLimiters guard POST /v1.0/account/deletion, per user:
+//   - a budget of 3 accepted requests per 30 days (typos and rejected attempts
+//     do not consume it, so a user who lost the e-mail can always ask again);
+//   - a password brute-force guard on the identity check (failures only), so
+//     the endpoint is no password oracle for a stolen access token.
+func DeletionRequestLimiters(c *cache.Client) []fiber.Handler {
+	return []fiber.Handler{
+		RateLimit(RateLimitConfig{
+			Cache: c, Prefix: "deletion_req", Max: 3, Window: 30 * 24 * time.Hour,
+			KeyFunc: GetUserID, CountOnlySuccesses: true, FailClosed: true,
+		}),
+		RateLimit(RateLimitConfig{
+			Cache: c, Prefix: "deletion_pw", Max: FailedLoginMax, Window: FailedLoginWindow,
+			KeyFunc: GetUserID, CountOnlyFailures: true, FailClosed: true,
+		}),
 	}
 }

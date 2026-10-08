@@ -267,7 +267,7 @@ linked login methods → `account:security:write`; sessions →
 `account:sessions:read|revoke`; API keys and OAuth clients → their respective
 `read|write`; consents → `read|revoke`; activity → `account:activity:read`;
 KYC and MFA → their respective `read|write`; terms acceptance →
-`account:terms:write`.
+`account:terms:write`; account deletion → `account:deletion:write`.
 
 ### Profile
 - `GET /v1.0/account/profile` → `{ user_id, email, first_name, last_name,
@@ -351,6 +351,29 @@ KYC and MFA → their respective `read|write`; terms acceptance →
 - `DELETE /v1.0/account/mfa/passkeys/:id` *(stepUp)* → delete. `204`.
 
 ---
+
+### Account deletion (LGPD)  *(only when `ACCOUNT_DELETION_ENABLED=true`)*
+Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
+- `POST /v1.0/account/deletion` *(`account:deletion:write`; 3 per user / 30 days)* →
+  `{ confirmation_phrase: "EXCLUIR MINHA CONTA", password? }`. Identity: a recent MFA proof
+  (`last_mfa_at` within 5 min) **or** the correct `password`; password-less (Google-only)
+  accounts rely on the e-mail confirmation. Replaces an earlier unconfirmed request.
+  `202 { request_id, state: "awaiting_confirmation", confirm_by }`. Problems:
+  `invalid-request` (phrase), `step-up-required`, `invalid-credentials`, `conflict`
+  (a confirmed request is already open).
+- `GET /v1.0/account/deletion` *(`account:profile:read`)* → `{ request_id, state, requested_at,
+  confirm_by, grace_until }` or `404`.
+- `POST /v1.0/auth/deletion/confirm` *(no auth; link token; IP rate-limited)* →
+  `{ request_id, token }` from the e-mail link (valid 24 h). Locks the account at once
+  (sign-in refused, sessions and API keys revoked, live access tokens revoked) and starts
+  the 7-day grace. `200 { request_id, state: "pending_deletion", grace_until }`;
+  `invalid-token` otherwise.
+- `POST /v1.0/auth/deletion/cancel` *(no auth; link token; IP rate-limited)* →
+  `{ request_id, token }` from the scheduled or reminder e-mail. `200 { request_id,
+  state: "cancelled" }`; `invalid-token`; `conflict` once grace is over.
+- While a deletion is pending, `POST /v1.0/auth/login`, the MFA challenge and passkey
+  sign-in answer `403 account-pending-deletion`; Google sign-in redirects to
+  `/login?error=account_pending_deletion`.
 
 ## Passkey auth — `POST /v1.0/auth/passkeys/*` (no `RequireAuth`)
 - `POST /v1.0/auth/passkeys/authenticate/begin` *(20 req/min/IP)* →

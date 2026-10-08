@@ -246,6 +246,9 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 		}
 		newDevice := seenErr == nil && !seen
 
+		if u.DeletionState != "" {
+			return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=account_pending_deletion")
+		}
 		sess, rawToken, sErr := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRGoogle},
 			session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 		if sErr != nil {
@@ -372,6 +375,9 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 	}
 	newDevice := seenErr == nil && !seen
 
+	if u.DeletionState != "" {
+		return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=account_pending_deletion")
+	}
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRGoogle},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {

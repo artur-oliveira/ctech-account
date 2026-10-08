@@ -105,10 +105,25 @@ func (m *mockRepo) Update(_ context.Context, userID string, updates map[string]a
 	if v, ok := updates["support_role"].(string); ok {
 		u.SupportRole = v
 	}
+	if _, ok := updates["deletion_state"]; ok {
+		u.DeletionState, _ = updates["deletion_state"].(string) // nil = REMOVE
+	}
+	if _, ok := updates["deletion_request_id"]; ok {
+		u.DeletionRequestID, _ = updates["deletion_request_id"].(string)
+	}
 	return nil
 }
 
 // errRepo returns errors for all operations.
+func (m *mockRepo) ClearDeletionIfRequest(_ context.Context, userID, requestID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u, ok := m.byID[userID]; ok && u.DeletionRequestID == requestID {
+		u.DeletionState, u.DeletionRequestID = "", ""
+	}
+	return nil
+}
+
 type errRepo struct{}
 
 func (e *errRepo) GetByID(_ context.Context, _ string) (*user.User, error) {
@@ -120,6 +135,10 @@ func (e *errRepo) GetByEmail(_ context.Context, _ string) (*user.User, error) {
 func (e *errRepo) Create(_ context.Context, _ *user.User) error {
 	return errors.New("db error")
 }
+func (e *errRepo) ClearDeletionIfRequest(_ context.Context, _, _ string) error {
+	return errors.New("db error")
+}
+
 func (e *errRepo) Update(_ context.Context, _ string, _ map[string]any) error {
 	return errors.New("db error")
 }
@@ -623,5 +642,89 @@ func TestFindOrCreateByGoogle_NoDuplicateUser(t *testing.T) {
 	// The core invariant: exactly one user for the email (no duplicate).
 	if _, err := repo.GetByEmail(context.Background(), email); err != nil {
 		t.Fatalf("expected exactly one user for %s, got: %v", email, err)
+	}
+}
+
+func TestPendingDeletion_BlocksLoginAndClearsOnlyOwnRequest(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, err := svc.Register(ctx, "del@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := svc.MarkEmailVerified(ctx, u.ID()); err != nil {
+		t.Fatalf("MarkEmailVerified: %v", err)
+	}
+	if err := svc.MarkPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("MarkPendingDeletion: %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); !errors.Is(err, user.ErrPendingDeletion) {
+		t.Fatalf("Login err = %v, want ErrPendingDeletion", err)
+	}
+	if err := svc.ClearPendingDeletion(ctx, u.ID(), "req-OTHER"); err != nil {
+		t.Fatalf("ClearPendingDeletion(other): %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); !errors.Is(err, user.ErrPendingDeletion) {
+		t.Fatal("a stale request id must not lift the block")
+	}
+	if err := svc.ClearPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("ClearPendingDeletion: %v", err)
+	}
+	if _, err := svc.Login(ctx, "del@example.com", "Sup3rSecret!"); err != nil {
+		t.Fatalf("Login after clear: %v", err)
+	}
+}
+
+func TestCheckPassword(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, _ := svc.Register(ctx, "pw@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err := svc.CheckPassword(ctx, u.ID(), "Sup3rSecret!"); err != nil {
+		t.Fatalf("right password: %v", err)
+	}
+	if err := svc.CheckPassword(ctx, u.ID(), "wrong"); !errors.Is(err, user.ErrInvalidCredentials) {
+		t.Fatalf("wrong password: err = %v", err)
+	}
+}
+
+// racingRepo hands out a stale snapshot, then lets a newer deletion request
+// mark the user before the caller writes (a concurrent MarkPendingDeletion).
+type racingRepo struct{ *mockRepo }
+
+func (r racingRepo) GetByID(ctx context.Context, userID string) (*user.User, error) {
+	u, err := r.mockRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := *u
+	r.markNewer(userID)
+	return &snapshot, nil
+}
+
+// ClearDeletionIfRequest: the newer request lands right before the write.
+func (r racingRepo) ClearDeletionIfRequest(ctx context.Context, userID, requestID string) error {
+	r.markNewer(userID)
+	return r.mockRepo.ClearDeletionIfRequest(ctx, userID, requestID)
+}
+
+func (r racingRepo) markNewer(userID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID[userID].DeletionState, r.byID[userID].DeletionRequestID = user.DeletionStatePending, "req-2"
+}
+
+func TestClearPendingDeletion_DoesNotClobberConcurrentRequest(t *testing.T) {
+	ctx := context.Background()
+	repo := newMockRepo()
+	u, err := user.NewService(repo).Register(ctx, "race@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	_ = user.NewService(repo).MarkPendingDeletion(ctx, u.ID(), "req-1")
+	if err := user.NewService(racingRepo{repo}).ClearPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("ClearPendingDeletion: %v", err)
+	}
+	if got := repo.byID[u.ID()]; got.DeletionState == "" || got.DeletionRequestID != "req-2" {
+		t.Fatalf("newer request's block was wiped: state=%q request=%q", got.DeletionState, got.DeletionRequestID)
 	}
 }

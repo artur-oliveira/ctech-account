@@ -246,6 +246,34 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_audit', auditTable);
 
+    // LGPD deletion requests (docs/specs/2026-10-06-account-deletion-ctech-account.md).
+    // pk=REQ#{id} sk=META, plus one SUB#{user_id}/OPEN marker per open request.
+    // gsi_state_due is sparse: only requests with a pending next action carry due_state.
+    const deletionRequestsTable = new dynamodb.TableV2(this, 'DeletionRequestsTableV2', {
+      tableName: `${environment}_account_deletion_requests`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+      globalSecondaryIndexes: [
+        {
+          indexName: 'gsi_state_due',
+          partitionKey: {name: 'due_state', type: dynamodb.AttributeType.STRING},
+          sortKey: {name: 'next_action_at', type: dynamodb.AttributeType.STRING},
+          projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+          maxReadRequestUnits: 1000,
+          maxWriteRequestUnits: 1000,
+        },
+      ],
+    });
+    this.tables.set('account_deletion_requests', deletionRequestsTable);
+
     // Platform-wide scope catalog — shared by every ctech service, hence the
     // {env}_ctech_scopes name instead of the {env}_account_* convention.
     // Single partition (pk=SERVICE, sk=<service code>) so one Query loads it all.

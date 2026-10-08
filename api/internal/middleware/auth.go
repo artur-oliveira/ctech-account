@@ -72,6 +72,11 @@ func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, er
 	if verifyErr != nil {
 		return id, apierror.InvalidToken("The access token is invalid or has expired.", c.Path())
 	}
+	sub, _ := claims["sub"].(string)
+	iat, _ := claims["iat"].(float64)
+	if err := jwtSvc.CheckRevoked(c.Context(), sub, int64(iat)); err != nil {
+		return id, apierror.InvalidToken("The access token is invalid or has expired.", c.Path())
+	}
 
 	id.userID, _ = claims["sub"].(string)
 	id.sessionID, _ = claims["sid"].(string)

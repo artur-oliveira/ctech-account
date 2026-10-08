@@ -103,6 +103,10 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `GET`    | `/v1.0/account/profile`                             | `account:profile:read`                  | Get profile (includes `terms_pending: {tos, privacy}`, `has_password`, and `google_linked` — drive the in-app terms gate and the Link/Unlink Google UI)                                             |
 | `PUT`    | `/v1.0/account/profile`                             | `account:profile:write`                 | Update profile                                                                                                                                                                                      |
 | `POST`   | `/v1.0/account/terms/accept`                        | `account:terms:write`                   | Re-accept the documents whose version moved (`accept_tos` / `accept_privacy`); returns the cleared `terms_pending`                                                                                  |
+| `POST`   | `/v1.0/account/deletion`                            | `account:deletion:write` + MFA or password | Request account deletion (LGPD); sends the e-mail confirmation link. See *Account deletion* below                                                                                          |
+| `GET`    | `/v1.0/account/deletion`                            | `account:profile:read`                  | Current deletion request, if any                                                                                                                                                                    |
+| `POST`   | `/v1.0/auth/deletion/confirm`                       | e-mail link token                      | Confirm the deletion: account locked, 7-day grace starts                                                                                                                                            |
+| `POST`   | `/v1.0/auth/deletion/cancel`                        | e-mail link token                      | Cancel during grace                                                                                                                                                                                 |
 | `PUT`    | `/v1.0/account/password`                            | `account:security:write` + step-up      | Change password (revokes all other sessions)                                                                                                                                                        |
 | `POST`   | `/v1.0/account/password`                            | `account:security:write`                | Set the first password on a Google-created account                                                                                                                                                  |
 | `DELETE` | `/v1.0/account/link/google`                         | `account:security:write` + step-up      | Unlink the bound Google identity (refused for passwordless accounts, which would lose their only login method)                                                                                      |
@@ -510,6 +514,24 @@ name, birth date, and phone number for withdrawal validations. Downstream JWT co
 Audit events: `kyc.submitted`, `kyc.phone_verified`, `kyc.document_uploaded`, `kyc.documents_viewed`,
 `kyc.verified`, `kyc.rejected`. See [`docs/specs/2026-08-29-admin-kyc-review.md`](docs/specs/2026-08-29-admin-kyc-review.md).
 
+### Account deletion (LGPD)
+
+Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Behind `ACCOUNT_DELETION_ENABLED`.
+
+1. `POST /v1.0/account/deletion` (recent MFA or password, typed phrase) → e-mail with a 24 h
+   confirmation link.
+2. Confirming locks the account at once: sign-in refused (`account-pending-deletion`),
+   sessions and API keys revoked, live access tokens put on the shared revocation list
+   (`jwtverify.Revoke`, Valkey DB 0, honoured by this API too), `user.locked` published to the
+   participants. A 7-day grace starts; the e-mail carries a cancel link, and a reminder with a
+   fresh cancel link goes out 24 h before the end.
+3. At the end of grace the request becomes `locked` (irreversible) and `user.erase` is
+   published; the account's own purge is Phase 2.
+
+Every state change is a conditional write to `{env}_account_deletion_requests` made before
+its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)
+retries side effects through the sparse `gsi_state_due` index until they are recorded.
+
 ### Step-up authentication (recent MFA)
 
 Access tokens issued from a session carry `auth_time`, `amr` (RFC 8176: `pwd`,
@@ -585,6 +607,9 @@ All configuration is read from environment variables at startup.
 | `FROM_EMAIL`                 | No       | SES-verified sender address. When unset, email verification & password-reset emails are silently disabled                                                                                                                                                                                                                     |
 | `TURNSTILE_SECRET_KEY`       | No       | Cloudflare Turnstile Siteverify secret for public support-ticket creation. The deployed API reads it from `/ctech-account/{env}/turnstile-secret-key`; empty disables verification only for local development. Never expose this value to the SPA. |
 | `KYC_DOCUMENTS_BUCKET`       | No       | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable                                                                                                                                                                                                      |
+| `ACCOUNT_DELETION_ENABLED`   | No       | `true` wires the account-deletion routes and worker (default off: Phase 1 ships dark until the account's own purge lands)                                                                                                                                                   |
+| `ACCOUNT_ERASURE_TOPIC_ARN`  | No       | SNS topic `{env}-account-user-erasure` for the deletion saga (set by CDK). Required when `ERASURE_SERVICES` is set                                                                                                                                                          |
+| `ERASURE_SERVICES`           | No       | Comma-separated participants that receive `user.locked/unlocked/erase` (e.g. `wallet,dfe,billing,poker`). Empty publishes nothing                                                                                                                                           |
 | `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
 | `REFRESH_TOKEN_TTL`          | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure                                                                                                                                                                                                                |

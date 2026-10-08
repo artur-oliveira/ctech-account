@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 	"time"
 
@@ -53,6 +54,31 @@ func (c *Client) SendPasswordResetEmail(ctx context.Context, to, firstName, toke
 	subject := "Redefinir sua senha — ctech"
 	body := passwordResetEmailHTML(firstName, link)
 	return c.send(ctx, to, subject, body)
+}
+
+var brt = time.FixedZone("BRT", -3*60*60)
+
+func (c *Client) deletionLink(page, requestID, token string) string {
+	return c.baseURL + "/account-deletion/" + page + "?request=" + url.QueryEscape(requestID) + "&token=" + url.QueryEscape(token)
+}
+
+func (c *Client) SendDeletionConfirmEmail(ctx context.Context, to, firstName, requestID, token string) error {
+	return c.send(ctx, to, "Confirme a exclusão da sua conta — ctech",
+		deletionConfirmEmailHTML(firstName, c.deletionLink("confirm", requestID, token)))
+}
+
+func (c *Client) SendDeletionScheduledEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error {
+	return c.send(ctx, to, "Sua conta será excluída — ctech",
+		deletionScheduledEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil))
+}
+
+func (c *Client) SendDeletionReminderEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error {
+	return c.send(ctx, to, "Último aviso: sua conta será excluída amanhã — ctech",
+		deletionReminderEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil))
+}
+
+func (c *Client) SendDeletionCancelledEmail(ctx context.Context, to, firstName string) error {
+	return c.send(ctx, to, "Exclusão da conta cancelada — ctech", deletionCancelledEmailHTML(firstName))
 }
 
 // SendAccountExistsEmail is sent when someone tries to register with an address
@@ -199,6 +225,37 @@ func passwordResetEmailHTML(firstName, link string) string {
   ` + ctaButton("Redefinir senha", link)
 	return emailLayout("Redefinir senha", firstName, body,
 		"Se você não solicitou isso, ignore este e-mail — sua senha não será alterada.")
+}
+
+func deletionConfirmEmailHTML(firstName, link string) string {
+	body := `<p>Recebemos um pedido para <strong>excluir sua conta CTech</strong> e os seus dados em todos os produtos CTech. Confirme pelo botão abaixo. O link expira em 24 horas.</p>
+  <p>Ao confirmar, sua conta é bloqueada na hora e excluída definitivamente em 7 dias. Até lá você pode cancelar pelo link que enviaremos.</p>
+  ` + ctaButton("Confirmar exclusão", link)
+	return emailLayout("Confirme a exclusão da conta", firstName, body,
+		"Se não foi você, ignore este e-mail: nada acontece sem a confirmação. Recomendamos trocar sua senha.")
+}
+
+func deletionScheduledEmailHTML(firstName, cancelLink string, graceUntil time.Time) string {
+	body := `<p>Sua conta CTech está bloqueada e será <strong>excluída definitivamente em ` +
+		graceUntil.In(brt).Format("02/01/2006 às 15:04") + `</strong> (horário de Brasília).</p>
+  <p>Depois disso a exclusão não pode ser desfeita. Para manter a conta, cancele antes desse prazo.</p>
+  ` + ctaButton("Cancelar exclusão", cancelLink)
+	return emailLayout("Exclusão agendada", firstName, body,
+		"Se você não pediu a exclusão, cancele agora e troque sua senha.")
+}
+
+func deletionReminderEmailHTML(firstName, cancelLink string, graceUntil time.Time) string {
+	body := `<p>Sua conta CTech será <strong>excluída definitivamente em ` +
+		graceUntil.In(brt).Format("02/01/2006 às 15:04") + `</strong> (horário de Brasília). Esta é a última chance de cancelar.</p>
+  ` + ctaButton("Cancelar exclusão", cancelLink)
+	return emailLayout("Último aviso de exclusão", firstName, body,
+		"Se você quer mesmo excluir a conta, não precisa fazer nada.")
+}
+
+func deletionCancelledEmailHTML(firstName string) string {
+	body := `<p>A exclusão da sua conta CTech foi cancelada. Entre novamente para voltar a usar os produtos CTech; por segurança, todas as sessões e chaves de API anteriores foram encerradas.</p>`
+	return emailLayout("Exclusão cancelada", firstName, body,
+		"Se não foi você quem cancelou, fale com o suporte.")
 }
 
 // detailRow renders one label/value line of the device-details card. label is
