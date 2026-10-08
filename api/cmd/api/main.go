@@ -480,7 +480,8 @@ func main() {
 	// registration order, so a literal segment mounted after a parameter is
 	// captured by it and never reached.
 	handler.NewHandoffHandler(oauthClientRepo).Register(orgsGroup)
-	handler.NewOrganizationHandler(orgSvc, userSvc).Register(
+	orgH := handler.NewOrganizationHandler(orgSvc, userSvc)
+	orgH.Register(
 		orgsGroup,
 		v1.Group("/invitations", adminAuth[0], adminAuth[1]),
 	)
@@ -491,6 +492,7 @@ func main() {
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
 	companyH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountCompanyActor))
+	orgH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountOrgMember))
 	scopeRegistryH.Register(v1,
 		middleware.RequireAuth(jwtSvc),
 		middleware.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),
