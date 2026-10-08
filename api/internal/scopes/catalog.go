@@ -63,6 +63,16 @@ const InternalAccountKYC = "internal:account:kyc"
 // that ADR settles.
 const InternalAccountCompanyActor = "internal:account:company-actor"
 
+// InternalAccountOrgMember lets a product ask whether a person belongs to an
+// organization and with which ladder role — the membership half of ctech-billing
+// ADR 0025 (a finance space is selected by the browser and authorized here).
+//
+// Separate from InternalAccountCompanyActor on purpose: that one answers reach
+// for a company and carries no role; this one answers membership of a workspace
+// and carries the role. A client that needs one must not be able to ask the
+// other.
+const InternalAccountOrgMember = "internal:account:org-member"
+
 // InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
 // publisher to reconcile the scope manifest bound to its OAuth client. It is
 // an Account-owned root permission and therefore remains in the built-in

@@ -20,8 +20,12 @@ func (h *CompanyHandler) RegisterInternal(v1 fiber.Router, internalAuth ...fiber
 	for i, m := range internalAuth {
 		handlers[i] = m
 	}
-	grp := v1.Group("/internal/companies", handlers...)
-	grp.Get("/:company_id/actors/:user_id", h.internalReach)
+	// Middleware is attached per route, not to a prefix group: another internal
+	// route shares /internal/organizations (membership, behind its own scope), and
+	// a group guard would stack this scope on it.
+	with := func(h fiber.Handler) []any { return append(append([]any(nil), handlers...), h) }
+	reach := with(h.internalReach)
+	v1.Get("/internal/companies/:company_id/actors/:user_id", reach[0], reach[1:]...)
 	// Identity, which is a different question from reach and gets its own
 	// route rather than being folded into the answer above. Reach is asked on
 	// every request and must stay one small answer; identity is asked once,
@@ -29,8 +33,8 @@ func (h *CompanyHandler) RegisterInternal(v1 fiber.Router, internalAuth ...fiber
 	// Both ids, because the handoff hands the product both: looking the
 	// organization up from the company alone would need an index that exists
 	// for nothing else.
-	v1.Group("/internal/organizations", handlers...).
-		Get("/:organization_id/companies/:company_id", h.internalIdentity)
+	identity := with(h.internalIdentity)
+	v1.Get("/internal/organizations/:organization_id/companies/:company_id", identity[0], identity[1:]...)
 }
 
 // internalIdentity returns who a company IS: the tax id, its kind, the legal
