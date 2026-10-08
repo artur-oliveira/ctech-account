@@ -73,6 +73,13 @@ const InternalAccountCompanyActor = "internal:account:company-actor"
 // other.
 const InternalAccountOrgMember = "internal:account:org-member"
 
+// InternalAccountUserOrganizations lets a product list every organization a
+// person belongs to, with their role in each, to build a space switcher. It is a
+// wider grant than InternalAccountOrgMember (enumerate a user's workspaces vs
+// check one membership), so it is its own scope: a client that only needs to
+// authorize a request must not also be able to enumerate.
+const InternalAccountUserOrganizations = "internal:account:user-organizations"
+
 // InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
 // publisher to reconcile the scope manifest bound to its OAuth client. It is
 // an Account-owned root permission and therefore remains in the built-in
