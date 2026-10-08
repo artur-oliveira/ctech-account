@@ -51,6 +51,7 @@ Cross-links:
 | [`plans/2026-07-15-kyc-manual.md`](plans/2026-07-15-kyc-manual.md)       | Manual KYC plan               |
 | [`plans/2026-10-07-account-deletion-phase1-lifecycle.md`](plans/2026-10-07-account-deletion-phase1-lifecycle.md) | Account deletion phase 1 (lifecycle + lock) |
 | [`plans/2026-10-07-account-deletion-phase2a-purge-core.md`](plans/2026-10-07-account-deletion-phase2a-purge-core.md) | Account deletion phase 2a (blockers, purge, tombstone) |
+| [`plans/2026-10-07-account-deletion-phase2b-purge-data.md`](plans/2026-10-07-account-deletion-phase2b-purge-data.md) | Account deletion phase 2b (organizations, support, audit, KYC documents) |
 
 ---
 
