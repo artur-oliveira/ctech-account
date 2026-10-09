@@ -1,8 +1,8 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
@@ -12,6 +12,7 @@ import { QueryError } from '@/components/query-error'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
+import { isPersonal } from '@/lib/types'
 import { MembersTab } from './members-tab'
 import { CompaniesTab } from './companies-tab'
 import { InvitationsTab } from './invitations-tab'
@@ -32,6 +33,7 @@ export default function OrganizationDetailPage() {
 
 function OrganizationDetail() {
   const { t } = useTranslation()
+  const router = useRouter()
   const id = useSearchParams().get('id') ?? ''
 
   const { data: organization, isLoading, isError, error, refetch } = useQuery({
@@ -47,6 +49,15 @@ function OrganizationDetail() {
   // organization nobody can be a member of.
   const denied = id === '' || (isAxiosError(error) && error.response?.status === 403)
 
+  // A space is not an organization: no companies, no admin, none of this
+  // page's words. Accepting an invitation lands here because the invite page
+  // cannot know the kind before it accepts, so a space is passed on to its own
+  // screen rather than rendered as something it is not.
+  const space = !!organization && isPersonal(organization)
+  useEffect(() => {
+    if (space) router.replace(`/account/spaces/people?id=${encodeURIComponent(id)}`)
+  }, [space, id, router])
+
   if (denied) {
     return (
       <div className="space-y-6">
@@ -58,7 +69,7 @@ function OrganizationDetail() {
     )
   }
 
-  if (isLoading || !organization) {
+  if (isLoading || !organization || space) {
     return (
       <div className="space-y-6">
         <BackLink />

@@ -198,3 +198,66 @@ describe('who may act on whom', () => {
     expect(screen.queryByRole('option', { name: /^admin$/i })).not.toBeInTheDocument()
   })
 })
+
+describe('on a space', () => {
+  function space(role: OrganizationRole): Organization {
+    return {...organization(role), kind: 'personal'}
+  }
+
+  function renderSpace(role: OrganizationRole) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={client}>
+        <MembersTab organization={space(role)} />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    signedInAs('usr_me')
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue([
+      { organization_id: 'org_1', user_id: 'usr_owner', name: 'Dona', role: 'owner', created_at: new Date().toISOString() },
+      { organization_id: 'org_1', user_id: 'usr_me', name: 'Eu', role: 'member', created_at: new Date().toISOString() },
+      { organization_id: 'org_1', user_id: 'usr_viewer', name: 'Leitor', role: 'viewer', created_at: new Date().toISOString() },
+    ])
+  })
+
+  // Two levels and nothing else: admin would be a choice the server answers
+  // with 422.
+  it('offers the owner full access and read only, never admin', async () => {
+    signedInAs('usr_owner')
+    const user = userEvent.setup()
+    renderSpace('owner')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    const row = table.getByText('Leitor').closest('tr') as HTMLElement
+    await user.click(within(row).getByRole('combobox', { name: /change access/i }))
+
+    expect(await screen.findByRole('option', { name: /full access/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /read only/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /admin/i })).not.toBeInTheDocument()
+  })
+
+  // Only the owner acts on a space. Full access outranks read only on the
+  // ladder, but it does not manage anybody.
+  it('gives somebody with full access no controls, even over a reader', async () => {
+    renderSpace('member')
+    await screen.findAllByText('Leitor')
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
+  })
+
+  it('names the roles the way a space does', async () => {
+    renderSpace('viewer')
+    await screen.findAllByText('Leitor')
+
+    const table = within(screen.getByRole('table'))
+    expect(table.getByText('Full access')).toBeInTheDocument()
+    expect(table.getByText('Read only')).toBeInTheDocument()
+    expect(table.getByRole('columnheader', { name: /access/i })).toBeInTheDocument()
+    expect(table.queryByText(/^member$|^viewer$/i)).toBeNull()
+  })
+})
