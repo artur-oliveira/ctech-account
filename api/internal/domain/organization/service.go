@@ -77,6 +77,17 @@ func NewService(repo Repository, now func() time.Time) *Service {
 // separate act with evidence behind it (phase 3), and conflating the two would
 // mean the first person to type a name owns it.
 func (s *Service) Create(ctx context.Context, ownerUserID, ownerName, displayName string) (*Organization, error) {
+	return s.CreateOfKind(ctx, KindOrganization, ownerUserID, ownerName, displayName)
+}
+
+// CreateOfKind is Create for either kind of workspace. A space (KindPersonal)
+// is created exactly like an organization — the caller as its owner, in one
+// transaction — and differs only in the rules applied to it afterwards.
+func (s *Service) CreateOfKind(ctx context.Context, kind, ownerUserID, ownerName, displayName string) (*Organization, error) {
+	kind, err := NormalizeKind(kind)
+	if err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(displayName)
 	if name == "" || len(name) > maxDisplayName {
 		return nil, ErrInvalidName
@@ -89,6 +100,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, ownerName, displayNam
 		ID:          uuid.NewV7().String(),
 		DisplayName: name,
 		OwnerUserID: ownerUserID,
+		Kind:        kind,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -149,6 +161,35 @@ func (s *Service) RoleOf(ctx context.Context, orgID, userID string) (string, err
 	return m.Role, nil
 }
 
+// KindOf returns a workspace's kind. ErrNotFound when it does not exist.
+func (s *Service) KindOf(ctx context.Context, orgID string) (string, error) {
+	org, err := s.repo.Get(ctx, orgID)
+	if err != nil {
+		return "", err
+	}
+	return org.KindOf(), nil
+}
+
+// MembershipOf is RoleOf plus the workspace's kind: what a product needs to
+// decide what a role means there (ctech-billing ADR 0027). A role alone is not
+// enough — `member` grants different things in a space and in an organization.
+func (s *Service) MembershipOf(ctx context.Context, orgID, userID string) (role, kind string, err error) {
+	role, err = s.RoleOf(ctx, orgID, userID)
+	if err != nil {
+		return "", "", err
+	}
+	kind, err = s.KindOf(ctx, orgID)
+	if errors.Is(err, ErrNotFound) {
+		// A membership left pointing at a workspace that is gone answers as no
+		// membership, the way ListWorkspaces skips it.
+		return "", "", ErrNotAMember
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return role, kind, nil
+}
+
 // require is the one place a floor is enforced, so "who may do this" is a
 // single line at the top of each use case rather than a comparison each of them
 // spells out slightly differently.
@@ -177,6 +218,9 @@ func (s *Service) require(ctx context.Context, orgID, actorUserID, floor string)
 func (s *Service) SetRole(ctx context.Context, orgID, actorUserID, targetUserID, role string) error {
 	if !IsGrantableRole(role) {
 		return ErrNotGrantable
+	}
+	if err := s.requireGrantableIn(ctx, orgID, role); err != nil {
+		return err
 	}
 	if actorUserID == targetUserID {
 		return ErrOwnRole
@@ -253,10 +297,39 @@ func (s *Service) Transfer(ctx context.Context, orgID, actorUserID, toUserID str
 	if actorUserID == toUserID {
 		return ErrForbidden
 	}
-	if _, err := s.RoleOf(ctx, orgID, toUserID); err != nil {
+	toRole, err := s.RoleOf(ctx, orgID, toUserID)
+	if err != nil {
 		return err
 	}
-	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, s.now().UTC())
+	kind, err := s.KindOf(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	demoteTo := RoleAdmin
+	if kind == KindPersonal {
+		if toRole != RoleMember {
+			return ErrTransferNeedsFullAccess
+		}
+		demoteTo = RoleMember
+	}
+	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, demoteTo, s.now().UTC())
+}
+
+// requireGrantableIn refuses a role the workspace's kind does not have. An
+// unknown workspace passes here and is refused by the membership check that
+// follows, so the two refusals stay indistinguishable to a stranger.
+func (s *Service) requireGrantableIn(ctx context.Context, orgID, role string) error {
+	kind, err := s.KindOf(ctx, orgID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !IsGrantableRoleIn(kind, role) {
+		return ErrNotGrantable
+	}
+	return nil
 }
 
 // invitationTTL bounds how long an offer stands. Seven days is long enough for
@@ -285,6 +358,14 @@ func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role st
 	address := NormalizeEmail(email)
 	if address == "" || !strings.Contains(address, "@") {
 		return "", ErrInvalidName
+	}
+	if err := s.requireGrantableIn(ctx, orgID, role); err != nil {
+		return "", err
+	}
+	if len(companyIDs) > 0 {
+		if kind, err := s.KindOf(ctx, orgID); err == nil && kind == KindPersonal {
+			return "", ErrNoCompaniesInASpace
+		}
 	}
 	actorRole, err := s.RoleOf(ctx, orgID, actorUserID)
 	if err != nil {
@@ -424,6 +505,7 @@ type Workspace struct {
 	ID          string
 	DisplayName string
 	OwnerUserID string
+	Kind        string
 	Role        string
 	JoinedAt    time.Time
 }
@@ -465,6 +547,7 @@ func (s *Service) ListWorkspaces(ctx context.Context, userID string) ([]Workspac
 			ID:          org.ID,
 			DisplayName: org.DisplayName,
 			OwnerUserID: org.OwnerUserID,
+			Kind:        org.KindOf(),
 			Role:        m.Role,
 			JoinedAt:    m.CreatedAt,
 		})

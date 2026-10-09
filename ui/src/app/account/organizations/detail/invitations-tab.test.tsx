@@ -26,11 +26,11 @@ function organization(role: OrganizationRole): Organization {
   }
 }
 
-function renderTab() {
+function renderTab(workspace: Organization = organization('owner')) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
   return render(
     <QueryClientProvider client={client}>
-      <InvitationsTab organization={organization('owner')}/>
+      <InvitationsTab organization={workspace}/>
     </QueryClientProvider>,
   )
 }
@@ -126,5 +126,45 @@ describe('invitations tab', () => {
 
     expect(await dialog.findByRole('button', {name: /retry|try again/i})).toBeInTheDocument()
     expect(dialog.getByRole('button', {name: /create invitation/i})).toBeDisabled()
+  })
+})
+
+describe('inviting into a space', () => {
+  const space: Organization = {...organization('owner'), kind: 'personal'}
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(fetchOrganizationInvitations).mockResolvedValue([])
+    vi.mocked(inviteMemberAPI).mockResolvedValue({token: 'tok', email: 'a@example.com', role: 'viewer'})
+  })
+
+  // A space never has a company. Asking for its companies would be a 409, and
+  // a picker would be a question with no possible answer.
+  it('never asks for companies', async () => {
+    const user = userEvent.setup()
+    renderTab(space)
+    await user.click(await screen.findByRole('button', {name: /invite/i}))
+
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.queryAllByRole('checkbox')).toHaveLength(0)
+    expect(dialog.queryByText(/compan/i)).toBeNull()
+    expect(fetchCompanies).not.toHaveBeenCalled()
+  })
+
+  it('offers full access and read only, and sends the choice', async () => {
+    const user = userEvent.setup()
+    renderTab(space)
+    await user.click(await screen.findByRole('button', {name: /invite/i}))
+    await user.type(screen.getByLabelText(/e-?mail/i), 'mae@example.com')
+
+    await user.click(screen.getByRole('combobox', {name: /access/i}))
+    expect(await screen.findByRole('option', {name: /full access/i})).toBeInTheDocument()
+    expect(screen.queryByRole('option', {name: /admin/i})).toBeNull()
+    await user.click(screen.getByRole('option', {name: /read only/i}))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', {name: /create invitation/i}))
+
+    await waitFor(() =>
+      expect(inviteMemberAPI).toHaveBeenCalledWith('org_1', 'mae@example.com', 'viewer', []),
+    )
   })
 })

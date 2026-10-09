@@ -78,7 +78,9 @@ type Repository interface {
 	SetRole(ctx context.Context, orgID, userID, role string) error
 	RemoveMembership(ctx context.Context, orgID, userID string) error
 	RenameMember(ctx context.Context, userID, name string) error
-	TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID string, now time.Time) error
+	// TransferOwnership demotes the old owner to demoteTo — admin in an
+	// organization, member in a space, which has no admin rung.
+	TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID, demoteTo string, now time.Time) error
 	PutInvitation(ctx context.Context, inv *Invitation) error
 	GetInvitationByToken(ctx context.Context, tokenHash string) (*Invitation, error)
 	ListInvitations(ctx context.Context, orgID string) ([]*Invitation, error)
@@ -369,20 +371,20 @@ func (r *repo) RenameMember(ctx context.Context, userID, name string) error {
 // finds a role it did not expect and the whole transaction is rejected. Doing
 // this as three sequential writes would have two failure windows, and both
 // leave an organization with either two owners or none.
-func (r *repo) TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID string, now time.Time) error {
+func (r *repo) TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID, demoteTo string, now time.Time) error {
 	ownerVal := map[string]types.AttributeValue{":owner": &types.AttributeValueMemberS{Value: RoleOwner}}
 	demote := map[string]types.AttributeValue{
-		":owner": &types.AttributeValueMemberS{Value: RoleOwner},
-		":admin": &types.AttributeValueMemberS{Value: RoleAdmin},
+		":owner":  &types.AttributeValueMemberS{Value: RoleOwner},
+		":demote": &types.AttributeValueMemberS{Value: demoteTo},
 	}
 	roleName := map[string]string{"#role": "role"}
 
 	err := r.memberships.TransactWrite(ctx, []types.TransactWriteItem{
-		// The outgoing owner becomes an admin, not a stranger: taking away the
-		// workspace they built as a side effect of handing it over is a
-		// surprise nobody asked for.
+		// The outgoing owner stays in, one rung down (admin, or member in a
+		// space), not a stranger: taking away the workspace they built as a
+		// side effect of handing it over is a surprise nobody asked for.
 		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(fromUserID)),
-			"SET #role = :admin", "attribute_exists(pk) AND #role = :owner", roleName, demote),
+			"SET #role = :demote", "attribute_exists(pk) AND #role = :owner", roleName, demote),
 		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(toUserID)),
 			"SET #role = :owner", "attribute_exists(pk) AND #role <> :owner", roleName, ownerVal),
 		r.orgs.BuildRawUpdateTxItem(orgPK(orgID), aws.String(metaSK),

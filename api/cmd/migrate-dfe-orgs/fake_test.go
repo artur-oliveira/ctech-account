@@ -75,7 +75,7 @@ func (f *fakeRepo) ListForUser(context.Context, string) ([]*orgDomain.Membership
 }
 func (f *fakeRepo) SetRole(context.Context, string, string, string) error  { return nil }
 func (f *fakeRepo) RemoveMembership(context.Context, string, string) error { return nil }
-func (f *fakeRepo) TransferOwnership(context.Context, string, string, string, time.Time) error {
+func (f *fakeRepo) TransferOwnership(context.Context, string, string, string, string, time.Time) error {
 	return nil
 }
 func (f *fakeRepo) PutInvitation(context.Context, *orgDomain.Invitation) error { return nil }

@@ -3,11 +3,11 @@
 import {type SyntheticEvent, useState} from 'react'
 import {useRouter} from 'next/navigation'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
 import {Button} from '@/components/ui/button'
@@ -15,12 +15,13 @@ import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
-import type {Organization} from '@/lib/types'
+import {canTransferTo, isPersonal, type Organization} from '@/lib/types'
 
 export function SettingsTab({organization}: { organization: Organization }) {
-  const {t} = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const isOwner = organization.role === 'owner'
-  const canManage = isOwner || organization.role === 'admin'
+  // A space has no admin: its owner is the only one who renames it.
+  const canManage = isOwner || (!isPersonal(organization) && organization.role === 'admin')
 
   return (
     <div className="space-y-8">
@@ -46,7 +47,7 @@ export function SettingsTab({organization}: { organization: Organization }) {
 }
 
 function RenameSection({organization}: { organization: Organization }) {
-  const {t} = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const queryClient = useQueryClient()
 
   const {mutate, isPending, error} = useMutation({
@@ -54,17 +55,18 @@ function RenameSection({organization}: { organization: Organization }) {
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
       queryClient.invalidateQueries({queryKey: ['organizations']})
+      queryClient.invalidateQueries({queryKey: ['spaces']})
       toast.success(t('toast.organizationRenamed'))
     },
     onError: (err) => {
       if (isAxiosError(err)) {
-        toast.error(err.response?.data?.detail ?? t('toast.renameOrganizationFailed'))
+        toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.renameOrganizationFailed'))
       }
     },
   })
 
   const errorMsg = isAxiosError(error)
-    ? (error.response?.data?.detail ?? t('toast.renameOrganizationFailed'))
+    ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.renameOrganizationFailed'))
     : null
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
@@ -111,7 +113,7 @@ function RenameSection({organization}: { organization: Organization }) {
 }
 
 function TransferSection({organization}: { organization: Organization }) {
-  const {t} = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const queryClient = useQueryClient()
   const [target, setTarget] = useState('')
 
@@ -127,8 +129,9 @@ function TransferSection({organization}: { organization: Organization }) {
   })
 
   // Never a free-text user id: the API requires an existing membership, and
-  // typing an id is how an organization gets handed to a stranger.
-  const candidates = members.filter((m) => m.role !== 'owner')
+  // typing an id is how an organization gets handed to a stranger. On a space,
+  // only somebody with full access: the server refuses a reader.
+  const candidates = members.filter((m) => canTransferTo(organization.kind, m.role))
 
   const {mutateAsync, isPending} = useMutation({
     mutationFn: (userId: string) => transferOwnershipAPI(organization.id, userId),
@@ -136,11 +139,12 @@ function TransferSection({organization}: { organization: Organization }) {
       void queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
       void queryClient.invalidateQueries({queryKey: ['organization-members', organization.id]})
       void queryClient.invalidateQueries({queryKey: ['organizations']})
+      void queryClient.invalidateQueries({queryKey: ['spaces']})
       setTarget('')
       toast.success(t('toast.ownershipTransferred'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.transferFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.transferFailed'))
     },
   })
 
@@ -201,7 +205,7 @@ function TransferSection({organization}: { organization: Organization }) {
 }
 
 function LeaveSection({organization}: { organization: Organization }) {
-  const {t} = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const router = useRouter()
   const queryClient = useQueryClient()
   const {data: profile} = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
@@ -210,10 +214,11 @@ function LeaveSection({organization}: { organization: Organization }) {
     mutationFn: (userId: string) => removeMemberAPI(organization.id, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['organizations']})
-      router.push('/account/organizations')
+      queryClient.invalidateQueries({queryKey: ['spaces']})
+      router.push(isPersonal(organization) ? '/account/spaces' : '/account/organizations')
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.leaveFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.leaveFailed'))
     },
   })
 

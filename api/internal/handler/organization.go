@@ -43,7 +43,11 @@ func (h *OrganizationHandler) Register(orgs, invitations fiber.Router) {
 	orgs.Patch("/:id", scoped(organization.RoleAdmin), h.rename)
 	orgs.Get("/:id/members", scoped(organization.RoleViewer), h.listMembers)
 	orgs.Patch("/:id/members/:user_id", scoped(organization.RoleAdmin), h.setRole)
-	orgs.Delete("/:id/members/:user_id", scoped(organization.RoleAdmin), h.removeMember)
+	// Viewer, not admin: leaving is removing yourself, open to every member but
+	// the owner, and Service.Remove still requires admin and reach to remove
+	// anybody else. An admin floor here shut every member and viewer out of
+	// leaving — every non-owner of a space, which has no admin rung.
+	orgs.Delete("/:id/members/:user_id", scoped(organization.RoleViewer), h.removeMember)
 	orgs.Get("/:id/invitations", scoped(organization.RoleAdmin), h.listInvitations)
 	orgs.Post("/:id/invitations", scoped(organization.RoleAdmin), h.invite)
 	orgs.Delete("/:id/invitations/:email", scoped(organization.RoleAdmin), h.revokeInvitation)
@@ -52,6 +56,13 @@ func (h *OrganizationHandler) Register(orgs, invitations fiber.Router) {
 
 type organizationRequest struct {
 	DisplayName string `json:"display_name" validate:"required,max=120"`
+}
+
+// createOrganizationRequest is organizationRequest plus the kind, which only
+// creation takes: a workspace's kind never changes afterwards.
+type createOrganizationRequest struct {
+	DisplayName string `json:"display_name" validate:"required,max=120"`
+	Kind        string `json:"kind" validate:"omitempty,oneof=organization personal"`
 }
 
 type inviteRequest struct {
@@ -79,6 +90,7 @@ type organizationDTO struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
 	OwnerUserID string `json:"owner_user_id"`
+	Kind        string `json:"kind"`
 	Role        string `json:"role,omitempty"`
 	CreatedAt   string `json:"created_at"`
 }
@@ -88,6 +100,7 @@ type workspaceDTO struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
 	OwnerUserID string `json:"owner_user_id"`
+	Kind        string `json:"kind"`
 	Role        string `json:"role"`
 	JoinedAt    string `json:"joined_at"`
 }
@@ -114,16 +127,16 @@ type invitationDTO struct {
 }
 
 func (h *OrganizationHandler) create(c fiber.Ctx) error {
-	var req organizationRequest
+	var req createOrganizationRequest
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
-	org, err := h.svc.Create(c.Context(), middleware.GetUserID(c), h.callerName(c), req.DisplayName)
+	org, err := h.svc.CreateOfKind(c.Context(), req.Kind, middleware.GetUserID(c), h.callerName(c), req.DisplayName)
 	if err != nil {
 		return organizationProblem(c, err)
 	}
 	return c.Status(http.StatusCreated).JSON(organizationDTO{
-		ID: org.ID, DisplayName: org.DisplayName, OwnerUserID: org.OwnerUserID,
+		ID: org.ID, DisplayName: org.DisplayName, OwnerUserID: org.OwnerUserID, Kind: org.KindOf(),
 		Role: organization.RoleOwner, CreatedAt: org.CreatedAt.Format(time.RFC3339),
 	})
 }
@@ -132,15 +145,26 @@ func (h *OrganizationHandler) create(c fiber.Ctx) error {
 // sign-in. It carries the name and the caller's role together: a list of ids
 // cannot be rendered, a list of names cannot decide what to offer, and
 // fetching the halves separately turns one sign-in into N requests.
+//
+// It lists one kind at a time — organizations unless ?kind=personal asks for
+// spaces — so a space never reaches a screen built for organizations, here or
+// in a product that reads this list.
 func (h *OrganizationHandler) listMine(c fiber.Ctx) error {
+	kind, err := organization.NormalizeKind(c.Query("kind"))
+	if err != nil {
+		return apierror.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
+	}
 	workspaces, err := h.svc.ListWorkspaces(c.Context(), middleware.GetUserID(c))
 	if err != nil {
 		return organizationProblem(c, err)
 	}
 	out := make([]workspaceDTO, 0, len(workspaces))
 	for _, w := range workspaces {
+		if w.Kind != kind {
+			continue
+		}
 		out = append(out, workspaceDTO{
-			ID: w.ID, DisplayName: w.DisplayName, OwnerUserID: w.OwnerUserID,
+			ID: w.ID, DisplayName: w.DisplayName, OwnerUserID: w.OwnerUserID, Kind: w.Kind,
 			Role: w.Role, JoinedAt: w.JoinedAt.Format(time.RFC3339),
 		})
 	}
@@ -153,7 +177,7 @@ func (h *OrganizationHandler) get(c fiber.Ctx) error {
 		return organizationProblem(c, err)
 	}
 	return c.JSON(organizationDTO{
-		ID: org.ID, DisplayName: org.DisplayName, OwnerUserID: org.OwnerUserID,
+		ID: org.ID, DisplayName: org.DisplayName, OwnerUserID: org.OwnerUserID, Kind: org.KindOf(),
 		Role: middleware.GetOrgRole(c), CreatedAt: org.CreatedAt.Format(time.RFC3339),
 	})
 }
@@ -321,6 +345,12 @@ func organizationProblem(c fiber.Ctx, err error) error {
 		return apierror.ValidationFailed("You cannot change your own role. Ask somebody who outranks you.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrOutranked):
 		return apierror.ValidationFailed("You can only manage people below your own role.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrInvalidKind):
+		return apierror.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrTransferNeedsFullAccess):
+		return apierror.ValidationFailed("A space can only be transferred to somebody with full access. Give them full access first.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrNoCompaniesInASpace):
+		return apierror.ValidationFailed("A space holds no companies, so an invitation to one cannot name any.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotGrantable):
 		return apierror.ValidationFailed("That role cannot be assigned. Ownership moves through transfer.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotAMember), errors.Is(err, organization.ErrForbidden), errors.Is(err, organization.ErrNotFound):

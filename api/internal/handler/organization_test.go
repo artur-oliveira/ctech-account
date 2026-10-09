@@ -146,13 +146,13 @@ func (m *memOrgRepo) RemoveMembership(_ context.Context, orgID, userID string) e
 	return nil
 }
 
-func (m *memOrgRepo) TransferOwnership(_ context.Context, orgID, fromUserID, toUserID string, now time.Time) error {
+func (m *memOrgRepo) TransferOwnership(_ context.Context, orgID, fromUserID, toUserID, demoteTo string, now time.Time) error {
 	from, okFrom := m.memberships[orgID][fromUserID]
 	to, okTo := m.memberships[orgID][toUserID]
 	if !okFrom || !okTo || from.Role != orgDomain.RoleOwner || to.Role == orgDomain.RoleOwner {
 		return orgDomain.ErrNotFound
 	}
-	from.Role, to.Role = orgDomain.RoleAdmin, orgDomain.RoleOwner
+	from.Role, to.Role = demoteTo, orgDomain.RoleOwner
 	if org, ok := m.orgs[orgID]; ok {
 		org.OwnerUserID, org.UpdatedAt = toUserID, now
 	}

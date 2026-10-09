@@ -1,12 +1,12 @@
 'use client'
 
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {useTranslation} from 'react-i18next'
 import {Users} from 'lucide-react'
 import {toast} from 'sonner'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, setMemberRoleAPI} from '@/lib/mutations'
 import {formatDate} from '@/lib/format'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {isAxiosError} from '@/lib/axios'
 import {QueryError} from '@/components/query-error'
 import {ConfirmDialog} from '@/components/confirm-dialog'
@@ -22,12 +22,17 @@ import {
   type OrganizationRole,
 } from '@/lib/types'
 
+/**
+ * The roster of a workspace of either kind. A space (`kind: personal`) reads
+ * its own vocabulary and its own rules: two levels, and only the owner acts.
+ */
 export function MembersTab({organization}: { organization: Organization }) {
-  const {t} = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const queryClient = useQueryClient()
   const {data: profile} = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
-  // What this caller may hand out. Empty below admin, and never their own rank.
-  const options = assignableRoles(organization.role)
+  // What this caller may hand out. Empty below admin, and never their own rank;
+  // on a space, empty for everybody but the owner.
+  const options = assignableRoles(organization.role, organization.kind)
   const canActOn = (m: OrganizationMember) =>
     !!profile && canManageMember(organization.role, profile.user_id, m)
 
@@ -40,6 +45,7 @@ export function MembersTab({organization}: { organization: Organization }) {
     void queryClient.invalidateQueries({queryKey: ['organization-members', organization.id]})
     void queryClient.invalidateQueries({queryKey: ['organization', organization.id]})
     void queryClient.invalidateQueries({queryKey: ['organizations']})
+    void queryClient.invalidateQueries({queryKey: ['spaces']})
   }
 
   const roleMutation = useMutation({
@@ -50,7 +56,7 @@ export function MembersTab({organization}: { organization: Organization }) {
       toast.success(t('toast.roleChanged'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.setRoleFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.setRoleFailed'))
     },
   })
 
@@ -61,7 +67,7 @@ export function MembersTab({organization}: { organization: Organization }) {
       toast.success(t('toast.memberRemoved'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.removeMemberFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.removeMemberFailed'))
     },
   })
 
@@ -127,7 +133,7 @@ export function MembersTab({organization}: { organization: Organization }) {
             </SelectContent>
           </Select>
         ) : (
-          <OrganizationRoleBadge role={m.role}/>
+          <OrganizationRoleBadge role={m.role} kind={organization.kind}/>
         ),
     },
     {

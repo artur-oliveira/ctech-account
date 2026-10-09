@@ -107,6 +107,17 @@ func (h *CompanyHandler) register(c fiber.Ctx) error {
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
+	// A space holds no companies (personal workspaces spec § 1). This is the
+	// only route that adds one, so refusing here is refusing everywhere — and
+	// the internal routes still report the kind, so a product can refuse on its
+	// own if this ever regresses.
+	kind, err := h.orgs.KindOf(c.Context(), middleware.GetOrgID(c))
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	if kind == organization.KindPersonal {
+		return apierror.Conflict("A space holds no companies. Create an organization to register one.", c.Path()).Send(c)
+	}
 	created, err := h.svc.Register(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c),
 		h.callerName(c), req.TaxID, req.LegalName, req.TradeName)
 	if err != nil {

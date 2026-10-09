@@ -143,13 +143,13 @@ func (f *fakeRepo) RemoveMembership(_ context.Context, orgID, userID string) err
 	return nil
 }
 
-func (f *fakeRepo) TransferOwnership(_ context.Context, orgID, fromUserID, toUserID string, now time.Time) error {
+func (f *fakeRepo) TransferOwnership(_ context.Context, orgID, fromUserID, toUserID, demoteTo string, now time.Time) error {
 	from, okFrom := f.memberships[orgID][fromUserID]
 	to, okTo := f.memberships[orgID][toUserID]
 	if !okFrom || !okTo || from.Role != RoleOwner || to.Role == RoleOwner {
 		return ErrNotFound
 	}
-	from.Role = RoleAdmin
+	from.Role = demoteTo
 	to.Role = RoleOwner
 	if org, ok := f.orgs[orgID]; ok {
 		org.OwnerUserID = toUserID

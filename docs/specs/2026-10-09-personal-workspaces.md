@@ -134,3 +134,17 @@ in this spec: until the plans spec exists, nothing is limited.
 
 This repository first. ctech-billing treats a missing `kind` as `organization`, the direction that
 grants fewer verbs, so deploying billing first is safe but leaves spaces unusable until this ships.
+
+## Amendment, implementation (2026-10-09)
+
+- **People route:** `/account/spaces/people?id={id}[&client_id&return_to&state]`, not
+  `/account/spaces/{id}/people` — the UI is a static export and has no dynamic segments, like
+  `/account/organizations/detail?id=`. Products build this URL.
+- **Handoff validation:** spaces reuse `GET /v1.0/organizations/handoff`; there is no
+  `/v1.0/spaces/handoff`. The check does not depend on the kind.
+- **List:** `GET /v1.0/organizations` returns organizations only; `?kind=personal` returns spaces, same
+  envelope.
+- **Transfer:** the former owner of a space becomes `member` (*Acesso total*), not `admin`.
+- **Leaving:** a non-owner may still leave a space; only management is owner-only.
+- **Invite page:** `/invite` keeps its organization wording, since the kind is not known before
+  accepting; after accepting, the organization page forwards a space to its people page.

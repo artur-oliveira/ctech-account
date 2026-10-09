@@ -2,13 +2,13 @@
 
 import { useState, type SyntheticEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
 import { Copy, MailPlus, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchOrganizationInvitations } from '@/lib/queries'
 import { inviteMemberAPI, revokeInvitationAPI } from '@/lib/mutations'
 import { fetchCompanies } from '@/lib/queries'
 import { formatDate } from '@/lib/format'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import { isAxiosError } from '@/lib/axios'
 import { QueryError } from '@/components/query-error'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   assignableRoles,
   formatTaxID,
+  isPersonal,
   type Organization,
   type OrganizationInvitation,
   type OrganizationRole,
@@ -38,7 +39,7 @@ import {
 import { COMPANY_PICKER_SEARCH_THRESHOLD } from '@/lib/constants'
 
 export function InvitationsTab({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+  const t = useWorkspaceT(organization.kind)
   const queryClient = useQueryClient()
 
   const { data: invitations = [], isLoading, isError, error, refetch } = useQuery({
@@ -54,7 +55,7 @@ export function InvitationsTab({ organization }: { organization: Organization })
     },
     onError: (err) => {
       if (isAxiosError(err)) {
-        toast.error(err.response?.data?.detail ?? t('toast.revokeInvitationFailed'))
+        toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.revokeInvitationFailed'))
       }
     },
   })
@@ -81,7 +82,7 @@ export function InvitationsTab({ organization }: { organization: Organization })
     {
       key: 'role',
       header: t('organizations.role'),
-      cell: (inv) => <OrganizationRoleBadge role={inv.role} />,
+      cell: (inv) => <OrganizationRoleBadge role={inv.role} kind={organization.kind} />,
     },
     {
       key: 'expires',
@@ -125,13 +126,16 @@ export function InvitationsTab({ organization }: { organization: Organization })
 }
 
 function InviteDialog({ organization }: { organization: Organization }) {
-  const { t } = useTranslation()
+  const t = useWorkspaceT(organization.kind)
+  // A space never has a company: its company routes answer 409, and a picker
+  // would be a question with no possible answer.
+  const personal = isPersonal(organization)
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [role, setRole] = useState<OrganizationRole>('member')
   // Inviting is granting, so the list stops below the caller's own rank —
   // exactly what SetRole offers, and exactly what the server accepts.
-  const options = assignableRoles(organization.role)
+  const options = assignableRoles(organization.role, organization.kind)
   // Held in state, never re-fetchable: the server returns the token once and
   // stores only its hash.
   const [link, setLink] = useState<string | null>(null)
@@ -149,7 +153,7 @@ function InviteDialog({ organization }: { organization: Organization }) {
   } = useQuery({
     queryKey: ['companies', organization.id],
     queryFn: () => fetchCompanies(organization.id),
-    enabled: open,
+    enabled: open && !personal,
   })
   const normalizedSearch = companySearch.trim().toLocaleLowerCase()
   const visibleCompanies = normalizedSearch
@@ -169,12 +173,12 @@ function InviteDialog({ organization }: { organization: Organization }) {
       queryClient.invalidateQueries({ queryKey: ['organization-invitations', organization.id] })
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.inviteFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
     },
   })
 
   const errorMsg = isAxiosError(error)
-    ? (error.response?.data?.detail ?? t('toast.inviteFailed'))
+    ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
     : null
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
@@ -287,7 +291,7 @@ function InviteDialog({ organization }: { organization: Organization }) {
               </p>
             </div>
 
-            {(areCompaniesLoading || didCompaniesFail || companies.length > 0) && (
+            {!personal && (areCompaniesLoading || didCompaniesFail || companies.length > 0) && (
               <fieldset className="min-w-0 space-y-2">
                 <legend className="text-sm font-medium">
                   {t('organizations.invitations.companiesLabel')}

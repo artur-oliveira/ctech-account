@@ -45,4 +45,15 @@ describe('account nav', () => {
     await screen.findByRole('link', { name: /profile/i })
     expect(screen.queryByRole('link', { name: /admin/i })).toBeNull()
   })
+
+  // Spaces sit beside organizations, not inside them: a household budget is
+  // not a company, and the list that says "organizations" never shows one.
+  it('offers spaces as their own section', async () => {
+    signedInAs('')
+    renderNav()
+    expect(await screen.findByRole('link', { name: /^spaces$/i })).toHaveAttribute(
+      'href',
+      '/account/spaces',
+    )
+  })
 })

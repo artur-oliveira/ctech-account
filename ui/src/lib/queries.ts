@@ -107,6 +107,18 @@ export async function fetchOrganizations(): Promise<Organization[]> {
   return data.organizations ?? []
 }
 
+/**
+ * The person's spaces. The same endpoint as organizations, filtered by kind on
+ * the server — the unfiltered list carries organizations only, so neither
+ * screen has to sort the other's rows out.
+ */
+export async function fetchSpaces(): Promise<Organization[]> {
+  const { data } = await api.get<{ organizations: Organization[] }>('/v1.0/organizations', {
+    params: { kind: 'personal' },
+  })
+  return data.organizations ?? []
+}
+
 export async function fetchOrganization(id: string): Promise<Organization> {
   const { data } = await api.get<Organization>(`/v1.0/organizations/${encodeURIComponent(id)}`)
   return data
