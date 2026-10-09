@@ -36,14 +36,18 @@ func (h *OrganizationHandler) RegisterInternal(v1 fiber.Router, auth, memberScop
 // must not reveal which organizations exist, and "not a member" is an answer
 // where a 404 would invite the caller to read a refusal and an outage alike.
 func (h *OrganizationHandler) internalMember(c fiber.Ctx) error {
-	role, err := h.svc.RoleOf(c.Context(), c.Params("organization_id"), c.Params("user_id"))
+	role, kind, err := h.svc.MembershipOf(c.Context(), c.Params("organization_id"), c.Params("user_id"))
 	if errors.Is(err, organization.ErrNotAMember) {
+		// No kind on a refusal: it would tell a prober which ids are spaces.
 		return c.JSON(fiber.Map{"member": false})
 	}
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
-	return c.JSON(fiber.Map{"member": true, "role": role})
+	// The kind travels with the role because a role alone does not say what it
+	// grants: `member` is full access in a space and narrower in an
+	// organization (ctech-billing ADR 0027).
+	return c.JSON(fiber.Map{"member": true, "role": role, "kind": kind})
 }
 
 // internalUserOrganizations lists the organizations a person belongs to, with
@@ -62,7 +66,7 @@ func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
 	}
 	out := make([]fiber.Map, 0, len(workspaces))
 	for _, w := range workspaces {
-		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "role": w.Role})
+		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "kind": w.Kind, "role": w.Role})
 	}
 	return c.JSON(fiber.Map{"organizations": out})
 }
