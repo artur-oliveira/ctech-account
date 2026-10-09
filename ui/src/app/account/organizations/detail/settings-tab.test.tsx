@@ -4,6 +4,9 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {SettingsTab} from './settings-tab'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
+import {removeMemberAPI} from '@/lib/mutations'
+import {AxiosError} from 'axios'
+import {toast} from 'sonner'
 import type {Organization, OrganizationRole} from '@/lib/types'
 
 vi.mock('@/lib/queries', () => ({
@@ -16,6 +19,8 @@ vi.mock('@/lib/mutations', () => ({
   renameOrganizationAPI: vi.fn(),
   transferOwnershipAPI: vi.fn(),
 }))
+
+vi.mock('sonner', () => ({toast: {error: vi.fn(), success: vi.fn()}}))
 
 vi.mock('next/navigation', () => ({useRouter: () => ({push: vi.fn()})}))
 
@@ -74,6 +79,22 @@ describe('settings on a space', () => {
     renderTab(workspace('member', 'personal'))
     expect(await screen.findByRole('heading', {name: /leave the space/i})).toBeInTheDocument()
     expect(screen.queryByRole('button', {name: /^save$/i})).toBeNull()
+  })
+
+  // The server's problem detail is written for organizations ("You do not have
+  // access to this organization."). On a space the screen says it in the
+  // space's own words instead of passing that text through.
+  it('words a failure in the space\'s own terms', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchProfile).mockResolvedValue({user_id: 'usr_full'} as never)
+    vi.mocked(removeMemberAPI).mockRejectedValue(
+      Object.assign(new AxiosError('forbidden'), {response: {data: {detail: 'You do not have access to this organization.'}}}),
+    )
+    renderTab(workspace('member', 'personal'))
+    await user.click(await screen.findByRole('button', {name: /leave the space/i}))
+    await user.click(await screen.findByRole('button', {name: /confirm/i}))
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(toast.error).toHaveBeenCalledWith('Could not leave the space.')
   })
 
   it('never calls a space an organization', async () => {

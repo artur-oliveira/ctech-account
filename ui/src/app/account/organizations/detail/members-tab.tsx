@@ -6,7 +6,7 @@ import {toast} from 'sonner'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, setMemberRoleAPI} from '@/lib/mutations'
 import {formatDate} from '@/lib/format'
-import {useWorkspaceT} from '@/lib/workspace-copy'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {isAxiosError} from '@/lib/axios'
 import {QueryError} from '@/components/query-error'
 import {ConfirmDialog} from '@/components/confirm-dialog'
@@ -56,7 +56,7 @@ export function MembersTab({organization}: { organization: Organization }) {
       toast.success(t('toast.roleChanged'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.setRoleFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.setRoleFailed'))
     },
   })
 
@@ -67,7 +67,7 @@ export function MembersTab({organization}: { organization: Organization }) {
       toast.success(t('toast.memberRemoved'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.removeMemberFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.removeMemberFailed'))
     },
   })
 

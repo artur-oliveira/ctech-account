@@ -7,7 +7,7 @@ import {toast} from 'sonner'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
-import {useWorkspaceT} from '@/lib/workspace-copy'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
 import {Button} from '@/components/ui/button'
@@ -60,13 +60,13 @@ function RenameSection({organization}: { organization: Organization }) {
     },
     onError: (err) => {
       if (isAxiosError(err)) {
-        toast.error(err.response?.data?.detail ?? t('toast.renameOrganizationFailed'))
+        toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.renameOrganizationFailed'))
       }
     },
   })
 
   const errorMsg = isAxiosError(error)
-    ? (error.response?.data?.detail ?? t('toast.renameOrganizationFailed'))
+    ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.renameOrganizationFailed'))
     : null
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
@@ -144,7 +144,7 @@ function TransferSection({organization}: { organization: Organization }) {
       toast.success(t('toast.ownershipTransferred'))
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.transferFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.transferFailed'))
     },
   })
 
@@ -218,7 +218,7 @@ function LeaveSection({organization}: { organization: Organization }) {
       router.push(isPersonal(organization) ? '/account/spaces' : '/account/organizations')
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.leaveFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.leaveFailed'))
     },
   })
 

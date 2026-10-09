@@ -8,7 +8,7 @@ import { fetchOrganizationInvitations } from '@/lib/queries'
 import { inviteMemberAPI, revokeInvitationAPI } from '@/lib/mutations'
 import { fetchCompanies } from '@/lib/queries'
 import { formatDate } from '@/lib/format'
-import { useWorkspaceT } from '@/lib/workspace-copy'
+import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import { isAxiosError } from '@/lib/axios'
 import { QueryError } from '@/components/query-error'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -55,7 +55,7 @@ export function InvitationsTab({ organization }: { organization: Organization })
     },
     onError: (err) => {
       if (isAxiosError(err)) {
-        toast.error(err.response?.data?.detail ?? t('toast.revokeInvitationFailed'))
+        toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.revokeInvitationFailed'))
       }
     },
   })
@@ -173,12 +173,12 @@ function InviteDialog({ organization }: { organization: Organization }) {
       queryClient.invalidateQueries({ queryKey: ['organization-invitations', organization.id] })
     },
     onError: (err) => {
-      if (isAxiosError(err)) toast.error(err.response?.data?.detail ?? t('toast.inviteFailed'))
+      if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
     },
   })
 
   const errorMsg = isAxiosError(error)
-    ? (error.response?.data?.detail ?? t('toast.inviteFailed'))
+    ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
     : null
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {

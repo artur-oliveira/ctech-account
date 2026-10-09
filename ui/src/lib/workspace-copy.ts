@@ -33,3 +33,13 @@ export function useWorkspaceT(kind: OrganizationKind | undefined) {
     [kind, t, i18n],
   )
 }
+
+/**
+ * The server's problem detail, or nothing on a space. The API's details are
+ * written for organizations ("You do not have access to this organization."),
+ * so on a space the caller falls back to its own `spaces.*` copy instead of
+ * passing that text to the screen.
+ */
+export function workspaceDetail(detail: string | undefined, kind: OrganizationKind | undefined): string | undefined {
+  return kind === 'personal' ? undefined : detail
+}

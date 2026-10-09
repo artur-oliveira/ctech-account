@@ -82,7 +82,8 @@ function NewSpace() {
   })
 
   const errorMsg = isAxiosError(error)
-    ? (error.response?.data?.detail ?? t('spaces.new.failed'))
+    // Never the server's detail: it is written for organizations.
+    ? t('spaces.new.failed')
     : (error?.message ?? null)
 
   if (isHandoff && isLoading) {
