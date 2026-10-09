@@ -51,6 +51,11 @@ export function ConfirmDialog({
     try {
       await onConfirm()
       setOpen(false)
+    } catch {
+      // The caller reports the failure (its mutation's onError shows the toast);
+      // the dialog stays open so the person can retry or cancel. Rethrowing from
+      // a click handler would only turn a handled error into an unhandled
+      // rejection.
     } finally {
       setPending(false)
     }
