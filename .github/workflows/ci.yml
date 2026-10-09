@@ -63,3 +63,39 @@ jobs:
 
       - name: TypeScript Check
         run: npx tsc --noEmit
+
+  # The UI's own checks, on the pull request. Until this job existed they ran
+  # only inside the deploy (ctech-cdk's frontend-cloudflare.yml), after the
+  # merge — which is how #46 passed review and then failed the frontend deploy
+  # on an unhandled rejection vitest caught. A check that can only fail after
+  # main has moved is a check that reports a broken main.
+  frontend:
+    name: UI Lint, Types & Tests
+    runs-on: ubuntu-26.04-arm
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # `npm ci`, never `npm install`: it installs the lockfile exactly and fails
+      # when package.json and the lockfile disagree.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # Judged by vitest's exit code, which counts unhandled errors and
+      # rejections as failures even when every test passes — the case that
+      # broke the deploy.
+      - name: Tests
+        run: npm test
