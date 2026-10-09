@@ -18,6 +18,7 @@
     "support": "Support",
     "menu": "Menu",
     "organizations": "Organizations",
+    "spaces": "Spaces",
     "admin": "Admin workspace"
   },
   "common": {
@@ -973,6 +974,78 @@
       "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create an organization from your account.",
       "goToOrganizations": "Go to my organizations",
       "companyRequiredInHandoff": "A CNPJ or CPF is required: the product that sent you here needs a company, not only a workspace."
+    }
+  },
+  "spaces": {
+    "title": "Spaces",
+    "subtitle": "Places to share with whoever you like: a home, a budget, a project.",
+    "create": "New space",
+    "role": "Access",
+    "empty": {
+      "title": "You do not have any space yet",
+      "body": "A space is for sharing something with other people without the paperwork: a home, a budget, a side project. Name it and invite whoever you like."
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Full access",
+      "member": "Full access",
+      "viewer": "Read only"
+    },
+    "roleDescriptions": {
+      "owner": "Does everything: invites, changes access, removes people and hands the space on.",
+      "member": "Uses the whole space, but does not manage who is in it.",
+      "viewer": "Sees what is in the space without changing anything."
+    },
+    "new": {
+      "title": "New space",
+      "body": "Just the name. You invite people afterwards.",
+      "name": "Space name",
+      "placeholder": "Home, July trip, Budget",
+      "submit": "Create space",
+      "failed": "Could not create the space.",
+      "handoffBanner": "Creating a space for {{product}}. You will be returned there when you are done.",
+      "handoffInvalidTitle": "This link is not valid",
+      "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create a space from your account.",
+      "goToSpaces": "Go to my spaces"
+    },
+    "detail": {
+      "back": "All spaces",
+      "members": "People",
+      "invitations": "Invitations",
+      "settings": "Settings",
+      "noAccess": "You do not have access to this space.",
+      "readOnly": "Only the owner of this space invites, changes access or removes people.",
+      "backTo": "Back to {{product}}"
+    },
+    "members": {
+      "empty": "Nobody here yet.",
+      "changeRole": "Change access",
+      "removeTitle": "Remove this person?",
+      "removeBody": "They lose access to this space immediately. You can invite them again later."
+    },
+    "invitations": {
+      "roleLabel": "Access"
+    },
+    "settings": {
+      "transfer": "Transfer the space",
+      "transferDescription": "Give this space to somebody with full access. You keep full access.",
+      "transferConfirmBody": "They become the owner and you keep full access. Only they can transfer it back.",
+      "leave": "Leave the space",
+      "leaveDescription": "You lose access. Only the owner can invite you back.",
+      "leaveConfirmTitle": "Leave this space?",
+      "ownerCannotLeave": "You own this space, so you cannot leave it. Transfer it to somebody with full access first — a space with no owner has nobody who can invite, rename or hand it on.",
+      "noOtherMembers": "Nobody here has full access. Give somebody full access before transferring."
+    },
+    "toast": {
+      "createOrganizationFailed": "Could not create the space.",
+      "renameOrganizationFailed": "Could not rename the space.",
+      "organizationRenamed": "Space renamed.",
+      "transferFailed": "Could not transfer the space.",
+      "ownershipTransferred": "Space transferred.",
+      "leaveFailed": "Could not leave the space.",
+      "memberRemoved": "Person removed.",
+      "roleChanged": "Access updated.",
+      "setRoleFailed": "Could not change the access."
     }
   }
 }

@@ -18,6 +18,7 @@ const ROUTE_TITLES: Array<[string, (t: TFunction) => string]> = [
   ['/account/connected-apps', (t) => t('nav.connectedApps')],
   ['/account/activity', (t) => t('nav.activity')],
   ['/account/organizations', (t) => t('nav.organizations')],
+  ['/account/spaces', (t) => t('nav.spaces')],
   ['/account/identity', (t) => t('nav.identity')],
   ['/account/profile', (t) => t('nav.profile')],
   ['/account', (t) => t('nav.dashboard')],

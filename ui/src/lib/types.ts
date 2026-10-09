@@ -232,6 +232,21 @@ export type OrganizationRole = 'owner' | 'admin' | 'member' | 'viewer'
 /** Roles that exist below owner. Owner moves only through transfer. */
 export const GRANTABLE_ROLES: OrganizationRole[] = ['admin', 'member', 'viewer']
 
+/**
+ * What a workspace is. `organization` is a company's workspace; `personal` is
+ * a space — a household, a shared budget — with no company and no admin. An
+ * absent kind is an organization: rows written before spaces existed carry
+ * none, and nothing was migrated.
+ */
+export type OrganizationKind = 'organization' | 'personal'
+
+/** A space's two levels below the owner: full access and read-only. */
+export const SPACE_GRANTABLE_ROLES: OrganizationRole[] = ['member', 'viewer']
+
+export function isPersonal(workspace: { kind?: OrganizationKind }): boolean {
+  return workspace.kind === 'personal'
+}
+
 const ROLE_RANK: Record<OrganizationRole, number> = { viewer: 1, member: 2, admin: 3, owner: 4 }
 
 /** Strictly above. Mirrors `organization.Outranks` on the server. */
@@ -245,10 +260,26 @@ export function outranks(role: OrganizationRole, other: OrganizationRole): boole
  * dropdown offering a choice the server refuses teaches people the product is
  * broken.
  */
-export function assignableRoles(callerRole: OrganizationRole): OrganizationRole[] {
+export function assignableRoles(
+  callerRole: OrganizationRole,
+  kind: OrganizationKind = 'organization',
+): OrganizationRole[] {
+  // A space has two levels and one person who hands them out. There is no
+  // admin to fall back on, so nobody below the owner grants anything.
+  if (kind === 'personal') return callerRole === 'owner' ? [...SPACE_GRANTABLE_ROLES] : []
   // The admin floor first: a member outranks a viewer but manages nobody.
   if (ROLE_RANK[callerRole] < ROLE_RANK.admin) return []
   return GRANTABLE_ROLES.filter((role) => outranks(callerRole, role))
+}
+
+/**
+ * Whether ownership may go to somebody holding this role. Never to the owner
+ * themselves; on a space, only to somebody with full access — a viewer is
+ * promoted first, and the server refuses the shortcut.
+ */
+export function canTransferTo(kind: OrganizationKind | undefined, role: OrganizationRole): boolean {
+  if (role === 'owner') return false
+  return kind === 'personal' ? role === 'member' : true
 }
 
 /**
@@ -273,6 +304,8 @@ export interface Organization {
   /** The caller's own role. Read fresh from every response — never cached past it. */
   role: OrganizationRole
   joined_at: string
+  /** Set at creation, never changed. Absent reads as `organization`. */
+  kind?: OrganizationKind
 }
 
 export interface OrganizationMember {

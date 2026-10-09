@@ -18,6 +18,7 @@
     "support": "Suporte",
     "menu": "Menu",
     "organizations": "Organizações",
+    "spaces": "Espaços",
     "admin": "Área administrativa"
   },
   "common": {
@@ -973,6 +974,78 @@
       "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar uma organização pela sua conta.",
       "goToOrganizations": "Ir para minhas organizações",
       "companyRequiredInHandoff": "Informe o CNPJ ou CPF: o produto que te trouxe aqui precisa de uma empresa, não só de um espaço de trabalho."
+    }
+  },
+  "spaces": {
+    "title": "Espaços",
+    "subtitle": "Lugares para dividir com quem você quiser: a casa, um orçamento, um projeto.",
+    "create": "Novo espaço",
+    "role": "Acesso",
+    "empty": {
+      "title": "Você ainda não tem nenhum espaço",
+      "body": "Um espaço serve para dividir algo com outras pessoas sem burocracia: a casa, um orçamento, um projeto paralelo. Dê um nome e convide quem quiser."
+    },
+    "roles": {
+      "owner": "Dono",
+      "admin": "Acesso total",
+      "member": "Acesso total",
+      "viewer": "Leitura"
+    },
+    "roleDescriptions": {
+      "owner": "Faz tudo: convida, muda o acesso das pessoas, remove e passa o espaço adiante.",
+      "member": "Usa o espaço por inteiro, mas não gerencia quem participa.",
+      "viewer": "Consulta o que há no espaço, sem alterar nada."
+    },
+    "new": {
+      "title": "Novo espaço",
+      "body": "Só o nome. Depois você convida quem quiser.",
+      "name": "Nome do espaço",
+      "placeholder": "Casa, Viagem de julho, Orçamento",
+      "submit": "Criar espaço",
+      "failed": "Não foi possível criar o espaço.",
+      "handoffBanner": "Criando um espaço para o {{product}}. Você volta para lá ao terminar.",
+      "handoffInvalidTitle": "Este link não é válido",
+      "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar um espaço pela sua conta.",
+      "goToSpaces": "Ir para meus espaços"
+    },
+    "detail": {
+      "back": "Todos os espaços",
+      "members": "Pessoas",
+      "invitations": "Convites",
+      "settings": "Configurações",
+      "noAccess": "Você não tem acesso a este espaço.",
+      "readOnly": "Só o dono do espaço convida, muda o acesso ou remove pessoas.",
+      "backTo": "Voltar ao {{product}}"
+    },
+    "members": {
+      "empty": "Ninguém aqui ainda.",
+      "changeRole": "Alterar acesso",
+      "removeTitle": "Remover esta pessoa?",
+      "removeBody": "A pessoa perde o acesso a este espaço na hora. Você pode convidá-la de novo depois."
+    },
+    "invitations": {
+      "roleLabel": "Acesso"
+    },
+    "settings": {
+      "transfer": "Transferir o espaço",
+      "transferDescription": "Entregue este espaço a alguém com Acesso total. Você continua com Acesso total.",
+      "transferConfirmBody": "Essa pessoa passa a ser a dona e você fica com Acesso total. Só ela pode devolver.",
+      "leave": "Sair do espaço",
+      "leaveDescription": "Você perde o acesso. Só o dono pode convidá-lo de volta.",
+      "leaveConfirmTitle": "Sair deste espaço?",
+      "ownerCannotLeave": "Você é o dono deste espaço, então não pode sair dele. Transfira-o antes para alguém com Acesso total — um espaço sem dono não tem quem convide, renomeie ou o repasse.",
+      "noOtherMembers": "Ninguém aqui tem Acesso total. Dê Acesso total a alguém antes de transferir."
+    },
+    "toast": {
+      "createOrganizationFailed": "Não foi possível criar o espaço.",
+      "renameOrganizationFailed": "Não foi possível renomear o espaço.",
+      "organizationRenamed": "Espaço renomeado.",
+      "transferFailed": "Não foi possível transferir o espaço.",
+      "ownershipTransferred": "Espaço transferido.",
+      "leaveFailed": "Não foi possível sair do espaço.",
+      "memberRemoved": "Pessoa removida.",
+      "roleChanged": "Acesso atualizado.",
+      "setRoleFailed": "Não foi possível alterar o acesso."
     }
   }
 }

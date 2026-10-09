@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationMember, OrganizationRole, Company } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationKind, OrganizationMember, OrganizationRole, Company } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -282,8 +282,16 @@ export async function uploadKYCDocumentAPI(file: File, type: KYCDocumentType): P
   return confirmKYCDocumentAPI(presigned.document_id, type)
 }
 
-export async function createOrganizationAPI(displayName: string) {
-  const { data } = await api.post<Organization>('/v1.0/organizations', { display_name: displayName })
+/**
+ * The kind is sent only for a space. Every organization path leaves it out and
+ * gets the server's default, so the organization handoff cannot create a space
+ * by accident.
+ */
+export async function createOrganizationAPI(displayName: string, kind?: OrganizationKind) {
+  const { data } = await api.post<Organization>(
+    '/v1.0/organizations',
+    kind ? { display_name: displayName, kind } : { display_name: displayName },
+  )
   return data
 }
 

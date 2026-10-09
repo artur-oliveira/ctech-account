@@ -20,6 +20,7 @@ import {
   IdCard,
   LifeBuoy,
   ShieldCheck,
+  Users,
 } from 'lucide-react'
 
 type NavItem = {
@@ -55,6 +56,7 @@ export function AccountNav() {
     },
     { href: '/account/identity', label: t('nav.identity'), icon: IdCard },
     { href: '/account/organizations', label: t('nav.organizations'), icon: Building2 },
+    { href: '/account/spaces', label: t('nav.spaces'), icon: Users },
     { href: '/account/sessions', label: t('nav.sessions'), icon: MonitorSmartphone },
     { href: '/account/activity', label: t('nav.activity'), icon: Activity },
     { href: '/account/support', label: t('nav.support'), icon: LifeBuoy },
