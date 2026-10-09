@@ -43,7 +43,11 @@ func (h *OrganizationHandler) Register(orgs, invitations fiber.Router) {
 	orgs.Patch("/:id", scoped(organization.RoleAdmin), h.rename)
 	orgs.Get("/:id/members", scoped(organization.RoleViewer), h.listMembers)
 	orgs.Patch("/:id/members/:user_id", scoped(organization.RoleAdmin), h.setRole)
-	orgs.Delete("/:id/members/:user_id", scoped(organization.RoleAdmin), h.removeMember)
+	// Viewer, not admin: leaving is removing yourself, open to every member but
+	// the owner, and Service.Remove still requires admin and reach to remove
+	// anybody else. An admin floor here shut every member and viewer out of
+	// leaving — every non-owner of a space, which has no admin rung.
+	orgs.Delete("/:id/members/:user_id", scoped(organization.RoleViewer), h.removeMember)
 	orgs.Get("/:id/invitations", scoped(organization.RoleAdmin), h.listInvitations)
 	orgs.Post("/:id/invitations", scoped(organization.RoleAdmin), h.invite)
 	orgs.Delete("/:id/invitations/:email", scoped(organization.RoleAdmin), h.revokeInvitation)

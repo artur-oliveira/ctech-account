@@ -131,3 +131,38 @@ func TestASpaceRefusesAdminAndATransferToReadAccess(t *testing.T) {
 		t.Fatalf("detail = %q", got)
 	}
 }
+
+// Leaving is open to everybody but the owner — in a space, where no admin
+// exists to clear the old route floor, and in an organization, where a member or
+// a viewer could not leave either. Removing somebody else still needs reach,
+// which the service enforces.
+func TestANonOwnerCanLeaveOverHTTP(t *testing.T) {
+	a := newOrgTestApp(t)
+	owner := a.registerUser(t, "leave-owner@example.com", "Sup3rSecret!pass", "Dono")
+	full := a.registerUser(t, "leave-full@example.com", "Sup3rSecret!pass", "Total")
+	reader := a.registerUser(t, "leave-reader@example.com", "Sup3rSecret!pass", "Leitor")
+	ctx := context.Background()
+	space, _ := a.svc.CreateOfKind(ctx, orgDomain.KindPersonal, owner.ID(), "Dono", "Casa")
+	org, _ := a.svc.Create(ctx, owner.ID(), "Dono", "CTech")
+	for _, id := range []string{space.ID, org.ID} {
+		for user, role := range map[string]string{full.ID(): orgDomain.RoleMember, reader.ID(): orgDomain.RoleViewer} {
+			if err := a.repo.PutMembership(ctx, &orgDomain.Membership{OrganizationID: id, UserID: user, Role: role}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	for _, id := range []string{space.ID, org.ID} {
+		// A member removing somebody else is still refused.
+		resp := a.do(t, http.MethodDelete, "/v1.0/organizations/"+id+"/members/"+reader.ID(), a.issueToken(t, full.ID()), "")
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s: a member removed somebody else: status %d", id, resp.StatusCode)
+		}
+		for _, u := range []string{full.ID(), reader.ID()} {
+			resp := a.do(t, http.MethodDelete, "/v1.0/organizations/"+id+"/members/"+u, a.issueToken(t, u), "")
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("%s: %s leaving: status %d (%s)", id, u, resp.StatusCode, bodyString(resp))
+			}
+		}
+	}
+}
