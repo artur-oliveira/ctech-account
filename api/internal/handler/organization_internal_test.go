@@ -19,7 +19,8 @@ func newInternalMembershipApp(t *testing.T) *companyTestApp {
 	handler.NewOrganizationHandler(a.orgSvc, a.testApp.userSvc).
 		RegisterInternal(a.app.Group("/v1.0"),
 			middleware.RequireAuth(a.testApp.jwtSvc),
-			middleware.RequireInternalScope(scopes.InternalAccountOrgMember))
+			middleware.RequireInternalScope(scopes.InternalAccountOrgMember),
+			middleware.RequireInternalScope(scopes.InternalAccountUserOrganizations))
 	return a
 }
 
@@ -98,7 +99,7 @@ func TestANonMemberAndAnUnknownOrganizationAnswerAlike(t *testing.T) {
 func TestAServiceCanListAUsersOrganizationsWithRoles(t *testing.T) {
 	a := newInternalMembershipApp(t)
 	orgID, ownerID, _ := a.seedOrg(t, "list-orgs@example.com")
-	internal := a.issueServiceToken(t, []string{scopes.InternalAccountOrgMember})
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountUserOrganizations})
 
 	resp := a.do(t, http.MethodGet, "/v1.0/internal/users/"+ownerID+"/organizations", internal, "")
 	if resp.StatusCode != http.StatusOK {
@@ -119,7 +120,9 @@ func TestAServiceCanListAUsersOrganizationsWithRoles(t *testing.T) {
 	}
 }
 
-func TestListingOrganizationsNeedsTheMembershipScope(t *testing.T) {
+// Enumerating every organization of any user is a wider grant than checking one
+// membership, so it has its own scope: holding org-member must not be enough.
+func TestListingOrganizationsNeedsItsOwnScope(t *testing.T) {
 	a := newInternalMembershipApp(t)
 	_, ownerID, _ := a.seedOrg(t, "list-gate@example.com")
 	path := "/v1.0/internal/users/" + ownerID + "/organizations"
@@ -127,15 +130,30 @@ func TestListingOrganizationsNeedsTheMembershipScope(t *testing.T) {
 	if resp := a.do(t, http.MethodGet, path, a.issueToken(t, user.ID()), ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a user token listed organizations: %d", resp.StatusCode)
 	}
-	reach := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
-	if resp := a.do(t, http.MethodGet, path, reach, ""); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("the company-actor scope listed organizations: %d", resp.StatusCode)
+	for name, scope := range map[string]string{
+		"company-actor": scopes.InternalAccountCompanyActor,
+		"org-member":    scopes.InternalAccountOrgMember,
+	} {
+		tok := a.issueServiceToken(t, []string{scope})
+		if resp := a.do(t, http.MethodGet, path, tok, ""); resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("the %s scope listed organizations: %d", name, resp.StatusCode)
+		}
+	}
+}
+
+// And the reverse: the listing scope does not answer a membership question.
+func TestTheListingScopeDoesNotCheckMembership(t *testing.T) {
+	a := newInternalMembershipApp(t)
+	orgID, ownerID, _ := a.seedOrg(t, "list-sep@example.com")
+	tok := a.issueServiceToken(t, []string{scopes.InternalAccountUserOrganizations})
+	if resp := a.do(t, http.MethodGet, "/v1.0/internal/organizations/"+orgID+"/members/"+ownerID, tok, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("the listing scope answered a membership check: %d", resp.StatusCode)
 	}
 }
 
 func TestAnUnknownUserHasNoOrganizationsAndIsNotA404(t *testing.T) {
 	a := newInternalMembershipApp(t)
-	internal := a.issueServiceToken(t, []string{scopes.InternalAccountOrgMember})
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountUserOrganizations})
 	resp := a.do(t, http.MethodGet, "/v1.0/internal/users/usr_nobody/organizations", internal, "")
 	if resp.StatusCode != http.StatusOK || bodyString(resp) != `{"organizations":[]}` {
 		t.Fatalf("status %d body %s, want 200 {\"organizations\":[]}", resp.StatusCode, bodyString(resp))

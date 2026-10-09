@@ -8,47 +8,19 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
 )
 
-// RegisterInternal mounts the service-to-service route a product uses to learn
-// whether a person belongs to an organization and with which role.
+// RegisterInternal mounts the two service-to-service routes a product uses for
+// workspaces, each behind its own scope (guards are attached per route, never to
+// a /internal prefix group, so the scopes cannot stack):
 //
-// internalAuth = RequireAuth + RequireInternalScope(scopes.InternalAccountOrgMember).
-// The guard is attached to this route alone: /internal/organizations is shared
-// with the company identity read, which has its own scope.
-func (h *OrganizationHandler) RegisterInternal(v1 fiber.Router, internalAuth ...fiber.Handler) {
-	handlers := make([]any, 0, len(internalAuth)+1)
-	for _, m := range internalAuth {
-		handlers = append(handlers, m)
-	}
-	guards := append([]any(nil), handlers...)
-	handlers = append(handlers, h.internalMember)
-	v1.Get("/internal/organizations/:organization_id/members/:user_id", handlers[0], handlers[1:]...)
-
-	// The same family of question (who belongs where), so the same scope: a product
-	// that holds it can build a space switcher without the first-party-only
-	// /v1.0/organizations.
-	list := append(guards, h.internalUserOrganizations)
-	v1.Get("/internal/users/:user_id/organizations", list[0], list[1:]...)
-}
-
-// internalUserOrganizations lists the organizations a person belongs to, with
-// their role in each, for a product that builds a space switcher (ctech-billing
-// ADR 0025). It is information, not authorization: the product resolves every
-// request's space through internalMember, so a stale or generous list cannot
-// grant access.
+//   - GET /internal/organizations/:organization_id/members/:user_id
+//     behind memberScope = RequireInternalScope(scopes.InternalAccountOrgMember)
+//   - GET /internal/users/:user_id/organizations
+//     behind listScope = RequireInternalScope(scopes.InternalAccountUserOrganizations)
 //
-// An unknown user answers an empty list rather than 404, for the reason the
-// membership route does: asked about ids a caller may not be entitled to, a
-// refusal must not reveal which exist.
-func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
-	workspaces, err := h.svc.ListWorkspaces(c.Context(), c.Params("user_id"))
-	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
-	}
-	out := make([]fiber.Map, 0, len(workspaces))
-	for _, w := range workspaces {
-		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "role": w.Role})
-	}
-	return c.JSON(fiber.Map{"organizations": out})
+// auth = RequireAuth.
+func (h *OrganizationHandler) RegisterInternal(v1 fiber.Router, auth, memberScope, listScope fiber.Handler) {
+	v1.Get("/internal/organizations/:organization_id/members/:user_id", auth, memberScope, h.internalMember)
+	v1.Get("/internal/users/:user_id/organizations", auth, listScope, h.internalUserOrganizations)
 }
 
 // internalMember answers whether one person belongs to one organization, and
@@ -72,4 +44,25 @@ func (h *OrganizationHandler) internalMember(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{"member": true, "role": role})
+}
+
+// internalUserOrganizations lists the organizations a person belongs to, with
+// their role in each, for a product that builds a space switcher (ctech-billing
+// ADR 0025). It is information, not authorization: the product resolves every
+// request's space through internalMember, so a stale or generous list cannot
+// grant access.
+//
+// An unknown user answers an empty list rather than 404, for the reason the
+// membership route does: asked about ids a caller may not be entitled to, a
+// refusal must not reveal which exist.
+func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
+	workspaces, err := h.svc.ListWorkspaces(c.Context(), c.Params("user_id"))
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	out := make([]fiber.Map, 0, len(workspaces))
+	for _, w := range workspaces {
+		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "role": w.Role})
+	}
+	return c.JSON(fiber.Map{"organizations": out})
 }
