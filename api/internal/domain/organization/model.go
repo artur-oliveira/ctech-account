@@ -76,6 +76,10 @@ type Organization struct {
 	ID          string `dynamodbav:"-"`
 	DisplayName string `dynamodbav:"display_name"`
 	OwnerUserID string `dynamodbav:"owner_user_id"`
+	// Kind is KindOrganization or KindPersonal (kind.go). Absent on every row
+	// written before kinds existed, which NormalizeKind reads as an
+	// organization — so nothing is migrated.
+	Kind string `dynamodbav:"kind,omitempty"`
 	// SourceSystem/SourceRef record where an imported organization came from —
 	// set only by a migration, empty for anything created through the product.
 	// They exist so an import can be re-run without writing the row twice, and
