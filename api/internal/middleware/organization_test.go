@@ -46,7 +46,7 @@ func (orgRepoStub) ListForUser(context.Context, string) ([]*organization.Members
 func (orgRepoStub) PutMembership(context.Context, *organization.Membership) error { return nil }
 func (orgRepoStub) SetRole(context.Context, string, string, string) error         { return nil }
 func (orgRepoStub) RemoveMembership(context.Context, string, string) error        { return nil }
-func (orgRepoStub) TransferOwnership(context.Context, string, string, string, time.Time) error {
+func (orgRepoStub) TransferOwnership(context.Context, string, string, string, string, time.Time) error {
 	return nil
 }
 func (orgRepoStub) PutInvitation(context.Context, *organization.Invitation) error { return nil }

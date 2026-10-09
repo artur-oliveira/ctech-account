@@ -305,10 +305,14 @@ func (s *Service) Transfer(ctx context.Context, orgID, actorUserID, toUserID str
 	if err != nil {
 		return err
 	}
-	if kind == KindPersonal && toRole != RoleMember {
-		return ErrTransferNeedsFullAccess
+	demoteTo := RoleAdmin
+	if kind == KindPersonal {
+		if toRole != RoleMember {
+			return ErrTransferNeedsFullAccess
+		}
+		demoteTo = RoleMember
 	}
-	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, s.now().UTC())
+	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, demoteTo, s.now().UTC())
 }
 
 // requireGrantableIn refuses a role the workspace's kind does not have. An

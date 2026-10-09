@@ -170,3 +170,32 @@ func TestListWorkspacesCarriesTheKind(t *testing.T) {
 		t.Fatalf("kinds = %v", kinds)
 	}
 }
+
+// Handing a space over leaves the former owner with full access, not as an
+// admin — a rung a space does not have.
+func TestTransferringASpaceLeavesTheFormerOwnerWithFullAccess(t *testing.T) {
+	svc, space := seedSpace(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, space.ID, "usr_full", RoleMember)
+	if err := svc.Transfer(ctx, space.ID, "usr_owner", "usr_full"); err != nil {
+		t.Fatal(err)
+	}
+	if role, _ := svc.RoleOf(ctx, space.ID, "usr_owner"); role != RoleMember {
+		t.Fatalf("former owner = %q, want member", role)
+	}
+	if role, _ := svc.RoleOf(ctx, space.ID, "usr_full"); role != RoleOwner {
+		t.Fatalf("new owner = %q, want owner", role)
+	}
+}
+
+func TestTransferringAnOrganizationStillLeavesAnAdmin(t *testing.T) {
+	svc, org := seedOrg(t, "usr_owner")
+	ctx := context.Background()
+	join(t, svc, org.ID, "usr_2", RoleMember)
+	if err := svc.Transfer(ctx, org.ID, "usr_owner", "usr_2"); err != nil {
+		t.Fatal(err)
+	}
+	if role, _ := svc.RoleOf(ctx, org.ID, "usr_owner"); role != RoleAdmin {
+		t.Fatalf("former owner = %q, want admin", role)
+	}
+}
