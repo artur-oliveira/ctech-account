@@ -80,13 +80,26 @@ on `return_to`**. A failed validation is a 422 page with a link into the account
 Scopes are unchanged. A non-member still answers `{member:false}` with no kind, so the response
 reveals nothing about which workspaces exist.
 
+**Amended 2026-10-09 — the company routes carry the kind too.** For the DF-e's defence in depth
+(`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`), two more answers gain the owning
+workspace's kind:
+
+| Route | Adds |
+|---|---|
+| `GET /internal/companies/:company_id/actors/:user_id` | `organization_kind` |
+| `GET /internal/organizations/:organization_id/companies/:company_id` | `organization_kind` |
+
+Under § 1 it is always `organization`, since a personal workspace has no company. The field exists so
+the DF-e can refuse on its own if that rule ever regresses here.
+
 ## 5. Where `personal` must not appear
 
 - **The "Organizações" list** in the account UI and `GET /v1.0/organizations` show
   `kind = organization` only. Spaces get their own section, "Espaços".
-- **The DF-e** (and any product that lists organizations for a fiscal purpose) filters
-  `kind = personal`, by reading `kind` on the internal route. This is a ctech-dfe change, tracked
-  there.
+- **The DF-e** needs no filter: it never lists workspaces, only its own company records, reached
+  through the company-actor edge, and a personal workspace has no company. It checks
+  `organization_kind` in depth instead (§ 4 amendment; ctech-dfe's spec of the same date). *(Corrected
+  2026-10-09: the first version of this line assumed a list that does not exist.)*
 - **The organization handoff** (`/account/organizations/new`) never creates a `personal` workspace.
 
 ## 6. Account deletion
