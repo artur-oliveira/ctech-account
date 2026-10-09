@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
+	"gopkg.aoctech.app/account/api/internal/domain/organization"
 )
 
 // RegisterInternal mounts the one service-to-service route a product needs:
@@ -56,12 +59,17 @@ func (h *CompanyHandler) internalIdentity(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.NotFound("company", c.Path()).Send(c)
 	}
+	kind, err := h.orgs.KindOf(c.Context(), orgID)
+	if err != nil {
+		return apierror.NotFound("company", c.Path()).Send(c)
+	}
 	return c.JSON(fiber.Map{
-		"organization_id": orgID,
-		"tax_id":          company.TaxID,
-		"tax_id_kind":     company.TaxIDKind,
-		"legal_name":      company.LegalName,
-		"trade_name":      company.TradeName,
+		"organization_id":   orgID,
+		"organization_kind": kind,
+		"tax_id":            company.TaxID,
+		"tax_id_kind":       company.TaxIDKind,
+		"legal_name":        company.LegalName,
+		"trade_name":        company.TradeName,
 	})
 }
 
@@ -85,8 +93,17 @@ func (h *CompanyHandler) internalReach(c fiber.Ctx) error {
 		// No organization on a refusal: naming one would say the company exists.
 		return c.JSON(fiber.Map{"may_act": false})
 	}
-	// Reach and the organization, and nothing else. A role or a permission list
-	// here would be the platform holding the product's vocabulary
-	// (ctech-billing ADR 0023).
-	return c.JSON(fiber.Map{"may_act": true, "organization_id": orgID})
+	kind, err := h.orgs.KindOf(c.Context(), orgID)
+	if errors.Is(err, organization.ErrNotFound) {
+		// An edge left pointing at a workspace that is gone reaches nothing.
+		return c.JSON(fiber.Map{"may_act": false})
+	}
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	// Reach, the organization and its kind, and nothing else. A role or a
+	// permission list here would be the platform holding the product's
+	// vocabulary (ctech-billing ADR 0023). The kind is there so the DF-e can
+	// refuse a company in a space on its own (ctech-dfe spec 2026-10-09).
+	return c.JSON(fiber.Map{"may_act": true, "organization_id": orgID, "organization_kind": kind})
 }
