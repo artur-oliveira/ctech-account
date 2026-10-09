@@ -90,4 +90,29 @@ describe('ConfirmDialog', () => {
     gate.resolve()
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
+
+  // The caller reports a failure (a toast from the mutation's onError) and the
+  // dialog stays open so the person can retry or cancel. The rejection must end
+  // here: rethrown from a click handler it becomes an unhandled rejection in
+  // the browser — and a failed test run.
+  it('stays open and swallows the rejection when onConfirm fails', async () => {
+    const user = userEvent.setup()
+    const onConfirm = vi.fn(() => Promise.reject(new Error('forbidden')))
+
+    render(
+      <ConfirmDialog
+        trigger={<Button>Open</Button>}
+        title="Leave"
+        description="You lose access."
+        onConfirm={onConfirm}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled())
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
 })
