@@ -70,6 +70,12 @@ func (s *Service) Quotas(ctx context.Context, ownerUserID string) (organization.
 
 // LevelsChanged marks the owner dirty, then tries to report right away. It
 // never fails the caller: the write it follows already committed (spec § 4).
+//
+// The row is kept even when the report succeeds. The count reads the
+// membership index, which is eventually consistent: milliseconds after the
+// commit it can still miss the space just created (or see a transferred one as
+// still a member's). The worker re-reports it once the index has settled
+// (reconcileSettle) and only then clears it, so billing never keeps a low level.
 func (s *Service) LevelsChanged(ctx context.Context, ownerUserID string) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), inlineBudget)
 	defer cancel()
@@ -79,14 +85,15 @@ func (s *Service) LevelsChanged(ctx context.Context, ownerUserID string) {
 	}
 	if err := s.report(ctx, ownerUserID); err != nil {
 		observability.Warn(ctx, "plan levels: inline report failed; the worker will retry", err, "owner", ownerUserID)
-		return
-	}
-	if _, err := s.queue.Done(ctx, DirtyRow{SK: nowSK(ownerUserID), OwnerUserID: ownerUserID, DueAt: at}); err != nil {
-		observability.Warn(ctx, "plan levels: clearing the reported row failed", err, "owner", ownerUserID)
 	}
 }
 
+// ScheduleLevels writes a report due later (an invitation's expiry). Detached
+// from the request, like LevelsChanged: it runs after the commit and after the
+// inline report, by which time the request may be gone.
 func (s *Service) ScheduleLevels(ctx context.Context, ownerUserID string, at time.Time) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), inlineBudget)
+	defer cancel()
 	if err := s.queue.Schedule(ctx, ownerUserID, at.UTC()); err != nil {
 		observability.Error(ctx, "plan levels: scheduling a report failed", err, "owner", ownerUserID)
 	}
@@ -127,14 +134,17 @@ func (s *Service) ProcessDue(ctx context.Context) {
 		return
 	}
 	for _, row := range rows {
+		// A change's row waits for the index to settle (see LevelsChanged);
+		// a scheduled row is due by definition.
+		if !row.Scheduled && now.Sub(row.DueAt) < reconcileSettle {
+			continue
+		}
 		if err := s.report(ctx, row.OwnerUserID); err != nil {
 			observability.Warn(ctx, "plan levels: report failed; kept for the next tick", err, "owner", row.OwnerUserID)
 			continue
 		}
-		if row.Scheduled || now.Sub(row.DueAt) >= reconcileSettle {
-			if err := s.counter.ReconcileSpaceCounter(ctx, row.OwnerUserID); err != nil {
-				observability.Warn(ctx, "plan levels: reconciling the spaces counter failed", err, "owner", row.OwnerUserID)
-			}
+		if err := s.counter.ReconcileSpaceCounter(ctx, row.OwnerUserID); err != nil {
+			observability.Warn(ctx, "plan levels: reconciling the spaces counter failed", err, "owner", row.OwnerUserID)
 		}
 		if _, err := s.queue.Done(ctx, row); err != nil {
 			observability.Warn(ctx, "plan levels: clearing a delivered row failed", err, "owner", row.OwnerUserID)

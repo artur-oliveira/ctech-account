@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -55,5 +56,32 @@ func TestCountsOnlyOnOwnedPersonalSpaces(t *testing.T) {
 		if _, present := byID[id]["pending_invitations"]; present {
 			t.Fatalf("%s carries counts: %v", id, byID[id])
 		}
+	}
+}
+
+// Review finding: billing's space switchers read this route and fail closed.
+// One owned space whose counts cannot be read must cost that space its counts,
+// not the person their whole list.
+func TestAnUnreadableSpaceLosesItsCountsNotTheList(t *testing.T) {
+	a := newInternalMembershipApp(t)
+	ctx := context.Background()
+	owner := a.registerUser(t, "counts-fail@example.com", "Sup3rSecret!pass", "Dono")
+	mine, _ := a.orgSvc.CreateOfKind(ctx, orgDomain.KindPersonal, owner.ID(), "Dono", "Casa")
+	a.orgRepo.listInvitationsErr = errors.New("throttled")
+
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountUserOrganizations})
+	resp := a.do(t, http.MethodGet, "/v1.0/internal/users/"+owner.ID()+"/organizations", internal, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d (%s)", resp.StatusCode, bodyString(resp))
+	}
+	var body struct {
+		Organizations []map[string]any `json:"organizations"`
+	}
+	decodeJSON(t, resp, &body)
+	if len(body.Organizations) != 1 || body.Organizations[0]["id"] != mine.ID {
+		t.Fatalf("organizations = %v", body.Organizations)
+	}
+	if _, present := body.Organizations[0]["people"]; present {
+		t.Fatalf("counts sent for an unreadable space: %v", body.Organizations[0])
 	}
 }

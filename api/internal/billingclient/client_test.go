@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -95,6 +96,9 @@ func TestReportLevel(t *testing.T) {
 		key = r.Header.Get("Idempotency-Key")
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		w.WriteHeader(status)
+		if status == http.StatusConflict {
+			_, _ = w.Write([]byte(`{"status":409,"code":"idempotency_key_reused"}`))
+		}
 	}))
 	defer srv.Close()
 	c := New(srv.URL, staticToken("t"))
@@ -135,5 +139,28 @@ func TestAConcurrentUpdateIsNotDelivered(t *testing.T) {
 		LevelReport{CustomerRef: "USER_u1", Meter: MeterSpaces, Value: 4, OccurredAt: at, IdempotencyKey: LevelKey("u1", MeterSpaces, at)})
 	if err == nil {
 		t.Fatal("a concurrent_update 409 was taken as delivered")
+	}
+}
+
+// Review finding: the code was found by a substring of an error string cut at
+// 200 bytes, failing open. A longer body, or any other 409 code, must not be
+// taken as delivered; only idempotency_key_reused is.
+func TestOnlyAReusedKeyIsADeliveredConflict(t *testing.T) {
+	at := time.Date(2026, 10, 10, 14, 3, 0, 0, time.UTC)
+	report := LevelReport{CustomerRef: "USER_u1", Meter: MeterSpaces, Value: 4, OccurredAt: at, IdempotencyKey: LevelKey("u1", MeterSpaces, at)}
+	for body, delivered := range map[string]bool{
+		`{"detail":"` + strings.Repeat("x", 300) + `","code":"concurrent_update"}`:      false,
+		`{"code":"payment_attempt_in_progress"}`:                                        false,
+		`{"detail":"` + strings.Repeat("x", 300) + `","code":"idempotency_key_reused"}`: true,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(body))
+		}))
+		err := New(srv.URL, staticToken("t")).ReportLevel(context.Background(), report)
+		srv.Close()
+		if (err == nil) != delivered {
+			t.Errorf("body %.60s…: err = %v, delivered = %v", body, err, delivered)
+		}
 	}
 }

@@ -56,7 +56,10 @@ func (q *memQueue) MarkNow(_ context.Context, owner string, at time.Time) error 
 	q.rows[nowSK(owner)] = DirtyRow{SK: nowSK(owner), OwnerUserID: owner, DueAt: at}
 	return nil
 }
-func (q *memQueue) Schedule(_ context.Context, owner string, at time.Time) error {
+func (q *memQueue) Schedule(ctx context.Context, owner string, at time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err // as DynamoDB would: a cancelled request writes nothing
+	}
 	q.rows[atSK(at, owner)] = DirtyRow{SK: atSK(at, owner), OwnerUserID: owner, DueAt: at, Scheduled: true}
 	return nil
 }
@@ -105,7 +108,7 @@ func newHarness(t *testing.T) *harness {
 
 var _ organization.PlanLimits = (*Service)(nil)
 
-func TestAChangeIsReportedInlineAndTheRowCleared(t *testing.T) {
+func TestAChangeIsReportedInlineAndTheRowKept(t *testing.T) {
 	h := newHarness(t)
 	h.svc.LevelsChanged(context.Background(), "u1")
 	if len(h.billing.reports) != 2 {
@@ -116,6 +119,29 @@ func TestAChangeIsReportedInlineAndTheRowCleared(t *testing.T) {
 		people.Meter != billingclient.MeterPeople || people.Value != 3 ||
 		spaces.IdempotencyKey != billingclient.LevelKey("u1", billingclient.MeterSpaces, *h.now) {
 		t.Fatalf("reports = %+v", h.billing.reports)
+	}
+	if _, kept := h.queue.rows[nowSK("u1")]; !kept {
+		t.Fatalf("the inline report cleared the row: %v", h.queue.rows)
+	}
+}
+
+// Review finding: the inline report counts from the membership index right
+// after the commit, and the index is eventually consistent, so it may miss the
+// space just created. The row is kept and re-reported once the index has
+// settled — not on the very next tick — and only then cleared.
+func TestTheRowIsReReportedOnceTheIndexHasSettled(t *testing.T) {
+	h := newHarness(t)
+	h.svc.LevelsChanged(context.Background(), "u1") // counted 2 from a lagging index
+	h.counter.levels["u1"] = organization.Levels{Spaces: 3, People: 3}
+	*h.now = h.now.Add(reconcileSettle / 2)
+	h.svc.ProcessDue(context.Background())
+	if len(h.billing.reports) != 2 {
+		t.Fatalf("re-reported before the index settled: %+v", h.billing.reports)
+	}
+	*h.now = h.now.Add(reconcileSettle)
+	h.svc.ProcessDue(context.Background())
+	if len(h.billing.reports) != 4 || h.billing.reports[2].Value != 3 {
+		t.Fatalf("the settled level was not reported: %+v", h.billing.reports)
 	}
 	if len(h.queue.rows) != 0 {
 		t.Fatalf("rows left: %v", h.queue.rows)
@@ -207,5 +233,18 @@ func TestTheStartupCheckLogsWithoutFailing(t *testing.T) {
 	h.billing.ent = &billingclient.Entitlements{Default: &billingclient.EntitlementDefault{Plan: "free"}}
 	if err := h.svc.CheckBilling(context.Background()); err != nil {
 		t.Fatalf("a ready billing failed the check: %v", err)
+	}
+}
+
+// Review finding: the expiry row is scheduled after the inline report has used
+// up to its budget; a request context cancelled by then must not lose it.
+func TestTheExpiryIsScheduledEvenAfterTheRequestEnded(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	at := h.now.Add(7 * 24 * time.Hour)
+	h.svc.ScheduleLevels(ctx, "u1", at)
+	if _, ok := h.queue.rows[atSK(at, "u1")]; !ok {
+		t.Fatalf("the expiry report was lost: %v", h.queue.rows)
 	}
 }

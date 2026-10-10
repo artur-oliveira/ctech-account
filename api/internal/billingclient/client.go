@@ -143,7 +143,7 @@ func (c *Client) ReportLevel(ctx context.Context, r LevelReport) error {
 		return err
 	}
 	status, err := c.do(ctx, http.MethodPost, levelsPath, r.IdempotencyKey, body, nil)
-	if status == http.StatusConflict && !strings.Contains(err.Error(), `"concurrent_update"`) {
+	if status == http.StatusConflict && problemCode(err) == codeIdempotencyKeyReused {
 		return nil
 	}
 	return err
@@ -179,7 +179,10 @@ func (c *Client) do(ctx context.Context, method, path, idempotencyKey string, bo
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		// Billing's detail is for the log, never for a person on our screens.
-		return resp.StatusCode, fmt.Errorf("billing %s %s: status %d: %.200s", method, path, resp.StatusCode, raw)
+		return resp.StatusCode, &statusError{
+			msg:  fmt.Sprintf("billing %s %s: status %d: %.200s", method, path, resp.StatusCode, raw),
+			body: raw,
+		}
 	}
 	if out != nil {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -187,4 +190,31 @@ func (c *Client) do(ctx context.Context, method, path, idempotencyKey string, bo
 		}
 	}
 	return resp.StatusCode, nil
+}
+
+// codeIdempotencyKeyReused is billing's 409 for a key already recorded with
+// another body: the level is there, so the report is delivered. Every other
+// 409 (concurrent_update: nothing was recorded) is retried.
+const codeIdempotencyKeyReused = "idempotency_key_reused"
+
+// statusError keeps billing's whole body, so the problem's code is read from
+// it rather than from a message cut for the log.
+type statusError struct {
+	msg  string
+	body []byte
+}
+
+func (e *statusError) Error() string { return e.msg }
+
+// problemCode is the `code` of billing's problem body, "" when there is none.
+func problemCode(err error) string {
+	var se *statusError
+	if !errors.As(err, &se) {
+		return ""
+	}
+	var p struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(se.body, &p)
+	return p.Code
 }

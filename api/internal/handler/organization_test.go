@@ -30,6 +30,9 @@ type memOrgRepo struct {
 	invitations map[string]map[string]*orgDomain.Invitation
 	spaceN      map[string]orgDomain.Counter
 	peopleN     map[string]orgDomain.Counter
+	// listInvitationsErr fails ListInvitations, for the paths that must
+	// survive one unreadable workspace.
+	listInvitationsErr error
 }
 
 func newMemOrgRepo() *memOrgRepo {
@@ -185,6 +188,9 @@ func (m *memOrgRepo) GetInvitationByToken(_ context.Context, tokenHash string) (
 }
 
 func (m *memOrgRepo) ListInvitations(_ context.Context, orgID string) ([]*orgDomain.Invitation, error) {
+	if m.listInvitationsErr != nil {
+		return nil, m.listInvitationsErr
+	}
 	out := make([]*orgDomain.Invitation, 0, len(m.invitations[orgID]))
 	for _, inv := range m.invitations[orgID] {
 		copied := *inv
