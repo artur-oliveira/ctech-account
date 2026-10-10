@@ -18,6 +18,11 @@ type fakeRepo struct {
 	invitations map[string]map[string]*Invitation // orgID -> email -> invitation
 	// grantedEdges records what an accept handed out, keyed by user.
 	grantedEdges map[string][]string
+	// Guard counters (counters_fake_test.go).
+	spaceN       map[string]Counter
+	peopleN      map[string]Counter
+	beforeGuard  func()
+	decrementErr error
 }
 
 func newFakeRepo() *fakeRepo {
@@ -25,6 +30,8 @@ func newFakeRepo() *fakeRepo {
 		orgs:        map[string]*Organization{},
 		memberships: map[string]map[string]*Membership{},
 		invitations: map[string]map[string]*Invitation{},
+		spaceN:      map[string]Counter{},
+		peopleN:     map[string]Counter{},
 	}
 }
 

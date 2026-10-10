@@ -95,6 +95,7 @@ type repo struct {
 	invitations     database.Base
 	orgsName        string
 	membershipsName string
+	invitationsName string
 }
 
 func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
@@ -105,6 +106,7 @@ func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
 		invitations:     database.NewBase(db, tablePrefix, invitationsTable),
 		orgsName:        database.TableName(tablePrefix, orgsTable),
 		membershipsName: database.TableName(tablePrefix, membershipsTable),
+		invitationsName: database.TableName(tablePrefix, invitationsTable),
 	}
 }
 
@@ -122,10 +124,10 @@ func (r *repo) membershipItem(m *Membership) (map[string]types.AttributeValue, e
 // CreateWithOwner writes the organization and its single owner membership in
 // one transaction. Two writes would leave a window in which an organization
 // exists with nobody able to reach it, and a failure in that window is silent.
-func (r *repo) CreateWithOwner(ctx context.Context, org *Organization, ownerName string) error {
+func (r *repo) createItems(org *Organization, ownerName string) ([]types.TransactWriteItem, error) {
 	orgItem, err := attributevalue.MarshalMap(org)
 	if err != nil {
-		return fmt.Errorf("marshaling organization: %w", err)
+		return nil, fmt.Errorf("marshaling organization: %w", err)
 	}
 	orgItem["pk"] = &types.AttributeValueMemberS{Value: orgPK(org.ID)}
 	orgItem["sk"] = &types.AttributeValueMemberS{Value: metaSK}
@@ -134,22 +136,24 @@ func (r *repo) CreateWithOwner(ctx context.Context, org *Organization, ownerName
 	if org.SourceSystem != "" && org.SourceRef != "" {
 		orgItem["lookup_pk"] = &types.AttributeValueMemberS{Value: lookupSourcePK(org.SourceSystem, org.SourceRef)}
 	}
-
 	memberItem, err := r.membershipItem(&Membership{
-		OrganizationID: org.ID,
-		UserID:         org.OwnerUserID,
-		Name:           ownerName,
-		Role:           RoleOwner,
-		CreatedAt:      org.CreatedAt,
+		OrganizationID: org.ID, UserID: org.OwnerUserID, Name: ownerName, Role: RoleOwner, CreatedAt: org.CreatedAt,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return []types.TransactWriteItem{
+		r.orgs.BuildPutTxItemIfAbsent(orgItem),
+		r.memberships.BuildPutTxItemIfAbsent(memberItem),
+	}, nil
+}
+
+func (r *repo) CreateWithOwner(ctx context.Context, org *Organization, ownerName string) error {
+	items, err := r.createItems(org, ownerName)
 	if err != nil {
 		return err
 	}
-
-	err = r.orgs.TransactWrite(ctx, []types.TransactWriteItem{
-		r.orgs.BuildPutTxItemIfAbsent(orgItem),
-		r.memberships.BuildPutTxItemIfAbsent(memberItem),
-	})
+	err = r.orgs.TransactWrite(ctx, items)
 	if database.IsConditionFailed(err) {
 		return ErrAlreadyMember
 	}
@@ -237,7 +241,7 @@ func unmarshalMembership(item map[string]types.AttributeValue) (*Membership, err
 
 func (r *repo) ListMembers(ctx context.Context, orgID string) ([]*Membership, error) {
 	res, err := r.memberships.Query(ctx, database.QueryOpts{
-		PK: orgPK(orgID), SKPrefix: memberSKPrefix, Limit: 500,
+		PK: orgPK(orgID), SKPrefix: memberSKPrefix, Limit: 500, ConsistentRead: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing members: %w", err)
@@ -372,28 +376,7 @@ func (r *repo) RenameMember(ctx context.Context, userID, name string) error {
 // this as three sequential writes would have two failure windows, and both
 // leave an organization with either two owners or none.
 func (r *repo) TransferOwnership(ctx context.Context, orgID, fromUserID, toUserID, demoteTo string, now time.Time) error {
-	ownerVal := map[string]types.AttributeValue{":owner": &types.AttributeValueMemberS{Value: RoleOwner}}
-	demote := map[string]types.AttributeValue{
-		":owner":  &types.AttributeValueMemberS{Value: RoleOwner},
-		":demote": &types.AttributeValueMemberS{Value: demoteTo},
-	}
-	roleName := map[string]string{"#role": "role"}
-
-	err := r.memberships.TransactWrite(ctx, []types.TransactWriteItem{
-		// The outgoing owner stays in, one rung down (admin, or member in a
-		// space), not a stranger: taking away the workspace they built as a
-		// side effect of handing it over is a surprise nobody asked for.
-		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(fromUserID)),
-			"SET #role = :demote", "attribute_exists(pk) AND #role = :owner", roleName, demote),
-		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(toUserID)),
-			"SET #role = :owner", "attribute_exists(pk) AND #role <> :owner", roleName, ownerVal),
-		r.orgs.BuildRawUpdateTxItem(orgPK(orgID), aws.String(metaSK),
-			"SET owner_user_id = :to, updated_at = :now", "attribute_exists(pk)", nil,
-			map[string]types.AttributeValue{
-				":to":  &types.AttributeValueMemberS{Value: toUserID},
-				":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
-			}),
-	})
+	err := r.memberships.TransactWrite(ctx, r.transferItems(orgID, fromUserID, toUserID, demoteTo, now))
 	if database.IsConditionFailed(err) {
 		return ErrNotFound
 	}
@@ -404,18 +387,10 @@ func (r *repo) TransferOwnership(ctx context.Context, orgID, fromUserID, toUserI
 }
 
 func (r *repo) PutInvitation(ctx context.Context, inv *Invitation) error {
-	item, err := attributevalue.MarshalMap(inv)
+	item, err := invitationItem(inv)
 	if err != nil {
-		return fmt.Errorf("marshaling invitation: %w", err)
+		return err
 	}
-	item["pk"] = &types.AttributeValueMemberS{Value: orgPK(inv.OrganizationID)}
-	item["sk"] = &types.AttributeValueMemberS{Value: inviteSK(inv.Email)}
-	// The index is keyed on the hash, so acceptance is one lookup from the
-	// token the invitee holds — without the token ever being stored.
-	item["lookup_pk"] = &types.AttributeValueMemberS{Value: inv.TokenHash}
-	// DynamoDB TTL reaps the row: an invitation nobody accepted stops being a
-	// standing offer without anything having to run.
-	item["expires_at"] = &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", inv.ExpiresAt.Unix())}
 	if err := r.invitations.PutItem(ctx, item); err != nil {
 		return fmt.Errorf("writing invitation: %w", err)
 	}
@@ -435,7 +410,7 @@ func (r *repo) GetInvitationByToken(ctx context.Context, tokenHash string) (*Inv
 
 func (r *repo) ListInvitations(ctx context.Context, orgID string) ([]*Invitation, error) {
 	res, err := r.invitations.Query(ctx, database.QueryOpts{
-		PK: orgPK(orgID), SKPrefix: inviteSKPrefix, Limit: 200,
+		PK: orgPK(orgID), SKPrefix: inviteSKPrefix, Limit: 200, ConsistentRead: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing invitations: %w", err)
@@ -498,4 +473,47 @@ func (r *repo) DeleteInvitation(ctx context.Context, orgID, email string) error 
 		return fmt.Errorf("deleting invitation: %w", err)
 	}
 	return nil
+}
+
+// transferItems are the three writes of a transfer: the outgoing owner one
+// rung down, the incoming one up, and the organization's owner field.
+func (r *repo) transferItems(orgID, fromUserID, toUserID, demoteTo string, now time.Time) []types.TransactWriteItem {
+	ownerVal := map[string]types.AttributeValue{":owner": &types.AttributeValueMemberS{Value: RoleOwner}}
+	demote := map[string]types.AttributeValue{
+		":owner":  &types.AttributeValueMemberS{Value: RoleOwner},
+		":demote": &types.AttributeValueMemberS{Value: demoteTo},
+	}
+	roleName := map[string]string{"#role": "role"}
+
+	return []types.TransactWriteItem{
+		// The outgoing owner stays in, one rung down (admin, or member in a
+		// space), not a stranger: taking away the workspace they built as a
+		// side effect of handing it over is a surprise nobody asked for.
+		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(fromUserID)),
+			"SET #role = :demote", "attribute_exists(pk) AND #role = :owner", roleName, demote),
+		r.memberships.BuildRawUpdateTxItem(orgPK(orgID), aws.String(memberSK(toUserID)),
+			"SET #role = :owner", "attribute_exists(pk) AND #role <> :owner", roleName, ownerVal),
+		r.orgs.BuildRawUpdateTxItem(orgPK(orgID), aws.String(metaSK),
+			"SET owner_user_id = :to, updated_at = :now", "attribute_exists(pk)", nil,
+			map[string]types.AttributeValue{
+				":to":  &types.AttributeValueMemberS{Value: toUserID},
+				":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+			}),
+	}
+}
+
+func invitationItem(inv *Invitation) (map[string]types.AttributeValue, error) {
+	item, err := attributevalue.MarshalMap(inv)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling invitation: %w", err)
+	}
+	item["pk"] = &types.AttributeValueMemberS{Value: orgPK(inv.OrganizationID)}
+	item["sk"] = &types.AttributeValueMemberS{Value: inviteSK(inv.Email)}
+	// The index is keyed on the hash, so acceptance is one lookup from the
+	// token the invitee holds — without the token ever being stored.
+	item["lookup_pk"] = &types.AttributeValueMemberS{Value: inv.TokenHash}
+	// DynamoDB TTL reaps the row: an invitation nobody accepted stops being a
+	// standing offer without anything having to run.
+	item["expires_at"] = &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", inv.ExpiresAt.Unix())}
+	return item, nil
 }

@@ -206,6 +206,3 @@ func (s *Service) SpaceCounts(ctx context.Context, orgID string) (people, pendin
 	}
 	return int64(len(p.members)), int64(len(p.invited)), nil
 }
-
-// CounterRepository is defined in counters.go (Task 2).
-type CounterRepository interface{}

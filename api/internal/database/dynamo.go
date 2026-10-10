@@ -30,6 +30,11 @@ var NowStr = dynamo.NowStr
 // TransactWrite.
 var IsConditionFailed = dynamo.IsConditionFailed
 
+// IsTransactionConflict reports a TransactWrite cancelled because another
+// transaction touched one of its items. Nothing was written; retry it. Not a
+// condition failure (api-commons narrowed IsConditionFailed in v1.11).
+var IsTransactionConflict = dynamo.IsTransactionConflict
+
 // New builds the raw DynamoDB client from the ambient AWS config (task role
 // in ECS/EC2).
 func New(ctx context.Context, region string) (*dynamodb.Client, error) {

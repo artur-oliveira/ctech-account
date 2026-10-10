@@ -28,6 +28,8 @@ type memOrgRepo struct {
 	orgs        map[string]*orgDomain.Organization
 	memberships map[string]map[string]*orgDomain.Membership
 	invitations map[string]map[string]*orgDomain.Invitation
+	spaceN      map[string]orgDomain.Counter
+	peopleN     map[string]orgDomain.Counter
 }
 
 func newMemOrgRepo() *memOrgRepo {
@@ -35,6 +37,8 @@ func newMemOrgRepo() *memOrgRepo {
 		orgs:        map[string]*orgDomain.Organization{},
 		memberships: map[string]map[string]*orgDomain.Membership{},
 		invitations: map[string]map[string]*orgDomain.Invitation{},
+		spaceN:      map[string]orgDomain.Counter{},
+		peopleN:     map[string]orgDomain.Counter{},
 	}
 }
 
