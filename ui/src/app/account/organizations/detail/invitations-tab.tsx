@@ -4,7 +4,9 @@ import { useState, type SyntheticEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Copy, MailPlus, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchOrganizationInvitations } from '@/lib/queries'
+import { fetchOrganizationInvitations, fetchSpaceUsage } from '@/lib/queries'
+import { useTranslation } from 'react-i18next'
+import { planProblemOf, planURL } from '@/lib/plan-problem'
 import { inviteMemberAPI, revokeInvitationAPI } from '@/lib/mutations'
 import { fetchCompanies } from '@/lib/queries'
 import { formatDate } from '@/lib/format'
@@ -35,6 +37,7 @@ import {
   type Organization,
   type OrganizationInvitation,
   type OrganizationRole,
+  type SpaceUsage,
 } from '@/lib/types'
 import { COMPANY_PICKER_SEARCH_THRESHOLD } from '@/lib/constants'
 
@@ -46,11 +49,22 @@ export function InvitationsTab({ organization }: { organization: Organization })
     queryKey: ['organization-invitations', organization.id],
     queryFn: () => fetchOrganizationInvitations(organization.id),
   })
+  const personal = isPersonal(organization)
+  const ownsSpace = personal && organization.role === 'owner'
+  // The counter reads the same entitlement the invite is checked against. A
+  // plan that cannot be read hides it; nothing else on the page depends on it.
+  const { data: usage } = useQuery({
+    queryKey: ['space-usage', organization.id],
+    queryFn: () => fetchSpaceUsage(organization.id),
+    enabled: ownsSpace,
+    retry: false,
+  })
 
   const revokeMutation = useMutation({
     mutationFn: (email: string) => revokeInvitationAPI(organization.id, email),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organization-invitations', organization.id] })
+      queryClient.invalidateQueries({ queryKey: ['space-usage', organization.id] })
       toast.success(t('toast.invitationRevoked'))
     },
     onError: (err) => {
@@ -95,7 +109,8 @@ export function InvitationsTab({ organization }: { organization: Organization })
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {usage && <SpaceUsageCount usage={usage} />}
         <InviteDialog organization={organization} />
       </div>
       <ResponsiveDataList
@@ -171,15 +186,25 @@ function InviteDialog({ organization }: { organization: Organization }) {
       // recipient cannot act on.
       setLink(`${window.location.origin}/invite?token=${encodeURIComponent(data.token)}`)
       queryClient.invalidateQueries({ queryKey: ['organization-invitations', organization.id] })
+      queryClient.invalidateQueries({ queryKey: ['space-usage', organization.id] })
     },
     onError: (err) => {
+      // A plan refusal is explained inside the dialog, next to the field.
+      if (planProblemOf(err)) return
       if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
     },
   })
 
-  const errorMsg = isAxiosError(error)
-    ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
-    : null
+  const { t: tPlain } = useTranslation()
+  const plan = planProblemOf(error)
+  const plansHref = planURL()
+  const errorMsg = plan?.kind === 'limit'
+    ? tPlain('spaces.plan.peopleLimit', { used: plan.used ?? 0, limit: plan.limit ?? 0 })
+    : plan?.kind === 'unavailable'
+      ? tPlain('spaces.plan.unavailable')
+      : isAxiosError(error)
+        ? (workspaceDetail(error.response?.data?.detail, organization.kind) ?? t('toast.inviteFailed'))
+        : null
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -258,7 +283,17 @@ function InviteDialog({ organization }: { organization: Organization }) {
 
             {errorMsg && (
               <Alert variant="destructive">
-                <AlertDescription>{errorMsg}</AlertDescription>
+                <AlertDescription>
+                  {errorMsg}
+                  {plan?.kind === 'limit' && plansHref && (
+                    <>
+                      {' '}
+                      <a href={plansHref} className="font-medium underline underline-offset-4">
+                        {tPlain('spaces.plan.seePlans')}
+                      </a>
+                    </>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
 
@@ -403,5 +438,15 @@ function InviteDialog({ organization }: { organization: Organization }) {
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function SpaceUsageCount({ usage }: { usage: SpaceUsage }) {
+  const { t } = useTranslation()
+  const values = { people: usage.people, pending: usage.pending_invitations, limit: usage.limit }
+  return (
+    <span className="text-sm tabular-nums text-muted-foreground">
+      {usage.limit < 0 ? t('spaces.plan.usageUnlimited', values) : t('spaces.plan.usage', values)}
+    </span>
   )
 }

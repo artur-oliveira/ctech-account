@@ -158,3 +158,15 @@ func TestRegistrableMatchRejectsPublicSuffix(t *testing.T) {
 		t.Fatal("exact public suffix must not be accepted as an RP ID")
 	}
 }
+
+func TestLoadReadsTheBillingAPIURL(t *testing.T) {
+	setWebAuthnTestEnv(t)
+	t.Setenv("BILLING_API_URL", "https://billing-api.example")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BillingAPIURL != "https://billing-api.example" {
+		t.Fatalf("BillingAPIURL = %q", cfg.BillingAPIURL)
+	}
+}

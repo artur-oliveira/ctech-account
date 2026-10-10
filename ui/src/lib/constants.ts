@@ -70,3 +70,6 @@ export const REQUIRED_DOC_TYPES = ['id_front', 'id_back', 'selfie_with_document'
 
 /** Same contact used on /privacy and /terms — one address for user-facing support asks. */
 export const SUPPORT_EMAIL = 'dpo@aoctech.app'
+
+/** Billing's plan screen (Finanças → Plano), opened by "Ver planos". */
+export const BILLING_PLAN_PATH = '/finance/plans'

@@ -1,11 +1,11 @@
-import {cleanup, render, screen} from '@testing-library/react'
+import {cleanup, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {SettingsTab} from './settings-tab'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
-import {removeMemberAPI} from '@/lib/mutations'
-import {AxiosError} from 'axios'
+import {removeMemberAPI, transferOwnershipAPI} from '@/lib/mutations'
+import {AxiosError, AxiosHeaders} from 'axios'
 import {toast} from 'sonner'
 import type {Organization, OrganizationRole} from '@/lib/types'
 
@@ -23,6 +23,12 @@ vi.mock('@/lib/mutations', () => ({
 vi.mock('sonner', () => ({toast: {error: vi.fn(), success: vi.fn()}}))
 
 vi.mock('next/navigation', () => ({useRouter: () => ({push: vi.fn()})}))
+
+function refusal(status: number, data: unknown) {
+  return new AxiosError('x', String(status), undefined, undefined, {
+    status, data, statusText: '', headers: {}, config: {headers: new AxiosHeaders()},
+  })
+}
 
 afterEach(cleanup)
 
@@ -111,5 +117,20 @@ describe('settings on a space', () => {
     await user.click(await screen.findByRole('combobox', {name: /new owner/i}))
     expect(await screen.findByRole('option', {name: 'Ana'})).toBeInTheDocument()
     expect(screen.getByRole('option', {name: 'Pedro'})).toBeInTheDocument()
+  })
+
+  it('names the person a transfer could not reach, without their plan', async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue([
+      {organization_id: 'spc_1', user_id: 'usr_owner', name: 'Dono', role: 'owner', created_at: ''},
+      {organization_id: 'spc_1', user_id: 'usr_bia', name: 'Bia', role: 'member', created_at: ''},
+    ])
+    vi.mocked(transferOwnershipAPI).mockRejectedValue(refusal(402, {code: 'plan_limit', resource: 'spaces'}))
+    const user = userEvent.setup()
+    renderTab({id: 'spc_1', display_name: 'Casa', owner_user_id: 'usr_owner', role: 'owner', joined_at: '', kind: 'personal'})
+    await user.click(await screen.findByLabelText(/new owner/i))
+    await user.click(await screen.findByRole('option', {name: 'Bia'}))
+    await user.click(screen.getByRole('button', {name: /transfer/i}))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', {name: /transfer|confirm/i}))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Bia is already at their plan's space limit."))
   })
 })

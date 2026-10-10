@@ -115,6 +115,10 @@ const apiStack = new ApiStack(app, id('Api'), {
   // Alpine/ARM is the default since the prod pilot went healthy; OS_FAMILY=al2023
   // is the one-line rollback if this ever needs to revert.
   osFamily: (process.env.OS_FAMILY as 'al2023' | 'alpine' | undefined) ?? 'alpine',
+  // Plan limits stay off until ctech-billing has the account-billing
+  // credential (its seed) and this account has the client registered:
+  // PLAN_LIMITS=on is the deploy switch, and leaving it out is the rollback.
+  billingApiUrl: process.env.PLAN_LIMITS === 'on' ? `https://${domainForEnv(ENVIRONMENT, 'billing-api')}` : undefined,
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 apiStack.addStackDependency(iamStack);

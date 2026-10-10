@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -52,6 +53,8 @@ func (h *OrganizationHandler) Register(orgs, invitations fiber.Router) {
 	orgs.Post("/:id/invitations", scoped(organization.RoleAdmin), h.invite)
 	orgs.Delete("/:id/invitations/:email", scoped(organization.RoleAdmin), h.revokeInvitation)
 	orgs.Post("/:id/transfer", scoped(organization.RoleOwner), h.transfer)
+	// Owner only, spaces only: the people page's "people + pending of limit".
+	orgs.Get("/:id/plan-usage", scoped(organization.RoleOwner), h.planUsage)
 }
 
 type organizationRequest struct {
@@ -338,6 +341,9 @@ func (h *OrganizationHandler) callerName(c fiber.Ctx) string {
 }
 
 func organizationProblem(c fiber.Ctx, err error) error {
+	if le, ok := errors.AsType[*organization.PlanLimitError](err); ok {
+		return planLimitProblem(c, le).Send(c)
+	}
 	switch {
 	case errors.Is(err, organization.ErrInvalidName):
 		return apierror.ValidationFailed("The organization name is required and must be at most 120 characters.", c.Path()).Send(c)
@@ -361,7 +367,36 @@ func organizationProblem(c fiber.Ctx, err error) error {
 		return apierror.Forbidden("This invitation is no longer valid.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrAlreadyMember):
 		return apierror.Conflict("That person is already in this organization.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrPlanUnavailable):
+		return apierror.PlanUnavailable(c.Path()).WithCause(err).Send(c)
+	case errors.Is(err, organization.ErrPlanBusy):
+		return apierror.Conflict("Somebody changed this at the same time. Try again.", c.Path()).Send(c)
+	case errors.Is(err, organization.ErrNotASpace):
+		return apierror.NotFound("space", c.Path()).Send(c)
 	default:
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
+}
+
+// planLimitProblem says what was refused. A transfer's refusal is about the
+// other person's plan, so it carries none of its numbers (decision P7).
+func planLimitProblem(c fiber.Ctx, le *organization.PlanLimitError) *apierror.Problem {
+	if le.Hidden {
+		return apierror.PlanLimit(le.Resource, "That person is already at their plan's space limit.", c.Path())
+	}
+	detail := fmt.Sprintf("Your plan allows %d spaces and you already have %d.", le.Limit, le.Used)
+	if le.Resource == organization.ResourcePeople {
+		detail = fmt.Sprintf("This space already has %d of %d people on your plan.", le.Used, le.Limit)
+	}
+	return apierror.PlanLimit(le.Resource, detail, c.Path()).WithPlanUsage(le.Limit, le.Used, le.Plan)
+}
+
+func (h *OrganizationHandler) planUsage(c fiber.Ctx) error {
+	u, err := h.svc.SpaceUsage(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c))
+	if err != nil {
+		return organizationProblem(c, err)
+	}
+	return c.JSON(fiber.Map{
+		"people": u.People, "pending_invitations": u.PendingInvitations, "limit": u.Limit, "plan": u.Plan,
+	})
 }

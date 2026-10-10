@@ -1,6 +1,6 @@
 # Plan limits on personal spaces
 
-Status: **Design approved, not implemented** · 2026-10-10 · Consumer and seller: `ctech-billing`
+Status: **Implemented** · 2026-10-10 · Consumer and seller: `ctech-billing`
 (`ctech-billing/docs/specs/2026-10-10-plans-design.md`, §§ 5 and 6 there are the contract) · Extends
 [personal workspaces](2026-10-09-personal-workspaces.md) § 7 ("Plan limits (later)")
 
@@ -135,7 +135,7 @@ route already reads each workspace; invitations are one `Query` per owned space,
 ## 7. UI
 
 - **`/account/spaces/new`** refused with 402: the form is replaced by *"Seu plano permite N espaços e você já
-  tem N."* with **Ver planos** → `{BILLING}/console/finance/plano` and **Voltar** → `return_to?cancelled=1&state=…`.
+  tem N."* with **Ver planos** → `{BILLING}/finance/plans` and **Voltar** → `return_to?cancelled=1&state=…`.
 - **People page, invite** refused with 402: inline, *"Este espaço já tem N de N pessoas do seu plano."* with
   **Ver planos**.
 - 503: *"Não foi possível verificar seu plano agora. Tente em instantes."* The roster and everything else on the
@@ -211,3 +211,25 @@ Also settled: problems carry `code` `plan_limit` / `plan_unavailable` (types `�
 `…/plan-unavailable`); the internal route's counts cost two queries per owned space (members and invitations);
 everything stays off until `BILLING_API_URL` is set. A switch from Basic/Pro to Sob demanda takes effect at the
 end of the paid period, so entitlements keep returning the current plan until then — nothing here depends on it.
+
+## Amendment, implementation (2026-10-10)
+
+Departures from P1–P11:
+
+- **A 409 `concurrent_update` from billing is not delivered.** Billing's level store answers it when another
+  report moved the latest level first and nothing was recorded; the queue keeps the row and retries. Only
+  other 409s (`idempotency_key_reused`, the same key with another body) count as delivered.
+- **The CDK sets `BILLING_API_URL` only with `PLAN_LIMITS=on`.** Setting it unconditionally would have switched
+  enforcement on with the first deploy, before ctech-billing's seed created the `account-billing` credential
+  and before the client was registered here — every create, invite and transfer of a space would answer 503.
+  `PLAN_LIMITS=on` is the deploy switch; leaving it out is the rollback.
+- **"Ver planos" opens `{BILLING}/finance/plans`.** ctech-billing moved Finanças to its own area (`/finance`)
+  on the same day.
+- **A change's report is sent twice: right away, and again once the membership index has settled.** The
+  count reads an eventually consistent index; milliseconds after the commit it can miss the space just
+  created. The `NOW#` row is kept after the inline report, and the worker re-reports it once it is at least
+  30 s old and only then clears it, so billing never keeps a level below the real one. An invitation's
+  `AT#` row is reported when due, as before.
+- **Billing's 409 is read by its `code`:** only `idempotency_key_reused` counts as delivered.
+- **The internal route never fails for one space's counts:** a space whose counts cannot be read is listed
+  without them (billing reads absent counts as unavailable).

@@ -28,6 +28,11 @@ type memOrgRepo struct {
 	orgs        map[string]*orgDomain.Organization
 	memberships map[string]map[string]*orgDomain.Membership
 	invitations map[string]map[string]*orgDomain.Invitation
+	spaceN      map[string]orgDomain.Counter
+	peopleN     map[string]orgDomain.Counter
+	// listInvitationsErr fails ListInvitations, for the paths that must
+	// survive one unreadable workspace.
+	listInvitationsErr error
 }
 
 func newMemOrgRepo() *memOrgRepo {
@@ -35,6 +40,8 @@ func newMemOrgRepo() *memOrgRepo {
 		orgs:        map[string]*orgDomain.Organization{},
 		memberships: map[string]map[string]*orgDomain.Membership{},
 		invitations: map[string]map[string]*orgDomain.Invitation{},
+		spaceN:      map[string]orgDomain.Counter{},
+		peopleN:     map[string]orgDomain.Counter{},
 	}
 }
 
@@ -181,6 +188,9 @@ func (m *memOrgRepo) GetInvitationByToken(_ context.Context, tokenHash string) (
 }
 
 func (m *memOrgRepo) ListInvitations(_ context.Context, orgID string) ([]*orgDomain.Invitation, error) {
+	if m.listInvitationsErr != nil {
+		return nil, m.listInvitationsErr
+	}
 	out := make([]*orgDomain.Invitation, 0, len(m.invitations[orgID]))
 	for _, inv := range m.invitations[orgID] {
 		copied := *inv
@@ -210,11 +220,16 @@ type orgTestApp struct {
 	svc  *orgDomain.Service
 }
 
-func newOrgTestApp(t *testing.T) *orgTestApp {
+func newOrgTestApp(t *testing.T) *orgTestApp { return newOrgTestAppWith(t, nil) }
+
+func newOrgTestAppWith(t *testing.T, configure func(*orgDomain.Service, *memOrgRepo)) *orgTestApp {
 	t.Helper()
 	base := newTestApp(t)
 	repo := newMemOrgRepo()
 	svc := orgDomain.NewService(repo, time.Now)
+	if configure != nil {
+		configure(svc, repo)
+	}
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {

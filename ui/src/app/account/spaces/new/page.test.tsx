@@ -2,12 +2,21 @@ import {cleanup, render, screen, waitFor} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {AxiosError, AxiosHeaders} from 'axios'
 import NewSpacePage from './page'
 import {fetchHandoff} from '@/lib/queries'
 import {createOrganizationAPI} from '@/lib/mutations'
 
 vi.mock('@/lib/queries', () => ({fetchHandoff: vi.fn()}))
 vi.mock('@/lib/mutations', () => ({createOrganizationAPI: vi.fn()}))
+vi.mock('@/lib/env', async (orig) => ({...(await orig<object>()), BILLING_URL: 'https://billing.example'}))
+
+function refusal(status: number, data: unknown) {
+  return new AxiosError('x', String(status), undefined, undefined, {
+    status, data, statusText: '', headers: {}, config: {headers: new AxiosHeaders()},
+  })
+}
+
 
 const push = vi.fn()
 let search = new URLSearchParams()
@@ -126,5 +135,45 @@ describe('new space', () => {
     )
     expect(screen.queryByLabelText(/space name/i)).toBeNull()
     expect(replaced).toBeNull()
+  })
+
+  it('replaces the form with the plan limit and a way to the plans', async () => {
+    vi.mocked(createOrganizationAPI).mockRejectedValue(
+      refusal(402, {code: 'plan_limit', resource: 'spaces', limit: 3, used: 3, plan: 'basic'}))
+    const user = userEvent.setup()
+    renderPage('client_id=billing&return_to=https://billing.example/x&state=abc123')
+    await user.type(await screen.findByLabelText(/space name/i), 'Casa')
+    await user.click(screen.getByRole('button', {name: /create space/i}))
+
+    expect(await screen.findByText('Your plan allows 3 spaces and you already have 3.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/space name/i)).toBeNull()
+    expect(screen.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plans')
+
+    await user.click(screen.getByRole('button', {name: /^back$/i}))
+    await waitFor(() => expect(replaced).not.toBeNull())
+    const url = new URL(replaced!)
+    expect(url.searchParams.get('cancelled')).toBe('1')
+    expect(url.searchParams.get('state')).toBe('abc123')
+  })
+
+  it('says one space in the singular', async () => {
+    vi.mocked(createOrganizationAPI).mockRejectedValue(
+      refusal(402, {code: 'plan_limit', resource: 'spaces', limit: 1, used: 1, plan: 'free'}))
+    const user = userEvent.setup()
+    renderPage('')
+    await user.type(await screen.findByLabelText(/space name/i), 'Casa')
+    await user.click(screen.getByRole('button', {name: /create space/i}))
+    expect(await screen.findByText('Your plan allows 1 space and you already have 1.')).toBeInTheDocument()
+    expect(screen.getByRole('link', {name: /^back$/i})).toHaveAttribute('href', '/account/spaces')
+  })
+
+  it('keeps the form when the plan cannot be read', async () => {
+    vi.mocked(createOrganizationAPI).mockRejectedValue(refusal(503, {code: 'plan_unavailable'}))
+    const user = userEvent.setup()
+    renderPage('')
+    await user.type(await screen.findByLabelText(/space name/i), 'Casa')
+    await user.click(screen.getByRole('button', {name: /create space/i}))
+    expect(await screen.findByText(/couldn't check your plan right now/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/space name/i)).toBeInTheDocument()
   })
 })

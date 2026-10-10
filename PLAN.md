@@ -202,6 +202,16 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Phase 1 plan:
 
 ---
 
+## Plan limits on personal spaces
+
+Spec: `docs/specs/2026-10-10-space-plan-limits.md`. Plan: `docs/plans/2026-10-10-space-plan-limits.md`.
+
+- [x] Live entitlement read (2 s), quotas from billing metadata, malformed → 0
+- [x] Guarded create / invite / transfer of a space (402 `plan_limit`, 503 `plan_unavailable`)
+- [x] `LEVEL_DIRTY` queue, inline reports, minute worker
+- [x] Counts on the internal user-organizations route
+- [ ] Deploy: `account-billing` client registered; deploy with `PLAN_LIMITS=on` after ctech-billing's seed
+
 ## Pending Decisions
 
 | Decision                         | Options                                              | Status                                         |

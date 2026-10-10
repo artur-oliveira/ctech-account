@@ -1046,6 +1046,17 @@
       "memberRemoved": "Pessoa removida.",
       "roleChanged": "Acesso atualizado.",
       "setRoleFailed": "Não foi possível alterar o acesso."
+    },
+    "plan": {
+      "spacesLimit_one": "Seu plano permite {{count}} espaço e você já tem {{used}}.",
+      "spacesLimit_other": "Seu plano permite {{count}} espaços e você já tem {{used}}.",
+      "peopleLimit": "Este espaço já tem {{used}} de {{limit}} pessoas do seu plano.",
+      "unavailable": "Não foi possível verificar seu plano agora. Tente em instantes.",
+      "transferLimit": "{{name}} já está no limite de espaços do plano.",
+      "seePlans": "Ver planos",
+      "back": "Voltar",
+      "usage": "{{people}} + {{pending}} de {{limit}} pessoas",
+      "usageUnlimited": "{{people}} + {{pending}} pessoas"
     }
   }
 }

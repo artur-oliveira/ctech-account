@@ -35,6 +35,15 @@ type Problem struct {
 	// RequiredScope identifies the exact permission needed by a protected
 	// resource endpoint (see InsufficientScope).
 	RequiredScope string `json:"required_scope,omitempty"`
+	// Code is a stable machine-readable reason for problems a client branches
+	// on (the UI tells a plan limit from an unreachable plan by it).
+	Code string `json:"code,omitempty"`
+	// Plan-limit extension members (docs/specs/2026-10-10-space-plan-limits.md
+	// § 3.1). Pointers, because a limit of 0 is a real answer.
+	Limit    *int64 `json:"limit,omitempty"`
+	Used     *int64 `json:"used,omitempty"`
+	Plan     string `json:"plan,omitempty"`
+	Resource string `json:"resource,omitempty"`
 
 	// cause preserves the internal error for logs without exposing it in the
 	// RFC 7807 response. Public Detail must remain safe for clients.
@@ -307,4 +316,30 @@ func KYCBasicRequired(instance string) *Problem {
 func OrganizationHandoffInvalid(instance string) *Problem {
 	return newProblem("organization-handoff-invalid", "Invalid Handoff", http.StatusUnprocessableEntity,
 		"The product that sent you here is not configured correctly. You can still create an organization from your account.", instance)
+}
+
+const (
+	CodePlanLimit       = "plan_limit"
+	CodePlanUnavailable = "plan_unavailable"
+)
+
+// PlanLimit → 402: the caller's plan does not allow one more space or person.
+func PlanLimit(resource, detail, instance string) *Problem {
+	p := newProblem("plan-limit", "Plan Limit Reached", http.StatusPaymentRequired, detail, instance)
+	p.Code, p.Resource = CodePlanLimit, resource
+	return p
+}
+
+// WithPlanUsage adds the numbers. Left off when the plan is somebody else's.
+func (p *Problem) WithPlanUsage(limit, used int64, plan string) *Problem {
+	p.Limit, p.Used, p.Plan = &limit, &used, plan
+	return p
+}
+
+// PlanUnavailable → 503: billing could not be asked, so nothing was written.
+func PlanUnavailable(instance string) *Problem {
+	p := newProblem("plan-unavailable", "Plan Unavailable", http.StatusServiceUnavailable,
+		"The plan could not be checked right now. Try again shortly.", instance)
+	p.Code = CodePlanUnavailable
+	return p
 }

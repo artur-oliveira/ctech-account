@@ -100,6 +100,10 @@ type Config struct {
 	AccountDeletionEnabled bool
 	ErasureTopicARN        string
 	ErasureServices        []string
+	// BillingAPIURL is ctech-billing's API (plan limits on personal spaces,
+	// docs/specs/2026-10-10-space-plan-limits.md). Empty disables plan limits
+	// and level reports entirely — today's behaviour.
+	BillingAPIURL string
 
 	// Account lockout settings
 	AccountLockoutThreshold       int  // ACCOUNT_LOCKOUT_THRESHOLD env var
@@ -223,6 +227,7 @@ func Load() (*Config, error) {
 		AccountDeletionEnabled: os.Getenv("ACCOUNT_DELETION_ENABLED") == "true",
 		ErasureTopicARN:        os.Getenv("ACCOUNT_ERASURE_TOPIC_ARN"),
 		ErasureServices:        erasureServices,
+		BillingAPIURL:          strings.TrimSuffix(os.Getenv("BILLING_API_URL"), "/"),
 		// Account lockout settings
 		AccountLockoutThreshold:       positiveIntEnv("ACCOUNT_LOCKOUT_THRESHOLD", 5),
 		AccountLockoutDurationMinutes: positiveIntEnv("ACCOUNT_LOCKOUT_DURATION_MINUTES", 15),

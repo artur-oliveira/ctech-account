@@ -506,6 +506,11 @@ const routes: Route[] = [
   },
   {
     method: 'get',
+    pattern: /^\/v1\.0\/organizations\/([^/]+)\/plan-usage$/,
+    handle: (m) => ({ people: 0, pending_invitations: (state.invitations[m[1]] ?? []).length, limit: -1, plan: 'mock' }),
+  },
+  {
+    method: 'get',
     pattern: /^\/v1\.0\/organizations\/([^/]+)\/invitations$/,
     handle: (m) => ({ invitations: state.invitations[m[1]] ?? [] }),
   },

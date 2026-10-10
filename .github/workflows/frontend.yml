@@ -27,14 +27,17 @@ jobs:
         NEXT_PUBLIC_API_URL=https://accounts-dev-api.aoctech.app
         NEXT_PUBLIC_WS_URL=wss://accounts-dev-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_DEV }}
+        NEXT_PUBLIC_BILLING_URL=https://billing-dev.aoctech.app
       build-env-stage: |
         NEXT_PUBLIC_API_URL=https://accounts-stage-api.aoctech.app
         NEXT_PUBLIC_WS_URL=wss://accounts-stage-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_STAGE }}
+        NEXT_PUBLIC_BILLING_URL=https://billing-stage.aoctech.app
       build-env-prod: |
         NEXT_PUBLIC_API_URL=https://accounts-api.aoctech.app
         NEXT_PUBLIC_WS_URL=wss://accounts-api.aoctech.app
         NEXT_PUBLIC_TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY_PROD }}
+        NEXT_PUBLIC_BILLING_URL=https://billing.aoctech.app
       # The reusable workflow derives connect-src from the API origins above;
       # add Turnstile through its dedicated extension point.
       extra-connect-src: https://prod-ctech-account-kyc-documents.s3.dualstack.us-east-1.amazonaws.com https://challenges.cloudflare.com wss://accounts-dev-api.aoctech.app wss://accounts-stage-api.aoctech.app wss://accounts-api.aoctech.app https://open.cnpja.com
