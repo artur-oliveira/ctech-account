@@ -210,7 +210,7 @@ Spec: `docs/specs/2026-10-10-space-plan-limits.md`. Plan: `docs/plans/2026-10-10
 - [x] Guarded create / invite / transfer of a space (402 `plan_limit`, 503 `plan_unavailable`)
 - [x] `LEVEL_DIRTY` queue, inline reports, minute worker
 - [x] Counts on the internal user-organizations route
-- [ ] Deploy: `account-billing` client registered; deploy with `PLAN_LIMITS=on` after ctech-billing's seed
+- [x] Deploy: `account-billing` client registered (2026-10-10); `PLAN_LIMITS=on` in the infra workflow after ctech-billing's seed
 
 ## Pending Decisions
 

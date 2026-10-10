@@ -76,6 +76,9 @@ jobs:
           CTECH_VPC_ID: ${{ env.CTECH_VPC_ID }}
           CTECH_DEPLOYMENTS_BUCKET: ${{ env.CTECH_DEPLOYMENTS_BUCKET }}
           CTECH_LOGS_BUCKET: ${{ env.CTECH_LOGS_BUCKET }}
+          # Plan limits on personal spaces (docs/specs/2026-10-10-space-plan-limits.md):
+          # sets BILLING_API_URL. Remove to switch them off.
+          PLAN_LIMITS: 'on'
 
       - name: Comment diff on PR
         uses: actions/github-script@v9
@@ -158,3 +161,6 @@ jobs:
           CTECH_VPC_ID: ${{ env.CTECH_VPC_ID }}
           CTECH_DEPLOYMENTS_BUCKET: ${{ env.CTECH_DEPLOYMENTS_BUCKET }}
           CTECH_LOGS_BUCKET: ${{ env.CTECH_LOGS_BUCKET }}
+          # Plan limits on personal spaces (docs/specs/2026-10-10-space-plan-limits.md):
+          # sets BILLING_API_URL. Remove to switch them off.
+          PLAN_LIMITS: 'on'
