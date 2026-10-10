@@ -176,3 +176,38 @@ logs loudly, and the deploy waits for step 1.
 - Limits on organizations.
 - Deleting a space.
 - Anything about what happens inside a space (billing's).
+
+## Amendment, planning (2026-10-10)
+
+Recorded from `docs/plans/2026-10-10-space-plan-limits.md` ("Decisions"), where this spec is silent or does not
+fit the code:
+
+- **P1 — Queue keys.** `pk=LEVEL_DIRTY`, `sk=NOW#{owner}` (collapsing, due now, deleted conditionally on
+  `due_at`) and `sk=AT#{unix_seconds:012d}#{owner}` (scheduled, e.g. an invitation's expiry + 1 s). One row per
+  owner (`sk={owner_sub}`) cannot hold both a "due now" and a "due at `expires_at`" row.
+- **P2 — The spaces guard compares `max(owned spaces, counter)`.** Owned spaces are read from `lookup-index`
+  (a GSI, eventually consistent); the counter is read consistently. The counter is corrected upward at every
+  check and downward by the worker, conditionally, once the index has settled. The people guard reads
+  base-table queries with `ConsistentRead` and re-derives the counter exactly as § 3.2 says.
+- **P3 — Decrements are best-effort writes after the commit**, never inside the transaction (rows written before
+  plan limits have no counter, and reducing usage is never refused). A failed decrement schedules a reconcile.
+- **P4 — Quotas are read from `subscriptions[].items[].metadata`**, the first item carrying `quota_spaces`
+  (a Sob demanda subscription carries `-1`/`-1` on both its items); several entitled subscriptions → the most
+  generous. No entitled subscription and no `default` → 503 (billing without `owner_key` support), not 0.
+- **P5 — No shared retrying HTTP client exists in api-commons.** The entitlement GET retries once on a transport
+  error or 5xx inside its 2 s budget; level POSTs are not retried in the request (the queue retries them).
+- **P6 — New route `GET /v1.0/organizations/:id/plan-usage`** (owner of a space): `{people,
+  pending_invitations, limit, plan}`, for the people page's counter.
+- **P7 — Transfer's 402 carries `resource` only** — no `limit`, `used` or `plan`, which are the other person's.
+- **P8 — `Accept` reports levels** (never refused): `finance_people` can change when an invited address becomes
+  a user already in another of the owner's spaces.
+- **P9 — Three guard conflicts in a row answer 409** "try again", never a 402 for a limit not reached.
+- **P10 — `{BILLING}` is two hosts:** `BILLING_API_URL` (`billing-api[-env].aoctech.app`) for the account;
+  `NEXT_PUBLIC_BILLING_URL` (`billing[-env].aoctech.app`) for *Ver planos*.
+- **P11 — Marking dirty happens right after the commit**, not inside the write's transaction. A process killed
+  between the two loses that report until the owner's next change; the next report carries the whole level.
+
+Also settled: problems carry `code` `plan_limit` / `plan_unavailable` (types `…/problems/plan-limit`,
+`…/plan-unavailable`); the internal route's counts cost two queries per owned space (members and invitations);
+everything stays off until `BILLING_API_URL` is set. A switch from Basic/Pro to Sob demanda takes effect at the
+end of the paid period, so entitlements keep returning the current plan until then — nothing here depends on it.
