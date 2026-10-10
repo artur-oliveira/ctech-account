@@ -53,6 +53,12 @@ type Service struct {
 	repo    Repository
 	now     func() time.Time
 	granter ActorGranter
+	// limits and counters are set together by WithPlanLimits (planlimit.go);
+	// both nil means no plan limits, which is every deployment without
+	// BILLING_API_URL.
+	limits     PlanLimits
+	counters   CounterRepository
+	emailOwner EmailOwner
 }
 
 // WithActorGranter wires the grant an accepted invitation performs. Optional:
