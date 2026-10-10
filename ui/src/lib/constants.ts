@@ -72,4 +72,4 @@ export const REQUIRED_DOC_TYPES = ['id_front', 'id_back', 'selfie_with_document'
 export const SUPPORT_EMAIL = 'dpo@aoctech.app'
 
 /** Billing's plan screen (Finanças → Plano), opened by "Ver planos". */
-export const BILLING_PLAN_PATH = '/finance/plano'
+export const BILLING_PLAN_PATH = '/finance/plans'

@@ -147,7 +147,7 @@ describe('new space', () => {
 
     expect(await screen.findByText('Your plan allows 3 spaces and you already have 3.')).toBeInTheDocument()
     expect(screen.queryByLabelText(/space name/i)).toBeNull()
-    expect(screen.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plano')
+    expect(screen.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plans')
 
     await user.click(screen.getByRole('button', {name: /^back$/i}))
     await waitFor(() => expect(replaced).not.toBeNull())

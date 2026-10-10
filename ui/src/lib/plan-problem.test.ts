@@ -32,6 +32,6 @@ describe('planProblemOf', () => {
   })
 
   it('builds the plans link on the billing app', () => {
-    expect(planURL()).toBe('https://billing.example/finance/plano')
+    expect(planURL()).toBe('https://billing.example/finance/plans')
   })
 })

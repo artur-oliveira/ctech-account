@@ -213,6 +213,6 @@ describe('inviting into a space', () => {
 
     const dialog = within(screen.getByRole('dialog'))
     expect(await dialog.findByText('This space already has 5 of 5 people on your plan.')).toBeInTheDocument()
-    expect(dialog.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plano')
+    expect(dialog.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plans')
   })
 })
