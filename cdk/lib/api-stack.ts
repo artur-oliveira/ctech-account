@@ -24,6 +24,10 @@ interface ApiStackProps extends cdk.StackProps {
   // pattern here. Default 'al2023' so every other environment/caller is
   // unaffected by this flag existing.
   osFamily?: 'al2023' | 'alpine';
+  // ctech-billing's API. Setting it switches plan limits on personal spaces on
+  // (deploy step 2 of docs/specs/2026-10-10-space-plan-limits.md); absent keeps
+  // them off.
+  billingApiUrl?: string;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -42,6 +46,7 @@ export class ApiStack extends cdk.Stack {
       valkeyUrlSsmPath,
       enableSsmAgent = false,
       osFamily = 'al2023',
+      billingApiUrl,
     } = props;
     const isAlpine = osFamily === 'alpine';
 
@@ -129,6 +134,7 @@ export class ApiStack extends cdk.Stack {
       `ACCOUNT_ERASURE_TOPIC_ARN=arn:aws:sns:${this.region}:${this.account}:${environment}-account-user-erasure`,
       `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
       `TRUSTED_PROXIES=127.0.0.1`,
+      ...(billingApiUrl ? [`BILLING_API_URL=${billingApiUrl}`] : []),
       `ENV`,
     );
 

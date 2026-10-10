@@ -19,6 +19,7 @@ function synth(): Template {
     logsBucketName: 'prod-ctech-application-logs',
     kycDocumentsBucketName: 'prod-ctech-account-kyc',
     valkeyUrlSsmPath: '/ctech/prod/valkey/url',
+    billingApiUrl: 'https://billing-api.aoctech.app',
   })
   cachedTemplate = Template.fromStack(stack)
   return cachedTemplate
@@ -70,4 +71,8 @@ test('the API uses only nano On-Demand capacity', () => {
     LaunchTemplateData: {InstanceType: 't4g.nano'},
   })
   expect(JSON.stringify(synth().toJSON())).not.toContain('MixedInstancesPolicy')
+})
+
+test('the API knows where billing is (plan limits)', () => {
+  expect(userDataText()).toContain('BILLING_API_URL=https://billing-api.aoctech.app')
 })

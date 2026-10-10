@@ -129,7 +129,8 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/account/kyc/enhanced`                        | `account:kyc:write` + step-up           | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending`                                                                                                             |
 | `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation)                                                                                                         |
 | `GET`    | `/v1.0/internal/organizations/:organization_id/members/:user_id` | Service token (`internal:account:org-member`) | Whether the person belongs to the organization: `200 {"member":true,"role":"admin"}`, or `200 {"member":false}` for a non-member **and** for an organization that does not exist (identical on purpose: no probe for which ids are real). The role is read from the membership row on every call, never from a token; the caller caches it. First consumer: ctech-billing finance spaces (billing ADR 0025). |
-| `GET`    | `/v1.0/internal/users/:user_id/organizations` | Service token (`internal:account:user-organizations`) | The organizations the person belongs to with their role in each: `200 {"organizations":[{"id","display_name","role"}]}`; an unknown user is an empty list, not a 404. It is how a product builds a space switcher, because `GET /v1.0/organizations` is first-party-only (`RequireClientID`). Information only: the product still resolves every request through the membership route. Its own scope, not `org-member`: enumerating every workspace of any user is a wider grant than checking one membership. |
+| `GET`    | `/v1.0/internal/users/:user_id/organizations` | Service token (`internal:account:user-organizations`) | The organizations the person belongs to with their role in each: `200 {"organizations":[{"id","display_name","role"}]}`; an unknown user is an empty list, not a 404. It is how a product builds a space switcher, because `GET /v1.0/organizations` is first-party-only (`RequireClientID`). Information only: the product still resolves every request through the membership route. Owned `personal` entries also carry `people` (members, owner excluded) and `pending_invitations` (unexpired), for ctech-billing's plan screen. Its own scope, not `org-member`: enumerating every workspace of any user is a wider grant than checking one membership. |
+| `GET`    | `/v1.0/organizations/:id/plan-usage` | First-party, owner of a space | The people page's counter: `200 {"people","pending_invitations","limit","plan"}` (`limit` −1 = unlimited); 404 on an organization; 503 `plan_unavailable` when billing cannot be read. |
 | `GET`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token                  | Current manifest and revision ETag                                                                                                                                                                  |
 | `PUT`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token + `If-Match`     | Idempotently reconcile the service-owned scope manifest                                                                                                                                             |
 | `GET`    | `/v1.0/account/consents`                            | `account:consents:read`                 | List connected apps (consent grants)                                                                                                                                                                |
@@ -610,6 +611,7 @@ All configuration is read from environment variables at startup.
 | `ACCOUNT_DELETION_ENABLED`   | No       | `true` wires the account-deletion routes and worker (default off: Phase 1 ships dark until the account's own purge lands)                                                                                                                                                   |
 | `ACCOUNT_ERASURE_TOPIC_ARN`  | No       | SNS topic `{env}-account-user-erasure` for the deletion saga (set by CDK). Required when `ERASURE_SERVICES` is set                                                                                                                                                          |
 | `ERASURE_SERVICES`           | No       | Comma-separated participants that receive `user.locked/unlocked/erase` (e.g. `wallet,dfe,billing,poker`). Empty publishes nothing                                                                                                                                           |
+| `BILLING_API_URL`            | No       | ctech-billing's API (e.g. `https://billing-api.aoctech.app`). Set → plan limits on personal spaces and level reports to billing; the account signs its own token as OAuth client `account-billing` (register it with `cmd/createclient`). Unset → no limits (dev). The CDK sets it only with `PLAN_LIMITS=on`. |
 | `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
 | `REFRESH_TOKEN_TTL`          | —        | Not an env var — refresh-token lifetime is a fixed code constant (`SessionTTL`, 90 days); nothing to configure                                                                                                                                                                                                                |
@@ -837,3 +839,24 @@ Accounts, DFe, Wallet and Billing HTTPS callbacks remain unchanged. No CDK or
 frontend deployment is required by the validator itself. Operator registration
 of `poker-mobile` remains a separate data action; do not embed a client secret in
 mobile applications.
+
+## Plan limits on personal spaces
+
+Spec: `docs/specs/2026-10-10-space-plan-limits.md`. With `BILLING_API_URL` set, creating a `personal`
+workspace, inviting to one and transferring one read the owner's CTech Finanças plan from ctech-billing,
+live: over the limit is **402** `plan_limit`, billing unreachable is **503** `plan_unavailable`, and
+nothing is written in either case. Shrinking (remove, leave, revoke, role change) is never refused.
+
+Every change to an owner's levels writes a `LEVEL_DIRTY` row in `account_organizations` (`NOW#{owner}`, or
+`AT#{unix}#{owner}` for an invitation's expiry) and reports both levels to billing inline; a minute worker
+(lock `plan_levels_worker_lock:{env}`) delivers what failed.
+
+To switch it on: register the client, then deploy with `PLAN_LIMITS=on` (after ctech-billing has run its
+seed, which creates the `account-billing` credential):
+
+```bash
+AWS_REGION=us-east-1 TABLE_PREFIX=prod go run ./cmd/createclient -client-id account-billing \
+  -name "ctech-account plan limits" -scopes billing:entitlements:read,billing:usage:write
+```
+
+The printed secret is not used (the token is signed in process) and can be discarded.

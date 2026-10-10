@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/account/api/internal/apierror"
+	"gopkg.aoctech.app/account/api/internal/billingclient"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -37,6 +38,7 @@ import (
 	authcodeDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/code"
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/domain/planlimit"
 	risk "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
@@ -211,6 +213,36 @@ func main() {
 	scopeRegistrySvc := scopesPkg.NewRegistryService(scopesRepo, valkeyClient)
 	oauthClientSvc := oauthclientDomain.NewService(oauthClientRepo, scopesCatalogSvc)
 	oauthClientOperator := oauthclientDomain.NewOperatorService(oauthClientRepo, scopesCatalogSvc)
+
+	// Plan limits on personal spaces. Dark until BILLING_API_URL is set, which
+	// is deploy step 2 (docs/specs/2026-10-10-space-plan-limits.md).
+	if cfg.BillingAPIURL != "" {
+		billingTokens := billingclient.NewSelfSigned(jwtSvc, oauthClientRepo, scopesCatalogSvc, cfg.AppURL, cfg.Audience, time.Now)
+		planSvc := planlimit.NewService(billingclient.New(cfg.BillingAPIURL, billingTokens),
+			planlimit.NewQueue(db, cfg.TablePrefix), time.Now).WithCounter(orgSvc)
+		orgSvc = orgSvc.
+			WithPlanLimits(planSvc, orgDomain.NewCounterRepository(db, cfg.TablePrefix)).
+			WithEmailOwner(func(ctx context.Context, email string) (string, error) {
+				u, err := userSvc.GetByEmail(ctx, email)
+				if errors.Is(err, userDomain.ErrNotFound) {
+					return "", nil
+				}
+				if err != nil {
+					return "", err
+				}
+				return u.ID(), nil
+			})
+		go func() { _ = planSvc.CheckBilling(ctx) }()
+		planLockKey := "plan_levels_worker_lock:" + cfg.Environment
+		go planlimit.RunWorker(ctx, planSvc, func(ctx context.Context) (bool, error) {
+			if !valkeyClient.Enabled() {
+				return true, nil // dev: single instance
+			}
+			return valkeyClient.SetNX(ctx, planLockKey, "1", planlimit.WorkerInterval-5*time.Second)
+		}, planlimit.WorkerInterval)
+	} else {
+		log.Println("BILLING_API_URL not set — plan limits on personal spaces disabled")
+	}
 	accountResource, accountResourceChanged, err := scopeRegistrySvc.BootstrapAccount(ctx, cfg.Audience, cfg.AppVersion)
 	if err != nil {
 		log.Fatalf("bootstrapping Account Resource Server: %v", err)
