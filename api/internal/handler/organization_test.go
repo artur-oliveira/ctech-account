@@ -214,11 +214,16 @@ type orgTestApp struct {
 	svc  *orgDomain.Service
 }
 
-func newOrgTestApp(t *testing.T) *orgTestApp {
+func newOrgTestApp(t *testing.T) *orgTestApp { return newOrgTestAppWith(t, nil) }
+
+func newOrgTestAppWith(t *testing.T, configure func(*orgDomain.Service, *memOrgRepo)) *orgTestApp {
 	t.Helper()
 	base := newTestApp(t)
 	repo := newMemOrgRepo()
 	svc := orgDomain.NewService(repo, time.Now)
+	if configure != nil {
+		configure(svc, repo)
+	}
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
