@@ -1,6 +1,6 @@
 # Plan limits on personal spaces
 
-Status: **Design approved, not implemented** · 2026-10-10 · Consumer and seller: `ctech-billing`
+Status: **Implemented** · 2026-10-10 · Consumer and seller: `ctech-billing`
 (`ctech-billing/docs/specs/2026-10-10-plans-design.md`, §§ 5 and 6 there are the contract) · Extends
 [personal workspaces](2026-10-09-personal-workspaces.md) § 7 ("Plan limits (later)")
 
@@ -211,3 +211,17 @@ Also settled: problems carry `code` `plan_limit` / `plan_unavailable` (types `�
 `…/plan-unavailable`); the internal route's counts cost two queries per owned space (members and invitations);
 everything stays off until `BILLING_API_URL` is set. A switch from Basic/Pro to Sob demanda takes effect at the
 end of the paid period, so entitlements keep returning the current plan until then — nothing here depends on it.
+
+## Amendment, implementation (2026-10-10)
+
+Departures from P1–P11:
+
+- **A 409 `concurrent_update` from billing is not delivered.** Billing's level store answers it when another
+  report moved the latest level first and nothing was recorded; the queue keeps the row and retries. Only
+  other 409s (`idempotency_key_reused`, the same key with another body) count as delivered.
+- **The CDK sets `BILLING_API_URL` only with `PLAN_LIMITS=on`.** Setting it unconditionally would have switched
+  enforcement on with the first deploy, before ctech-billing's seed created the `account-billing` credential
+  and before the client was registered here — every create, invite and transfer of a space would answer 503.
+  `PLAN_LIMITS=on` is the deploy switch; leaving it out is the rollback.
+- **"Ver planos" opens `{BILLING}/finance/plano`.** ctech-billing moved Finanças to its own area (`/finance`)
+  on the same day.
