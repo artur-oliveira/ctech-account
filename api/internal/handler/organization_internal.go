@@ -60,13 +60,24 @@ func (h *OrganizationHandler) internalMember(c fiber.Ctx) error {
 // membership route does: asked about ids a caller may not be entitled to, a
 // refusal must not reveal which exist.
 func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
-	workspaces, err := h.svc.ListWorkspaces(c.Context(), c.Params("user_id"))
+	userID := c.Params("user_id")
+	workspaces, err := h.svc.ListWorkspaces(c.Context(), userID)
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	out := make([]fiber.Map, 0, len(workspaces))
 	for _, w := range workspaces {
-		out = append(out, fiber.Map{"id": w.ID, "display_name": w.DisplayName, "kind": w.Kind, "role": w.Role})
+		item := fiber.Map{"id": w.ID, "display_name": w.DisplayName, "kind": w.Kind, "role": w.Role}
+		// Counts for billing's plan screen (spec § 6): only on the person's own
+		// spaces — a member gets no counts for somebody else's.
+		if w.Kind == organization.KindPersonal && w.Role == organization.RoleOwner && w.OwnerUserID == userID {
+			people, pending, err := h.svc.SpaceCounts(c.Context(), w.ID)
+			if err != nil {
+				return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			}
+			item["people"], item["pending_invitations"] = people, pending
+		}
+		out = append(out, item)
 	}
 	return c.JSON(fiber.Map{"organizations": out})
 }
