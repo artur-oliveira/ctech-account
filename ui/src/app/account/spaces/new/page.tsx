@@ -9,6 +9,7 @@ import {Users} from 'lucide-react'
 import {fetchHandoff} from '@/lib/queries'
 import {createOrganizationAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
+import {planProblemOf, planURL} from '@/lib/plan-problem'
 import {cn} from '@/lib/utils'
 import {Button, buttonVariants} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
@@ -81,10 +82,13 @@ function NewSpace() {
     },
   })
 
-  const errorMsg = isAxiosError(error)
-    // Never the server's detail: it is written for organizations.
-    ? t('spaces.new.failed')
-    : (error?.message ?? null)
+  const plan = planProblemOf(error)
+  const errorMsg = plan?.kind === 'unavailable'
+    ? t('spaces.plan.unavailable')
+    : isAxiosError(error)
+      // Never the server's detail: it is written for organizations.
+      ? t('spaces.new.failed')
+      : (error?.message ?? null)
 
   if (isHandoff && isLoading) {
     return <div className="h-64 animate-pulse rounded-xl bg-muted"/>
@@ -101,6 +105,37 @@ function NewSpace() {
         <Link href="/account/spaces" className={cn(buttonVariants({variant: 'outline'}), 'max-sm:min-h-11')}>
           {t('spaces.new.goToSpaces')}
         </Link>
+      </div>
+    )
+  }
+
+  // Over the plan: the form has nothing left to offer. Say why, offer the
+  // plans, and give the product its way back (spec § 7).
+  if (plan?.kind === 'limit') {
+    const plansHref = planURL()
+    return (
+      <div className="mx-auto max-w-md space-y-4 py-8">
+        <Alert>
+          <AlertDescription>
+            {t('spaces.plan.spacesLimit', {count: plan.limit ?? 0, used: plan.used ?? 0})}
+          </AlertDescription>
+        </Alert>
+        <div className="flex flex-wrap items-center gap-2">
+          {plansHref && (
+            <a href={plansHref} className={cn(buttonVariants(), 'max-sm:min-h-11')}>
+              {t('spaces.plan.seePlans')}
+            </a>
+          )}
+          {isHandoff ? (
+            <Button type="button" variant="ghost" onClick={() => leave('cancelled')} className="max-sm:min-h-11">
+              {t('spaces.plan.back')}
+            </Button>
+          ) : (
+            <Link href="/account/spaces" className={cn(buttonVariants({variant: 'ghost'}), 'max-sm:min-h-11')}>
+              {t('spaces.plan.back')}
+            </Link>
+          )}
+        </div>
       </div>
     )
   }
