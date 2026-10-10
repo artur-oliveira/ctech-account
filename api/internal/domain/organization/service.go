@@ -110,6 +110,13 @@ func (s *Service) CreateOfKind(ctx context.Context, kind, ownerUserID, ownerName
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+	if kind == KindPersonal && s.limited() {
+		if err := s.createGuarded(ctx, org, strings.TrimSpace(ownerName)); err != nil {
+			return nil, err
+		}
+		s.limits.LevelsChanged(ctx, ownerUserID)
+		return org, nil
+	}
 	if err := s.repo.CreateWithOwner(ctx, org, strings.TrimSpace(ownerName)); err != nil {
 		return nil, err
 	}
@@ -273,7 +280,7 @@ func (s *Service) Remove(ctx context.Context, orgID, actorUserID, targetUserID s
 		return ErrForbidden
 	}
 	if actorUserID == targetUserID {
-		return s.repo.RemoveMembership(ctx, orgID, targetUserID)
+		return s.removeMembership(ctx, orgID, targetUserID)
 	}
 	actorRole, err := s.RoleOf(ctx, orgID, actorUserID)
 	if err != nil {
@@ -285,7 +292,7 @@ func (s *Service) Remove(ctx context.Context, orgID, actorUserID, targetUserID s
 	if !Outranks(actorRole, targetRole) {
 		return ErrOutranked
 	}
-	return s.repo.RemoveMembership(ctx, orgID, targetUserID)
+	return s.removeMembership(ctx, orgID, targetUserID)
 }
 
 // Transfer hands the organization to another member. Only the owner may do it,
@@ -317,6 +324,9 @@ func (s *Service) Transfer(ctx context.Context, orgID, actorUserID, toUserID str
 			return ErrTransferNeedsFullAccess
 		}
 		demoteTo = RoleMember
+	}
+	if kind == KindPersonal && s.limited() {
+		return s.transferGuarded(ctx, orgID, actorUserID, toUserID, demoteTo)
 	}
 	return s.repo.TransferOwnership(ctx, orgID, actorUserID, toUserID, demoteTo, s.now().UTC())
 }
@@ -397,7 +407,7 @@ func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role st
 	// Re-inviting the same address overwrites the pending row rather than
 	// adding a second, which also invalidates the previous token — the right
 	// behaviour when somebody re-sends because the first was leaked.
-	if err := s.repo.PutInvitation(ctx, &Invitation{
+	inv := &Invitation{
 		OrganizationID: orgID,
 		Email:          address,
 		Role:           role,
@@ -406,7 +416,16 @@ func (s *Service) Invite(ctx context.Context, orgID, actorUserID, email, role st
 		InvitedBy:      actorUserID,
 		CreatedAt:      now,
 		ExpiresAt:      now.Add(invitationTTL),
-	}); err != nil {
+	}
+	if space := s.personalSpace(ctx, orgID); space != nil {
+		if err := s.inviteGuarded(ctx, space, inv); err != nil {
+			return "", err
+		}
+		s.limits.LevelsChanged(ctx, space.OwnerUserID)
+		s.limits.ScheduleLevels(ctx, space.OwnerUserID, expiryReportAt(inv))
+		return token, nil
+	}
+	if err := s.repo.PutInvitation(ctx, inv); err != nil {
 		return "", err
 	}
 	return token, nil
@@ -459,6 +478,12 @@ func (s *Service) Accept(ctx context.Context, token, userID, userEmail, userName
 	if err := s.repo.AcceptInvitation(ctx, m, inv.Email); err != nil {
 		return nil, err
 	}
+	// Never refused (it was counted when sent), but finance_people may change:
+	// the address became a user who can already be in another of the owner's
+	// spaces (decision P8).
+	if space := s.personalSpace(ctx, inv.OrganizationID); space != nil {
+		s.limits.LevelsChanged(ctx, space.OwnerUserID)
+	}
 
 	// The companies the inviter chose, granted after the membership landed.
 	//
@@ -497,7 +522,22 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgID, actorUserID, emai
 	if err := s.require(ctx, orgID, actorUserID, RoleAdmin); err != nil {
 		return err
 	}
-	return s.repo.DeleteInvitation(ctx, orgID, email)
+	space := s.personalSpace(ctx, orgID)
+	var counted bool
+	if space != nil {
+		existing, err := s.counters.GetInvitation(ctx, orgID, email)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		counted = existing != nil && InvitationLive(existing, s.now().UTC())
+	}
+	if err := s.repo.DeleteInvitation(ctx, orgID, email); err != nil {
+		return err
+	}
+	if counted {
+		s.afterPeopleLeft(ctx, space)
+	}
+	return nil
 }
 
 // Workspace is one organization as the person who belongs to it sees it: the
@@ -567,4 +607,15 @@ func (s *Service) ListWorkspaces(ctx context.Context, userID string) ([]Workspac
 		return out[i].DisplayName < out[j].DisplayName
 	})
 	return out, nil
+}
+
+// removeMembership is RemoveMembership plus the plan bookkeeping of a space.
+func (s *Service) removeMembership(ctx context.Context, orgID, userID string) error {
+	if err := s.repo.RemoveMembership(ctx, orgID, userID); err != nil {
+		return err
+	}
+	if space := s.personalSpace(ctx, orgID); space != nil {
+		s.afterPeopleLeft(ctx, space)
+	}
+	return nil
 }

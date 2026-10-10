@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // Plan limits on personal spaces (docs/specs/2026-10-10-space-plan-limits.md).
@@ -205,4 +207,202 @@ func (s *Service) SpaceCounts(ctx context.Context, orgID string) (people, pendin
 		return 0, 0, err
 	}
 	return int64(len(p.members)), int64(len(p.invited)), nil
+}
+
+// guardAttempts bounds the recount-and-retry loop when the guard moves under
+// concurrent writes. Three is generous for two tabs; past it the answer is
+// "try again" (ErrPlanBusy → 409), never a 402 for a limit nobody reached.
+const guardAttempts = 3
+
+// counterSettle is how long after a failed decrement the worker reconciles:
+// long enough for the membership index to reflect the change (decision P2).
+const counterSettle = time.Minute
+
+// WithPlanLimits turns enforcement on for personal workspaces. Both nil (the
+// default) is today's behaviour: nothing limited, nothing reported.
+func (s *Service) WithPlanLimits(limits PlanLimits, counters CounterRepository) *Service {
+	s.limits, s.counters = limits, counters
+	return s
+}
+
+func (s *Service) limited() bool { return s.limits != nil && s.counters != nil }
+
+// spaceGuard checks that ownerUserID may own one more space and returns the
+// guard the write carries. used is max(real, counter): the real count reads an
+// eventually consistent index, the counter a consistent item, and the larger
+// is the one that cannot be behind (decision P2).
+func (s *Service) spaceGuard(ctx context.Context, ownerUserID string, q Quotas, hidden bool) (CounterWrite, error) {
+	owned, err := s.ownedSpaces(ctx, ownerUserID)
+	if err != nil {
+		return CounterWrite{}, err
+	}
+	seen, err := s.counters.SpaceCounter(ctx, ownerUserID)
+	if err != nil {
+		return CounterWrite{}, err
+	}
+	used := int64(len(owned))
+	if seen.Exists && seen.N > used {
+		used = seen.N
+	}
+	if !allows(q.Spaces, used) {
+		return CounterWrite{}, &PlanLimitError{Resource: ResourceSpaces, Limit: q.Spaces, Used: used, Plan: q.Plan, Hidden: hidden}
+	}
+	return CounterWrite{Expect: seen, Next: used + 1, Blind: q.Spaces == Unlimited}, nil
+}
+
+func (s *Service) createGuarded(ctx context.Context, org *Organization, ownerName string) error {
+	q, err := s.limits.Quotas(ctx, org.OwnerUserID)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < guardAttempts; attempt++ {
+		g, err := s.spaceGuard(ctx, org.OwnerUserID, q, false)
+		if err != nil {
+			return err
+		}
+		if err := s.counters.CreateWithOwnerGuarded(ctx, org, ownerName, g); !errors.Is(err, ErrCounterMoved) {
+			return err
+		}
+	}
+	return ErrPlanBusy
+}
+
+// inviteGuarded writes a space invitation under the people guard. A live
+// pending row for the same address is replaced without counting — it is the
+// same person (spec § 2). The people count reads base-table queries with
+// ConsistentRead, so it is exact and the counter is re-derived from it.
+func (s *Service) inviteGuarded(ctx context.Context, org *Organization, inv *Invitation) error {
+	q, err := s.limits.Quotas(ctx, org.OwnerUserID)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < guardAttempts; attempt++ {
+		now := s.now().UTC()
+		existing, err := s.counters.GetInvitation(ctx, org.ID, inv.Email)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		if existing != nil && InvitationLive(existing, now) {
+			return s.repo.PutInvitation(ctx, inv)
+		}
+		p, err := s.peopleIn(ctx, org)
+		if err != nil {
+			return err
+		}
+		seen, err := s.counters.PeopleCounter(ctx, org.ID)
+		if err != nil {
+			return err
+		}
+		used := p.count()
+		if !allows(q.PeoplePerSpace, used) {
+			return &PlanLimitError{Resource: ResourcePeople, Limit: q.PeoplePerSpace, Used: used, Plan: q.Plan}
+		}
+		g := CounterWrite{Expect: seen, Next: used + 1, Blind: q.PeoplePerSpace == Unlimited}
+		if err := s.counters.PutInvitationGuarded(ctx, inv, g, now); !errors.Is(err, ErrCounterMoved) {
+			return err
+		}
+	}
+	return ErrPlanBusy
+}
+
+func (s *Service) transferGuarded(ctx context.Context, orgID, fromUserID, toUserID, demoteTo string) error {
+	q, err := s.limits.Quotas(ctx, toUserID)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < guardAttempts; attempt++ {
+		g, err := s.spaceGuard(ctx, toUserID, q, true)
+		if err != nil {
+			return err
+		}
+		err = s.counters.TransferOwnershipGuarded(ctx, orgID, fromUserID, toUserID, demoteTo, s.now().UTC(), g)
+		if errors.Is(err, ErrCounterMoved) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.counters.DecrementSpaceCounter(ctx, fromUserID); err != nil {
+			observability.Warn(ctx, "plan limits: space counter decrement failed; reconcile scheduled", err)
+			s.limits.ScheduleLevels(ctx, fromUserID, s.now().UTC().Add(counterSettle))
+		}
+		s.limits.LevelsChanged(ctx, fromUserID)
+		s.limits.LevelsChanged(ctx, toUserID)
+		return nil
+	}
+	return ErrPlanBusy
+}
+
+// personalSpace returns the workspace when limits apply to it, nil otherwise.
+func (s *Service) personalSpace(ctx context.Context, orgID string) *Organization {
+	if !s.limited() {
+		return nil
+	}
+	org, err := s.repo.Get(ctx, orgID)
+	if err != nil || org.KindOf() != KindPersonal {
+		return nil
+	}
+	return org
+}
+
+// afterPeopleLeft runs after a committed remove, leave or revoke of a counted
+// person. Best effort: it never fails what already happened.
+func (s *Service) afterPeopleLeft(ctx context.Context, org *Organization) {
+	if err := s.counters.DecrementPeopleCounter(ctx, org.ID); err != nil {
+		observability.Warn(ctx, "plan limits: people counter decrement failed", err)
+	}
+	s.limits.LevelsChanged(ctx, org.OwnerUserID)
+}
+
+// expiryReportAt is one second past expiry: InvitationLive still counts the
+// invitation at its exact expiry instant.
+func expiryReportAt(inv *Invitation) time.Time { return inv.ExpiresAt.Add(time.Second) }
+
+// SpaceUsage is the people page's counter. Owner only; organizations have none.
+func (s *Service) SpaceUsage(ctx context.Context, orgID, actorUserID string) (SpaceUsage, error) {
+	if err := s.require(ctx, orgID, actorUserID, RoleOwner); err != nil {
+		return SpaceUsage{}, err
+	}
+	org, err := s.repo.Get(ctx, orgID)
+	if err != nil {
+		return SpaceUsage{}, err
+	}
+	if org.KindOf() != KindPersonal {
+		return SpaceUsage{}, ErrNotASpace
+	}
+	p, err := s.peopleIn(ctx, org)
+	if err != nil {
+		return SpaceUsage{}, err
+	}
+	u := SpaceUsage{People: int64(len(p.members)), PendingInvitations: int64(len(p.invited)), Limit: Unlimited}
+	if s.limits != nil {
+		q, err := s.limits.Quotas(ctx, org.OwnerUserID)
+		if err != nil {
+			return SpaceUsage{}, err
+		}
+		u.Limit, u.Plan = q.PeoplePerSpace, q.Plan
+	}
+	return u, nil
+}
+
+// ReconcileSpaceCounter lowers (or raises) the spaces counter to the real
+// count, conditionally on the value read. The worker calls it once the index
+// has settled (decision P2).
+func (s *Service) ReconcileSpaceCounter(ctx context.Context, ownerUserID string) error {
+	if s.counters == nil {
+		return nil
+	}
+	owned, err := s.ownedSpaces(ctx, ownerUserID)
+	if err != nil {
+		return err
+	}
+	seen, err := s.counters.SpaceCounter(ctx, ownerUserID)
+	if err != nil {
+		return err
+	}
+	real := int64(len(owned))
+	if seen.Exists && seen.N == real {
+		return nil
+	}
+	return s.counters.ReconcileSpaceCounter(ctx, ownerUserID, seen, real)
 }
