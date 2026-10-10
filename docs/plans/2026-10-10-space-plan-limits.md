@@ -3944,7 +3944,7 @@ All commands run from `ui/`. **Load the `/impeccable` skill before starting each
 **Interfaces:**
 - Consumes: `isAxiosError` (`lib/axios.ts:110`), `api` (`lib/axios.ts`).
 - Produces:
-  - `BILLING_URL` (`lib/env.ts`, from `NEXT_PUBLIC_BILLING_URL`); `BILLING_PLAN_PATH = '/console/finance/plano'` (`lib/constants.ts`).
+  - `BILLING_URL` (`lib/env.ts`, from `NEXT_PUBLIC_BILLING_URL`); `BILLING_PLAN_PATH = '/finance/plano'` (`lib/constants.ts`).
   - `type PlanProblem = {kind: 'limit'; resource: 'spaces' | 'people'; limit?: number; used?: number; plan?: string} | {kind: 'unavailable'}`; `planProblemOf(error: unknown): PlanProblem | null`; `planURL(): string | null`.
   - `interface SpaceUsage {people: number; pending_invitations: number; limit: number; plan?: string}`; `fetchSpaceUsage(id: string): Promise<SpaceUsage>`.
   - i18n keys `spaces.plan.spacesLimit_one|_other`, `peopleLimit`, `unavailable`, `transferLimit`, `seePlans`, `back`, `usage`, `usageUnlimited`.
@@ -3986,7 +3986,7 @@ describe('planProblemOf', () => {
   })
 
   it('builds the plans link on the billing app', () => {
-    expect(planURL()).toBe('https://billing.example/console/finance/plano')
+    expect(planURL()).toBe('https://billing.example/finance/plano')
   })
 })
 ```
@@ -4006,7 +4006,7 @@ Expected: `exit=1` — cannot resolve `./plan-problem`.
 export const BILLING_URL = (process.env.NEXT_PUBLIC_BILLING_URL ?? '').replace(/\/$/, '')
 ```
 
-`lib/constants.ts`: `export const BILLING_PLAN_PATH = '/console/finance/plano'`.
+`lib/constants.ts`: `export const BILLING_PLAN_PATH = '/finance/plano'`.
 
 `lib/plan-problem.ts`:
 
@@ -4162,7 +4162,7 @@ function refusal(status: number, data: unknown) {
 
     expect(await screen.findByText('Your plan allows 3 spaces and you already have 3.')).toBeInTheDocument()
     expect(screen.queryByLabelText(/space name/i)).toBeNull()
-    expect(screen.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/console/finance/plano')
+    expect(screen.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plano')
 
     await user.click(screen.getByRole('button', {name: /^back$/i}))
     await waitFor(() => expect(replaced).not.toBeNull())
@@ -4309,7 +4309,7 @@ function space(): Organization {
 
     const dialog = within(screen.getByRole('dialog'))
     expect(await dialog.findByText('This space already has 5 of 5 people on your plan.')).toBeInTheDocument()
-    expect(dialog.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/console/finance/plano')
+    expect(dialog.getByRole('link', {name: /see plans/i})).toHaveAttribute('href', 'https://billing.example/finance/plano')
   })
 ```
 

@@ -1046,6 +1046,17 @@
       "memberRemoved": "Person removed.",
       "roleChanged": "Access updated.",
       "setRoleFailed": "Could not change the access."
+    },
+    "plan": {
+      "spacesLimit_one": "Your plan allows {{count}} space and you already have {{used}}.",
+      "spacesLimit_other": "Your plan allows {{count}} spaces and you already have {{used}}.",
+      "peopleLimit": "This space already has {{used}} of {{limit}} people on your plan.",
+      "unavailable": "We couldn't check your plan right now. Try again in a moment.",
+      "transferLimit": "{{name}} is already at their plan's space limit.",
+      "seePlans": "See plans",
+      "back": "Back",
+      "usage": "{{people}} + {{pending}} of {{limit}} people",
+      "usageUnlimited": "{{people}} + {{pending}} people"
     }
   }
 }

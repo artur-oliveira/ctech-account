@@ -135,7 +135,7 @@ route already reads each workspace; invitations are one `Query` per owned space,
 ## 7. UI
 
 - **`/account/spaces/new`** refused with 402: the form is replaced by *"Seu plano permite N espaços e você já
-  tem N."* with **Ver planos** → `{BILLING}/console/finance/plano` and **Voltar** → `return_to?cancelled=1&state=…`.
+  tem N."* with **Ver planos** → `{BILLING}/finance/plano` and **Voltar** → `return_to?cancelled=1&state=…`.
 - **People page, invite** refused with 402: inline, *"Este espaço já tem N de N pessoas do seu plano."* with
   **Ver planos**.
 - 503: *"Não foi possível verificar seu plano agora. Tente em instantes."* The roster and everything else on the

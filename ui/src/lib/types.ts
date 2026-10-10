@@ -400,3 +400,11 @@ export function formatTaxIDInput(value: string): string {
     .replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})\.([0-9A-Z]{3})([0-9A-Z])/, '$1.$2.$3/$4')
     .replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})\.([0-9A-Z]{3})\/([0-9A-Z]{4})([0-9A-Z])/, '$1.$2.$3/$4-$5')
 }
+
+/** The people page's counter: people + pending of limit. `limit` −1 is unlimited. */
+export interface SpaceUsage {
+  people: number
+  pending_invitations: number
+  limit: number
+  plan?: string
+}

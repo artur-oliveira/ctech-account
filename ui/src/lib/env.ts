@@ -7,3 +7,7 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 // an https:// API origin does not authorize its wss:// counterpart.
 export const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? ''
 export const CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? 'accounts'
+
+// The billing app (not its API): where "Ver planos" sends somebody. Empty
+// hides the link rather than pointing it at nowhere.
+export const BILLING_URL = (process.env.NEXT_PUBLIC_BILLING_URL ?? '').replace(/\/$/, '')

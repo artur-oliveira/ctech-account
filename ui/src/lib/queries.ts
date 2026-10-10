@@ -1,6 +1,6 @@
 import { api, cnpjaApi, isAxiosError } from './axios'
 import {TAX_ID_CNPJ_LENGTH} from '@/lib/constants'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -197,5 +197,10 @@ export async function fetchHandoff(
     '/v1.0/organizations/handoff',
     { params: { client_id: clientID, return_to: returnTo, state } },
   )
+  return data
+}
+
+export async function fetchSpaceUsage(id: string): Promise<SpaceUsage> {
+  const { data } = await api.get<SpaceUsage>(`/v1.0/organizations/${encodeURIComponent(id)}/plan-usage`)
   return data
 }
