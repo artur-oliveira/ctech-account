@@ -4,9 +4,9 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/api-commons/observability"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/api-commons/observability"
 )
 
 // RegisterInternal mounts the two service-to-service routes a product uses for
