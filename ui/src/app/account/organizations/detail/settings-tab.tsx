@@ -7,6 +7,8 @@ import {toast} from 'sonner'
 import {fetchOrganizationMembers, fetchProfile} from '@/lib/queries'
 import {removeMemberAPI, renameOrganizationAPI, transferOwnershipAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
+import {planProblemOf} from '@/lib/plan-problem'
+import {useTranslation} from 'react-i18next'
 import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
@@ -114,6 +116,7 @@ function RenameSection({organization}: { organization: Organization }) {
 
 function TransferSection({organization}: { organization: Organization }) {
   const t = useWorkspaceT(organization.kind)
+  const {t: tPlain} = useTranslation()
   const queryClient = useQueryClient()
   const [target, setTarget] = useState('')
 
@@ -143,7 +146,18 @@ function TransferSection({organization}: { organization: Organization }) {
       setTarget('')
       toast.success(t('toast.ownershipTransferred'))
     },
-    onError: (err) => {
+    onError: (err, userId) => {
+      const plan = planProblemOf(err)
+      if (plan?.kind === 'limit') {
+        // Their plan's name and numbers are theirs: the server sends none (spec § 7).
+        const name = candidates.find((m) => m.user_id === userId)?.name || userId
+        toast.error(tPlain('spaces.plan.transferLimit', {name}))
+        return
+      }
+      if (plan?.kind === 'unavailable') {
+        toast.error(tPlain('spaces.plan.unavailable'))
+        return
+      }
       if (isAxiosError(err)) toast.error(workspaceDetail(err.response?.data?.detail, organization.kind) ?? t('toast.transferFailed'))
     },
   })
