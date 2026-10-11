@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -241,5 +242,115 @@ func TestEnsureFirstPartyPublicClientScopesAllowsAPIOnlyResource(t *testing.T) {
 	client, changed, err := service.EnsureFirstPartyPublicClientScopes(context.Background(), "billing", []string{"billing:invoices:read"})
 	if err != nil || changed || client != nil {
 		t.Fatalf("missing UI client: client=%+v changed=%v err=%v", client, changed, err)
+	}
+}
+
+// updateCountingRepo proves a no-op grant writes nothing.
+type updateCountingRepo struct {
+	*operatorRepoStub
+	updates int
+}
+
+func (r *updateCountingRepo) Update(ctx context.Context, id string, updates map[string]any) error {
+	r.updates++
+	return r.operatorRepoStub.Update(ctx, id, updates)
+}
+
+func newGrantOperatorService(t *testing.T) (*OperatorService, *updateCountingRepo) {
+	t.Helper()
+	repo := &updateCountingRepo{operatorRepoStub: &operatorRepoStub{clients: make(map[string]*OAuthClient)}}
+	catalog := operatorCatalogStub{services: []scopes.ServiceScopes{{
+		Service: "internal:account", Internal: true,
+		Scopes: []scopes.ScopeEntry{
+			{Scope: scopes.InternalAccountOrgMember},
+			{Scope: scopes.InternalAccountUserOrganizations},
+			{Scope: scopes.InternalAccountOAuthClientRead},
+		},
+	}}}
+	service := NewOperatorService(repo, catalog)
+	if _, _, err := service.CreateM2M(context.Background(), "billing-account", "Billing",
+		[]string{scopes.InternalAccountOrgMember, scopes.InternalAccountUserOrganizations}); err != nil {
+		t.Fatalf("CreateM2M: %v", err)
+	}
+	return service, repo
+}
+
+func TestGrantM2MScopesAddsOnlyWhatIsMissingAndKeepsTheRest(t *testing.T) {
+	service, repo := newGrantOperatorService(t)
+	client, added, err := service.GrantM2MScopes(context.Background(), "billing-account",
+		[]string{scopes.InternalAccountOrgMember, scopes.InternalAccountOAuthClientRead})
+	if err != nil {
+		t.Fatalf("GrantM2MScopes: %v", err)
+	}
+	if len(added) != 1 || added[0] != scopes.InternalAccountOAuthClientRead {
+		t.Fatalf("added = %v, want only the new scope", added)
+	}
+	want := []string{scopes.InternalAccountOrgMember, scopes.InternalAccountUserOrganizations, scopes.InternalAccountOAuthClientRead}
+	stored := repo.clients["billing-account"].AllowedScopes
+	if !slices.Equal(client.AllowedScopes, want) || !slices.Equal(stored, want) {
+		t.Fatalf("returned %v, stored %v, want %v", client.AllowedScopes, stored, want)
+	}
+}
+
+func TestGrantM2MScopesIsIdempotent(t *testing.T) {
+	service, repo := newGrantOperatorService(t)
+	ctx := context.Background()
+	if _, _, err := service.GrantM2MScopes(ctx, "billing-account", []string{scopes.InternalAccountOAuthClientRead}); err != nil {
+		t.Fatalf("first grant: %v", err)
+	}
+	before := repo.updates
+	_, added, err := service.GrantM2MScopes(ctx, "billing-account", []string{scopes.InternalAccountOAuthClientRead})
+	if err != nil {
+		t.Fatalf("second grant: %v", err)
+	}
+	if added != nil || repo.updates != before {
+		t.Fatalf("a repeated grant added %v and wrote %d times, want nothing", added, repo.updates-before)
+	}
+}
+
+// A self-service client must never be handed an internal scope: that is a
+// third party holding a service-to-service grant.
+func TestGrantM2MScopesRefusesSelfServiceAndPublicClients(t *testing.T) {
+	service, repo := newGrantOperatorService(t)
+	repo.clients["cli_merchant"] = &OAuthClient{PK: BuildPK("cli_merchant"), ClientType: TypeConfidential, OwnerUserID: "usr_1", AllowedScopes: []string{}}
+	repo.clients["cli_spa"] = &OAuthClient{PK: BuildPK("cli_spa"), ClientType: TypePublic, FirstParty: true, AllowedScopes: []string{}}
+	for _, id := range []string{"cli_merchant", "cli_spa"} {
+		_, _, err := service.GrantM2MScopes(context.Background(), id, []string{scopes.InternalAccountOAuthClientRead})
+		if !errors.Is(err, ErrNotM2MClient) {
+			t.Fatalf("%s: err = %v, want ErrNotM2MClient", id, err)
+		}
+		if len(repo.clients[id].AllowedScopes) != 0 {
+			t.Fatalf("%s was changed: %v", id, repo.clients[id].AllowedScopes)
+		}
+	}
+}
+
+func TestGrantM2MScopesRefusesAPublisher(t *testing.T) {
+	service, repo := newGrantOperatorService(t)
+	repo.clients["dfe-publisher"] = &OAuthClient{
+		PK: BuildPK("dfe-publisher"), ClientType: TypeConfidential, FirstParty: true,
+		ManagedResourceID: "dfe", AllowedScopes: []string{scopes.InternalAccountScopeRegistryWrite},
+	}
+	_, _, err := service.GrantM2MScopes(context.Background(), "dfe-publisher", []string{scopes.InternalAccountOAuthClientRead})
+	if !errors.Is(err, ErrPublisherClient) {
+		t.Fatalf("err = %v, want ErrPublisherClient", err)
+	}
+}
+
+func TestGrantM2MScopesRejectsBadInput(t *testing.T) {
+	service, _ := newGrantOperatorService(t)
+	ctx := context.Background()
+	if _, _, err := service.GrantM2MScopes(ctx, "no-such-client", []string{scopes.InternalAccountOAuthClientRead}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown client: err = %v, want ErrNotFound", err)
+	}
+	var scopeErr ErrInvalidScope
+	if _, _, err := service.GrantM2MScopes(ctx, "billing-account", []string{"internal:account:not-published"}); !errors.As(err, &scopeErr) {
+		t.Fatalf("unpublished scope: err = %v, want ErrInvalidScope", err)
+	}
+	if _, _, err := service.GrantM2MScopes(ctx, "billing-account", []string{"openid"}); !errors.Is(err, ErrOIDCScopeForM2M) {
+		t.Fatalf("OIDC scope: err = %v, want ErrOIDCScopeForM2M", err)
+	}
+	if _, _, err := service.GrantM2MScopes(ctx, "billing-account", nil); !errors.Is(err, ErrScopesRequired) {
+		t.Fatalf("no scopes: err = %v, want ErrScopesRequired", err)
 	}
 }
