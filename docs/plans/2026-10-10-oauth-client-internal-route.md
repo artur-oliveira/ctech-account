@@ -4,7 +4,11 @@
 
 **Goal:** Let ctech-billing check who owns an OAuth client before it accepts that client as a merchant's API credential. This adds `GET /v1.0/internal/oauth-clients/{client_id}` → `{ "client_id", "owner_user_id", "allowed_scopes", "active" }`, which never returns the secret. The route sits behind a new internal scope, `internal:account:oauth-client-read`, and that scope is granted to the M2M client billing already uses for its membership reads.
 
+**Second goal (Tasks 5–6, owner decision "option A"):** let `POST /v1.0/token` serve `client_credentials` to confidential **developer-page** (non-first-party) clients. This is allowed only when every scope the client holds is one its resource server marked for machine-to-machine use with a new per-scope manifest field, `"m2m": true`, and only while the client is active (same derivation as the route). First-party clients keep today's behaviour exactly.
+
 **Architecture:** A small read service, `client.InternalService.Describe`, is added to the OAuth client domain. It reads the client row and derives `active`, because the model has no status field (see decision P1). It asks the user domain whether the owner can still be acted for, through a one-method interface (`OwnerStatus`) so the client package does not import `user`. The route gets a new handler file (`oauth_client_internal.go`) and is mounted in `main.go` the way the membership routes are: `RequireAuth` plus `RequireInternalScope`, attached to the route itself. The scope is published through the embedded Account manifest, which is already installed at boot by `BootstrapAccount`. No command can currently add a scope to an existing M2M client: `cmd/createclient` only creates clients. So this plan adds `OperatorService.GrantM2MScopes` and a `-grant` mode on `cmd/createclient`, and the runbook uses them in each environment.
+
+Tasks 5–6 add an optional boolean `m2m` to `scopes.ScopeDefinition` (the manifest entry). It is carried into the catalog's `ScopeEntry` and checked by a new `CatalogService.ValidateMachineGrantable`. The token handler's `clientCredentials` keeps the first-party branch unchanged and adds a third-party branch: authenticate, check the owner is active, require every held scope to be `m2m`, require every requested scope to be held. Anything else refuses the **whole** request with a specific OAuth error. It never issues a subset.
 
 **Tech Stack:** Go 1.27, Fiber v3, DynamoDB (`api/`), standard `testing` + `net/http/httptest`.
 
@@ -13,6 +17,9 @@
 **Cross-project impact:**
 - JWT signing, JWKS, OAuth flows and existing tokens: no change. A token can carry the new scope only if its client is granted it.
 - ctech-billing gets a new route and a new scope on its existing client, `/ctech-billing/{env}/billing/account-client-id`. Billing's own work (spec § 9 parts 2–3) consumes it, and nothing in billing breaks if this ships first.
+- ctech-billing, **resource-server manifest**: to let merchants' developer-page clients obtain tokens, billing must add `"m2m": true` to its integration scopes in `api/internal/oauthresource/scope-manifest.json`. The exact list is in § "What ctech-billing must publish" below. That change belongs to billing's part 3 plan, not this one. Until billing publishes it, no developer-page client can get a `client_credentials` token, which is today's behaviour.
+- Every other resource server (ctech-dfe, wallet, poker): no change. A manifest without `m2m` keeps its current hash, so its next publish is a no-op (`omitempty`).
+- `POST /v1.0/token`: for first-party clients, no change. For a confidential non-first-party client, the response changes from today's blanket `403 unauthorized_client` to a token whenever the m2m rules hold. The order of checks also changes: the secret is now verified **before** the first-party decision, so a wrong secret answers `401 invalid_client` for every confidential client.
 - ctech-dfe: none directly. However, the new `createclient -grant` mode removes the reason ctech-dfe's organization-subscription plan provisions a second client (`ctech-dfe-workspaces`): it could grant the membership scopes to its existing client instead. That is that plan's call; this plan only states the option.
 - ctech-wallet: none.
 - `ui`: none.
@@ -30,9 +37,15 @@
 - **P4: the grant is a `-grant` mode on `cmd/createclient`, not a new command.** It reuses `parseScopes`, the AWS/Valkey wiring and the operator service. It is add-only and idempotent, so it can be re-run safely. It refuses self-service clients (that would hand a third party an internal scope) and scope-registry publishers (those are bound to exactly one permission by design).
 - **P5: no `Cache-Control` and no caching here.** Billing calls the route once, when a person connects a credential (spec § 5.1). It is not on any request path.
 
-## Known gap, flagged, not in this plan
+## The `client_credentials` gap, and how Tasks 5–6 close it
 
-`POST /v1.0/token` with `grant_type=client_credentials` refuses any client that is not first-party (`api/internal/handler/token.go:174`, `oauthClient.IsPublic() || !oauthClient.FirstParty` → `403 unauthorized_client`). Clients created on the developer page (`Service.Create`) are never first-party. So a merchant's self-service client, once billing has admitted it (spec § 5.1), still **cannot obtain a token** to call billing's M2M API. This does not block this route, which is spec § 9 step 1, but it blocks billing part 3 (spec § 9 step 4). That part needs its own decision before it ships, owned by ctech-account and recorded in billing's spec. One option: let `client_credentials` serve a confidential third-party client for non-`internal:` scopes only. Because this route's `active` follows P1 and does not depend on first-party status, it will not need to change when that decision lands.
+`POST /v1.0/token` with `grant_type=client_credentials` refuses any client that is not first-party (`api/internal/handler/token.go:174`). Clients created on the developer page (`Service.Create`) never are, so a merchant's own client could not call billing's M2M API. The owner chose **option A**: a resource server marks the scopes it accepts from machine clients, and only those scopes open the grant to developer-page clients. Decisions:
+
+- **P6: the field is `"m2m": true` on a manifest scope entry** (`ScopeDefinition.M2M`, `json:"m2m,omitempty"`, `dynamodbav:"m2m,omitempty"`). It is optional and absent means `false`. It is one lowercase word, like `visibility` and `status`, and matches the spec's own wording ("`billing:` M2M scope"). It is allowed only on `public` scopes. `internal` scopes are already machine-only and are never grantable to developer-page clients, so marking one would read as a permission that does not exist, and `ValidateManifest` refuses it. On a `deprecated` scope the flag is kept but ignored: deprecated scopes are never grantable.
+- **P7: refuse the whole request, never a subset.** A developer-page client may use `client_credentials` only when **every** scope it holds is an active public `m2m` scope. A single non-m2m scope (e.g. `billing:my-invoices:read`) gets `403 unauthorized_client` naming that scope, whatever is requested. A requested scope the client does not hold gets `400 invalid_scope` naming it. Issuing the m2m subset silently would let a client that also serves user sign-in mint machine tokens nobody meant it to have. The rule: one client for user sign-in, a separate one for machine access.
+- **P8: the owner must be active** (`InternalService.Active`, the same derivation the route reports). A developer-page client of a person who is disabled, mid-deletion or gone gets `403 unauthorized_client`. This is checked on every token request, so a lock takes effect at the next token (at most 15 minutes for tokens already issued).
+- **P9: first-party clients are untouched.** Same scope clamping (`FilterScopes`), no `m2m` requirement, internal scopes still allowed. The only first-party-visible change is the check order: the secret is verified right after the public-client check, for every confidential client.
+- **P10: `m2m` is visible in `GET /v1.0/scopes`** (it is part of `ScopeEntry`, `omitempty`). This lets the developer page show which scopes work for machine access. `ui` adoption is out of scope.
 
 ## Global Constraints
 
@@ -42,6 +55,9 @@
 - Scope: `internal:account:oauth-client-read`, visibility `internal`, status `active`, in `api/internal/scopes/account-scope-manifest.json`, with Go constant `scopes.InternalAccountOAuthClientRead`.
 - Guard: `middleware.RequireAuth(jwtSvc)` + `middleware.RequireInternalScope(scopesPkg.InternalAccountOAuthClientRead)` on the route, never on an `/internal` group. A token with a session id (any user token) is refused with `403`, and so is a service token without this exact scope.
 - The scope is granted to the client whose id is stored at `/ctech-billing/{env}/billing/account-client-id`, in `dev`, `stage` and `prod`. That client already holds `internal:account:org-member` and `internal:account:user-organizations`. The grant only adds: existing scopes stay.
+- Manifest field: `"m2m": true` on a scope entry, optional, default `false`, allowed only with `"visibility": "public"`. It is serialized `omitempty` everywhere (JSON, DynamoDB, the Valkey catalog cache), so manifests without it keep their hash.
+- `client_credentials` for a confidential client with `first_party` false: refused with `403 unauthorized_client` unless the owner is active **and** every held scope is an active public `m2m` scope. Any requested scope not held is refused with `400 invalid_scope`. The whole request is refused, never a subset. Internal scopes can never reach such a token.
+- `client_credentials` for a first-party client: today's behaviour, byte for byte (clamping, internal scopes, audiences).
 - Layering: the handler calls one service method; the service holds the logic; the repository is unchanged. Errors are `*apierror.Problem` sent via `.Send(c)`.
 - Every behaviour change comes with its documentation in the same task: `README.md` route table and provisioning section, `api/ENDPOINTS.md`, `PLAN.md`.
 - Go: `gofmt` clean on touched files, `go vet ./...` clean. Four files are already not gofmt-clean on `main`: `internal/domain/mfa/totp/model.go`, `internal/domain/session/model.go`, `internal/domain/session/service_test.go`, `internal/geoupdater/updater_test.go`. Leave them alone.
@@ -49,11 +65,13 @@
 
 ## Review Focus
 
-1. **A client whose owner is mid-deletion or disabled.** Billing must see `active: false`, because the lock does not touch OAuth clients. Covered by Task 2 `TestDescribeIsInactiveWhenTheOwnerCannotBeActedFor` and Task 3 `TestTheOAuthClientIsInactiveWhenItsOwnerCannotSignIn`.
-2. **A leak through the response.** The body must hold exactly four keys and must never contain the secret hash, even when the row has redirect URIs, an audience and `first_party`. Covered by Task 3 `TestTheOAuthClientReadAnswersTheContractAndNeverTheSecret`.
-3. **The scope not stacking with its neighbours.** `org-member`, `user-organizations`, `company-actor` and `kyc` tokens must not read clients, and an `oauth-client-read` token must not answer membership questions. Covered by Task 3 `TestTheOAuthClientReadNeedsItsOwnInternalScope` and `TestTheOAuthClientScopeOpensNoOtherInternalRoute`.
-4. **A garbage or over-long `client_id`** (e.g. 200 characters) must answer `404`, not `500`. Covered by Task 2 `TestDescribeRefusesAnImpossibleIDWithoutReading` and Task 3 `TestAnUnknownOAuthClientIs404`.
-5. **Re-running the grant, or aiming it at the wrong client.** A second run must write nothing and say so. Pointing it at a merchant's self-service client or at a scope publisher must refuse without changing the row. Covered by Task 4 `TestGrantM2MScopesIsIdempotent`, `TestGrantM2MScopesRefusesSelfServiceAndPublicClients` and `TestGrantM2MScopesRefusesAPublisher`.
+1. **A client whose owner is mid-deletion, disabled or gone.** The route must report `active: false`, and the token endpoint must refuse a developer-page client of that owner, because the deletion lock does not touch OAuth clients. Covered by Task 2 `TestDescribeIsInactiveWhenTheOwnerCannotBeActedFor`, Task 3 `TestTheOAuthClientIsInactiveWhenItsOwnerCannotSignIn`, and Task 6 `TestClientCredentialsRefusesADeveloperClientWhoseOwnerIsNotActive`.
+2. **A developer-page client that also holds a user scope, or an internal one, or asks for a scope it does not hold.** The whole request must be refused with an error naming the scope, never a token with the m2m subset. Covered by Task 6 `TestClientCredentialsRefusesADeveloperClientHoldingAUserScope`, `TestClientCredentialsNeverGivesADeveloperClientAnInternalScope` and `TestClientCredentialsRefusesADeveloperClientAskingForAnUngrantedScope`.
+3. **First-party clients after the change.** Wallet, billing and every createclient client must get exactly what they got before: silent clamping, internal scopes, the same audiences. Covered by Task 6 `TestClientCredentialsFirstPartyIsUnchanged` and the existing `TestClientCredentials*` in `kyc_test.go`.
+4. **A leak through the route's response.** The body must hold exactly four keys and never the secret hash, even when the row has redirect URIs, an audience and `first_party`. Covered by Task 3 `TestTheOAuthClientReadAnswersTheContractAndNeverTheSecret`.
+5. **A manifest marking an internal scope `m2m`, or an old manifest republished.** The first must be rejected at publish. The second must keep its hash, so nothing changes. Covered by Task 5 `TestValidateManifestRejectsM2MOnAnInternalScope` and `TestManifestHashIsStableWithoutM2M`.
+
+Also covered in the owning tasks: scope stacking both ways (Task 3), an over-long `client_id` → 404 (Tasks 2–3), and a re-run or misdirected grant (Task 4).
 
 ---
 
@@ -173,6 +191,7 @@ git commit -m "feat(scopes): internal:account:oauth-client-read for reading one 
   - `type client.InternalView struct { ClientID string; OwnerUserID string; AllowedScopes []string; Active bool }`
   - `func client.NewInternalService(repo Repository, owners OwnerStatus) *InternalService`
   - `func (s *InternalService) Describe(ctx context.Context, clientID string) (*InternalView, error)`. Returns `client.ErrNotFound` for an unknown, empty or over-long id. `AllowedScopes` is never nil.
+  - `func (s *InternalService) Active(ctx context.Context, c *OAuthClient) (bool, error)`: the derivation from P1, exported for Task 6.
 
 - [ ] **Step 1: Write the failing user test**
 
@@ -470,7 +489,7 @@ func (s *InternalService) Describe(ctx context.Context, clientID string) (*Inter
 	if err != nil {
 		return nil, fmt.Errorf("loading client: %w", err)
 	}
-	active, err := s.isActive(ctx, c)
+	active, err := s.Active(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +501,11 @@ func (s *InternalService) Describe(ctx context.Context, clientID string) (*Inter
 	}, nil
 }
 
-func (s *InternalService) isActive(ctx context.Context, c *OAuthClient) (bool, error) {
+// Active is the derivation Describe reports, exported because the token
+// endpoint applies the same rule to developer-page clients asking for
+// client_credentials (Task 6). One rule, so the route and the token endpoint
+// cannot disagree about whether a client is usable.
+func (s *InternalService) Active(ctx context.Context, c *OAuthClient) (bool, error) {
 	if c.IsPublic() || c.ClientSecretHash == "" {
 		return false, nil
 	}
@@ -1344,7 +1367,8 @@ Spec: `ctech-billing/docs/specs/2026-10-10-console-self-service.md` § 6.3. Plan
 - [ ] `GET /v1.0/internal/oauth-clients/:client_id` → `{client_id, owner_user_id, allowed_scopes, active}`, unknown → 404
 - [ ] `createclient -grant` (add scopes to an existing M2M client)
 - [ ] Deploy: scope granted to billing's client in dev, stage, prod
-- [ ] Open: `client_credentials` refuses third-party clients, which blocks billing's merchant credentials (spec § 9 step 4); needs its own decision
+- [ ] `m2m` scope marker in the manifest; `client_credentials` for developer-page clients holding only `m2m` scopes with an active owner (first-party unchanged)
+- [ ] ctech-billing marks its integration scopes `m2m` (billing part 3 plan), after this deploy
 ```
 
 - [ ] **Step 13: Commit**
@@ -1355,6 +1379,704 @@ git commit -m "feat(createclient): -grant adds scopes to an existing M2M client"
 ```
 
 ---
+
+### Task 5: The `m2m` scope marker (manifest, registry, catalog)
+
+**Files:**
+- Modify: `api/internal/scopes/resource.go` (`ScopeDefinition`, `ValidateManifest` visibility switch ~line 131)
+- Modify: `api/internal/scopes/catalog.go` (`ScopeEntry`)
+- Modify: `api/internal/scopes/service.go` (`mergeResourceServers` ~line 179; new `ValidateMachineGrantable` after `ValidateGrantable`)
+- Test: `api/internal/scopes/registry_test.go` (append)
+- Modify: `docs/resource-server-scope-registry.md` (new section "Machine-to-machine scopes (`m2m`)")
+
+**Interfaces:**
+- Consumes: `ScopeDefinition`, `ScopeEntry`, `ValidateManifest`, `ManifestHash`, `mergeResourceServers`, `CatalogService`, and the test stubs `registryRepoStub`, `catalogV2RepoStub`, `dfeManifest`, `publicScope` (all existing).
+- Produces:
+  - `ScopeDefinition.M2M bool` with tags `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
+  - `ScopeEntry.M2M bool` with tags `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
+  - `func (s *CatalogService) ValidateMachineGrantable(ctx context.Context, ss []string) (string, error)`. It returns the first scope in `ss` that is not an active, public, `m2m` catalog scope, or `""` when all are.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `api/internal/scopes/registry_test.go`:
+
+```go
+func m2mScope(name string) ScopeDefinition {
+	s := publicScope(name)
+	s.M2M = true
+	return s
+}
+
+// Internal scopes are machine-only already and never grantable to a
+// developer-page client: marking one m2m would read as a permission that does
+// not exist.
+func TestValidateManifestRejectsM2MOnAnInternalScope(t *testing.T) {
+	internal := ScopeDefinition{Scope: "internal:dfe:sync", Descriptions: map[string]string{"en": "x", "pt-BR": "x"}, Visibility: VisibilityInternal, Status: StatusActive, M2M: true}
+	if err := ValidateManifest(dfeManifest(internal)); !errors.Is(err, ErrInvalidResource) {
+		t.Fatalf("m2m on an internal scope: err = %v, want ErrInvalidResource", err)
+	}
+	if err := ValidateManifest(dfeManifest(m2mScope("dfe:nfes:read"))); err != nil {
+		t.Fatalf("m2m on a public scope: %v", err)
+	}
+}
+
+// Every manifest published before this field existed must keep its hash, or
+// its next publish would advance a revision for nothing. Marking a scope m2m
+// must change the hash, or the publish would be a silent no-op.
+func TestManifestHashIsStableWithoutM2M(t *testing.T) {
+	plain := dfeManifest(publicScope("dfe:nfes:read"))
+	canonical, err := json.Marshal(canonicalManifest(plain))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(canonical), "m2m") {
+		t.Fatalf("a manifest without m2m serializes the field: %s", canonical)
+	}
+	before, _ := ManifestHash(plain)
+	after, _ := ManifestHash(dfeManifest(m2mScope("dfe:nfes:read")))
+	if before == after {
+		t.Fatal("marking a scope m2m did not change the manifest hash")
+	}
+}
+
+func TestPublishingM2MReachesTheCatalog(t *testing.T) {
+	repo := &registryRepoStub{}
+	registry := NewRegistryService(repo, nil)
+	ctx := context.Background()
+	if _, err := registry.Provision(ctx, "dfe", "CTech DF-e", "https://dfe.example.test", "scope-publisher-dfe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := registry.Publish(ctx, "scope-publisher-dfe", dfeManifest(publicScope("dfe:nfes:read")), 0, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	next, changed, err := registry.Publish(ctx, "scope-publisher-dfe", dfeManifest(m2mScope("dfe:nfes:read")), 1, "", "")
+	if err != nil || !changed || next.Revision != 2 || !next.Scopes[0].M2M {
+		t.Fatalf("publishing m2m: resource=%+v changed=%v err=%v", next, changed, err)
+	}
+	catalog := NewCatalogService(catalogV2RepoStub{resource: []ResourceServer{*repo.resource}}, nil)
+	if bad, err := catalog.ValidateMachineGrantable(ctx, []string{"dfe:nfes:read"}); err != nil || bad != "" {
+		t.Fatalf("published m2m scope not machine-grantable: bad=%q err=%v", bad, err)
+	}
+}
+
+func TestValidateMachineGrantable(t *testing.T) {
+	repo := catalogV2RepoStub{
+		legacy: []ServiceScopes{{Service: "internal:wallet", Internal: true, Scopes: []ScopeEntry{{Scope: "internal:wallet:credit"}}}},
+		resource: []ResourceServer{{SK: "billing", DisplayName: "Billing", Audience: "https://billing.example.test", Scopes: []ScopeDefinition{
+			{Scope: "billing:invoices:write", Description: "w", DescriptionPT: "w", Visibility: VisibilityPublic, Status: StatusActive, M2M: true},
+			{Scope: "billing:my-invoices:read", Description: "r", DescriptionPT: "r", Visibility: VisibilityPublic, Status: StatusActive},
+			{Scope: "billing:old:write", Description: "o", DescriptionPT: "o", Visibility: VisibilityPublic, Status: StatusDeprecated, M2M: true},
+		}}},
+	}
+	catalog := NewCatalogService(repo, nil)
+	ctx := context.Background()
+	if bad, err := catalog.ValidateMachineGrantable(ctx, []string{"billing:invoices:write"}); err != nil || bad != "" {
+		t.Fatalf("m2m scope: bad=%q err=%v", bad, err)
+	}
+	for _, scope := range []string{"billing:my-invoices:read", "billing:old:write", "internal:wallet:credit", "billing:unknown:read"} {
+		bad, err := catalog.ValidateMachineGrantable(ctx, []string{"billing:invoices:write", scope})
+		if err != nil || bad != scope {
+			t.Fatalf("%s: bad=%q err=%v, want it refused", scope, bad, err)
+		}
+	}
+	if bad, err := catalog.ValidateMachineGrantable(ctx, nil); err != nil || bad != "" {
+		t.Fatalf("no scopes: bad=%q err=%v, want nothing refused", bad, err)
+	}
+}
+
+// The catalog is cached in Valkey as JSON: a field dropped there would make
+// every m2m scope ungrantable for five minutes after each cache fill (the
+// ScopeEntry.Audience bug this struct's comment records).
+func TestM2MSurvivesTheCatalogCacheEncoding(t *testing.T) {
+	in := []ServiceScopes{{Service: "billing", Scopes: []ScopeEntry{{Scope: "billing:invoices:write", M2M: true}}}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []ServiceScopes
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out[0].Scopes[0].M2M {
+		t.Fatalf("m2m lost in the cache encoding: %s", raw)
+	}
+}
+```
+
+Add `"encoding/json"` and `"strings"` to the test file's import block.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `go test ./internal/scopes/ -run 'M2M|MachineGrantable' -v`
+Expected: FAIL, build error `unknown field M2M in struct literal of type ScopeDefinition` / `catalog.ValidateMachineGrantable undefined`.
+
+- [ ] **Step 3: Add the field to both structs**
+
+In `api/internal/scopes/resource.go`, `ScopeDefinition` becomes:
+
+```go
+type ScopeDefinition struct {
+	Scope         string            `json:"name"                  dynamodbav:"scope"`
+	Descriptions  map[string]string `json:"descriptions,omitempty" dynamodbav:"-"`
+	Description   string            `json:"description,omitempty"  dynamodbav:"description"`
+	DescriptionPT string            `json:"description_pt,omitempty" dynamodbav:"description_pt"`
+	Visibility    string            `json:"visibility"            dynamodbav:"visibility"`
+	Status        string            `json:"status"                dynamodbav:"status"`
+	// M2M marks a public scope the resource server accepts from machine
+	// clients: a confidential developer-page client may use client_credentials
+	// only when every scope it holds is marked. omitempty everywhere, so a
+	// manifest without the field keeps its hash. Refused on internal scopes.
+	M2M bool `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
+}
+```
+
+In `api/internal/scopes/catalog.go`, `ScopeEntry` becomes:
+
+```go
+type ScopeEntry struct {
+	Scope         string `json:"scope"          dynamodbav:"scope"`
+	Description   string `json:"description"    dynamodbav:"description"`    // English
+	DescriptionPT string `json:"description_pt" dynamodbav:"description_pt"` // Brazilian Portuguese
+	// M2M is ScopeDefinition.M2M carried into the catalog. Serialized in JSON
+	// (not json:"-") because the Valkey catalog cache round-trips it.
+	M2M bool `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
+}
+```
+
+- [ ] **Step 4: Validate the marker**
+
+In `ValidateManifest` (`resource.go`), inside the `case VisibilityInternal:` branch, after the namespace check:
+
+```go
+		case VisibilityInternal:
+			if !strings.HasPrefix(entry.Scope, InternalServicePrefix+":"+m.ResourceServerID+":") {
+				return fmt.Errorf("%w: internal scope %q is outside namespace %q", ErrInvalidResource, entry.Scope, m.ResourceServerID)
+			}
+			if entry.M2M {
+				return fmt.Errorf("%w: internal scope %q cannot be marked m2m; m2m is for public scopes machine clients may hold", ErrInvalidResource, entry.Scope)
+			}
+```
+
+- [ ] **Step 5: Carry it into the catalog and add the check**
+
+In `mergeResourceServers` (`service.go`), the entry line becomes:
+
+```go
+			entry := ScopeEntry{Scope: scope.Scope, Description: scope.Description, DescriptionPT: scope.DescriptionPT, M2M: scope.M2M}
+```
+
+After `ValidateGrantable`, add:
+
+```go
+// ValidateMachineGrantable returns the first scope in ss that a developer-page
+// (non-first-party) client may not hold for client_credentials, or "" when it
+// may hold them all. A scope qualifies only if it is active, public and marked
+// m2m by its resource server. Deprecated scopes are merged into the internal
+// bucket, so they never qualify. Lookup errors fail closed.
+func (s *CatalogService) ValidateMachineGrantable(ctx context.Context, ss []string) (string, error) {
+	services, err := s.Catalog(ctx)
+	if err != nil {
+		return "", err
+	}
+	index := make(map[string]struct{})
+	for _, svc := range services {
+		if svc.Internal {
+			continue
+		}
+		for _, e := range svc.Scopes {
+			if e.M2M {
+				index[e.Scope] = struct{}{}
+			}
+		}
+	}
+	for _, sc := range ss {
+		if _, ok := index[sc]; !ok {
+			return sc, nil
+		}
+	}
+	return "", nil
+}
+```
+
+- [ ] **Step 6: Run the scope package tests**
+
+Run: `go test ./internal/scopes/ -v`
+Expected: PASS. The new tests pass, and so do all existing registry, catalog and manifest tests. The embedded Account manifest has no `m2m` and still validates.
+
+- [ ] **Step 7: Document the field in `docs/resource-server-scope-registry.md`**
+
+After the "Reconciliation semantics" section, add:
+
+````markdown
+## Machine-to-machine scopes (`m2m`)
+
+A manifest scope may carry `"m2m": true`:
+
+```json
+{ "name": "billing:invoices:write", "descriptions": { "en": "…", "pt-BR": "…" },
+  "visibility": "public", "status": "active", "m2m": true }
+```
+
+It means the resource server accepts this scope from machine clients. A
+confidential **developer-page** client (not first-party) may use
+`grant_type=client_credentials` only when **every** scope it holds is an
+active, public, `m2m` scope and its owner's account is active. Otherwise the
+whole request is refused (`403 unauthorized_client` naming the offending held
+scope, or `400 invalid_scope` naming a requested scope the client does not hold),
+never answered with a subset. First-party clients are unaffected.
+
+- Optional, default `false`, and only valid on `public` scopes: `internal`
+  scopes are machine-only already and are never grantable to developer-page
+  clients, so the registry rejects `m2m` on them.
+- Serialized `omitempty`: manifests without it keep their hash.
+- Publish order: Account must be deployed with this field **before** a resource
+  server publishes it. An older Account silently drops the unknown field, and
+  because the stored hash then matches, a later identical publish changes
+  nothing. If that happened, re-run the resource server's publish after
+  Account is deployed.
+- Shown in `GET /v1.0/scopes` (`"m2m": true` on the entry), so the developer
+  page can tell which scopes work for machine access.
+````
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add api/internal/scopes/resource.go api/internal/scopes/catalog.go api/internal/scopes/service.go api/internal/scopes/registry_test.go docs/resource-server-scope-registry.md
+git commit -m "feat(scopes): m2m marker on manifest scopes, carried into the catalog"
+```
+
+---
+
+### Task 6: `client_credentials` for developer-page clients
+
+**Files:**
+- Modify: `api/internal/apierror/problem.go` (two constructors next to `UnauthorizedClient` / `InvalidScope`)
+- Modify: `api/internal/handler/token.go` (`TokenHandler` struct and `NewTokenHandler` ~lines 60-95; `clientCredentials` ~lines 157-212; new helper `machineScopesForDeveloperClient`)
+- Modify: `api/internal/handler/testhelpers_test.go:585-598` (`memScopesRepo.LoadResources` adds a test `billing` resource)
+- Create: `api/internal/handler/client_credentials_m2m_test.go`
+- Modify: `README.md` (§ "Service-to-service tokens (`client_credentials`)", ~line 406)
+- Modify: `api/ENDPOINTS.md` (`client_credentials` paragraph, ~line 222)
+
+**Interfaces:**
+- Consumes: `client.NewInternalService`, `(*InternalService).Active` (Task 2); `CatalogService.ValidateMachineGrantable` (Task 5); `OAuthClient.HasScope`, `FilterScopes`, `IsPublic`, `FirstParty` (existing); test helpers `newOAuthTestApp`, `(*oauthTestApp).postForm`, `ta.clientRepo`, `ta.userRepo`, `clientCredentialsForm`, `decodeJWTPayload`, `readJSON`, `bodyString`, `seedM2MClient` (existing, `kyc_test.go` / `oauth_security_test.go`).
+- Produces:
+  - `func apierror.UnauthorizedClientBecause(detail, instance string) *Problem`, a 403 with slug `unauthorized-client` and OAuth `unauthorized_client`
+  - `func apierror.InvalidScopeBecause(detail, instance string) *Problem`, a 400 with slug `invalid-scope` and OAuth `invalid_scope`
+  - HTTP behaviour per Global Constraints.
+
+- [ ] **Step 1: Give the handler tests a resource with m2m scopes**
+
+In `api/internal/handler/testhelpers_test.go`, `memScopesRepo.LoadResources` returns a second, test-only resource after the Account one (no handler test asserts the public catalog's contents, so adding a service is safe):
+
+```go
+func (memScopesRepo) LoadResources(_ context.Context) ([]scopesPkg.ResourceServer, error) {
+	manifest, err := scopesPkg.AccountManifest()
+	if err != nil {
+		return nil, err
+	}
+	for i := range manifest.Scopes {
+		manifest.Scopes[i].Description = manifest.Scopes[i].Descriptions["en"]
+		manifest.Scopes[i].DescriptionPT = manifest.Scopes[i].Descriptions["pt-BR"]
+	}
+	scope := func(name string, m2m bool) scopesPkg.ScopeDefinition {
+		return scopesPkg.ScopeDefinition{Scope: name, Description: name, DescriptionPT: name,
+			Visibility: scopesPkg.VisibilityPublic, Status: scopesPkg.StatusActive, M2M: m2m}
+	}
+	return []scopesPkg.ResourceServer{
+		{
+			SK: scopesPkg.AccountResourceID, DisplayName: manifest.DisplayName,
+			Audience: "http://localhost", Scopes: manifest.Scopes,
+		},
+		// A stand-in for ctech-billing's published manifest: integration scopes
+		// marked m2m, a user scope not.
+		{
+			SK: "billing", DisplayName: "CTech Cobranças (test)", Audience: "https://billing.example.test",
+			Scopes: []scopesPkg.ScopeDefinition{
+				scope("billing:invoices:write", true),
+				scope("billing:customers:read", true),
+				scope("billing:customers:write", true),
+				scope("billing:my-invoices:read", false),
+			},
+		},
+	}, nil
+}
+```
+
+- [ ] **Step 2: Write the failing token tests**
+
+Create `api/internal/handler/client_credentials_m2m_test.go`:
+
+```go
+package handler_test
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"testing"
+
+	"gopkg.aoctech.app/account/api/internal/crypto"
+	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
+	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
+)
+
+// seedDeveloperClient stores a confidential, NOT first-party client owned by
+// ownerID, as the developer page creates it, and returns its secret.
+func seedDeveloperClient(t *testing.T, ta *oauthTestApp, id, ownerID string, allowed []string) string {
+	t.Helper()
+	hash, err := crypto.HashPassword(m2mSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ta.clientRepo.Create(context.Background(), &oauthclient.OAuthClient{
+		PK: oauthclient.BuildPK(id), Name: id, ClientType: oauthclient.TypeConfidential,
+		ClientSecretHash: hash, AllowedScopes: allowed, OwnerUserID: ownerID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return m2mSecret
+}
+
+func seedOwner(t *testing.T, ta *oauthTestApp, email string) *userDomain.User {
+	t.Helper()
+	u := &userDomain.User{Email: email, IsEnabled: true, EmailVerified: true}
+	if err := ta.userRepo.Create(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func assertOAuthError(t *testing.T, resp *http.Response, status int, code, mentions string) {
+	t.Helper()
+	if resp.StatusCode != status {
+		t.Fatalf("status = %d, want %d: %s", resp.StatusCode, status, bodyString(resp))
+	}
+	var body map[string]any
+	readJSON(t, resp, &body)
+	if body["error"] != code {
+		t.Fatalf("error = %v, want %s (body %v)", body["error"], code, body)
+	}
+	if mentions != "" && !strings.Contains(body["detail"].(string), mentions) {
+		t.Fatalf("detail %q does not name %q", body["detail"], mentions)
+	}
+}
+
+func TestClientCredentialsIssuesATokenToADeveloperClientWithOnlyM2MScopes(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	owner := seedOwner(t, ta, "merchant@example.com")
+	secret := seedDeveloperClient(t, ta, "cli_merchant", owner.ID(), []string{"billing:invoices:write", "billing:customers:read"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("cli_merchant", secret, "billing:invoices:write"))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var body map[string]any
+	readJSON(t, resp, &body)
+	if body["scope"] != "billing:invoices:write" {
+		t.Fatalf("scope = %v", body["scope"])
+	}
+	if _, hasRefresh := body["refresh_token"]; hasRefresh {
+		t.Fatal("client_credentials must not issue a refresh token")
+	}
+	claims := decodeJWTPayload(t, body["access_token"].(string))
+	if claims["sub"] != "cli_merchant" || claims["azp"] != "cli_merchant" || claims["sid"] != "" {
+		t.Fatalf("sub/azp/sid = %v/%v/%v", claims["sub"], claims["azp"], claims["sid"])
+	}
+	auds, _ := claims["aud"].([]any)
+	found := false
+	for _, a := range auds {
+		found = found || a == "https://billing.example.test"
+	}
+	if !found {
+		t.Fatalf("aud %v lacks billing's audience", claims["aud"])
+	}
+}
+
+// One user scope on the client refuses the grant, even when only m2m scopes
+// are requested: one client for sign-in, another for machine access.
+func TestClientCredentialsRefusesADeveloperClientHoldingAUserScope(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	owner := seedOwner(t, ta, "mixed@example.com")
+	secret := seedDeveloperClient(t, ta, "cli_mixed", owner.ID(), []string{"billing:invoices:write", "billing:my-invoices:read"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("cli_mixed", secret, "billing:invoices:write"))
+	assertOAuthError(t, resp, http.StatusForbidden, "unauthorized_client", "billing:my-invoices:read")
+}
+
+// Refuse, never clamp: a developer client asking for a scope it does not hold
+// gets no token at all.
+func TestClientCredentialsRefusesADeveloperClientAskingForAnUngrantedScope(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	owner := seedOwner(t, ta, "ask@example.com")
+	secret := seedDeveloperClient(t, ta, "cli_ask", owner.ID(), []string{"billing:invoices:write"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("cli_ask", secret, "billing:invoices:write billing:customers:write"))
+	assertOAuthError(t, resp, http.StatusBadRequest, "invalid_scope", "billing:customers:write")
+}
+
+func TestClientCredentialsNeverGivesADeveloperClientAnInternalScope(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	owner := seedOwner(t, ta, "internal@example.com")
+	// Not creatable through self-service (ValidateGrantable skips internal
+	// services), but if a row ever held one the grant must still refuse.
+	secret := seedDeveloperClient(t, ta, "cli_internal", owner.ID(), []string{"billing:invoices:write", "internal:account:kyc"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("cli_internal", secret, "internal:account:kyc"))
+	assertOAuthError(t, resp, http.StatusForbidden, "unauthorized_client", "internal:account:kyc")
+}
+
+func TestClientCredentialsRefusesADeveloperClientWhoseOwnerIsNotActive(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	locked := seedOwner(t, ta, "locked@example.com")
+	locked.DeletionState = userDomain.DeletionStatePending
+	disabled := seedOwner(t, ta, "disabled@example.com")
+	disabled.IsEnabled = false
+
+	for id, owner := range map[string]string{
+		"cli_locked":   locked.ID(),
+		"cli_disabled": disabled.ID(),
+		"cli_orphan":   "no-such-user",
+	} {
+		secret := seedDeveloperClient(t, ta, id, owner, []string{"billing:invoices:write"})
+		resp := ta.postForm("/v1.0/token", clientCredentialsForm(id, secret, "billing:invoices:write"))
+		assertOAuthError(t, resp, http.StatusForbidden, "unauthorized_client", "not active")
+	}
+}
+
+// The secret is checked before anything about scopes or owners is revealed.
+func TestClientCredentialsChecksADeveloperClientsSecretFirst(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	owner := seedOwner(t, ta, "secret@example.com")
+	seedDeveloperClient(t, ta, "cli_secret", owner.ID(), []string{"billing:my-invoices:read"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("cli_secret", "wrong-secret", "billing:my-invoices:read"))
+	assertOAuthError(t, resp, http.StatusUnauthorized, "invalid_client", "")
+}
+
+// First-party clients keep today's behaviour: no m2m requirement, internal
+// scopes allowed, unrequested-but-unheld scopes clamped away silently.
+func TestClientCredentialsFirstPartyIsUnchanged(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	secret := seedM2MClient(t, ta.clientRepo, "wallet", "confidential", true, []string{"internal:account:kyc", "billing:my-invoices:read"})
+
+	resp := ta.postForm("/v1.0/token", clientCredentialsForm("wallet", secret, "internal:account:kyc billing:my-invoices:read billing:customers:write"))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d: %s", resp.StatusCode, bodyString(resp))
+	}
+	var body map[string]any
+	readJSON(t, resp, &body)
+	if body["scope"] != "internal:account:kyc billing:my-invoices:read" {
+		t.Fatalf("scope = %v, want the held scopes clamped as before", body["scope"])
+	}
+}
+```
+
+- [ ] **Step 3: Run them to verify they fail**
+
+Run: `go test ./internal/handler/ -run 'TestClientCredentials' -v`
+Expected: FAIL. `TestClientCredentialsIssuesATokenToADeveloperClientWithOnlyM2MScopes` gets `status = 403` (today's blanket refusal). The two `...Refuses...UngrantedScope` / `...UserScope` detail checks fail on today's generic detail. `TestClientCredentialsChecksADeveloperClientsSecretFirst` gets `status = 403, want 401`. `TestClientCredentialsFirstPartyIsUnchanged` and the existing `kyc_test.go` cases pass.
+
+- [ ] **Step 4: Add the two problem constructors**
+
+In `api/internal/apierror/problem.go`, rewrite `UnauthorizedClient` on top of a detailed variant and add the scope one next to `InvalidScope`:
+
+```go
+func UnauthorizedClient(instance string) *Problem {
+	return UnauthorizedClientBecause("This client is not authorized to use this grant type.", instance)
+}
+
+// UnauthorizedClientBecause is UnauthorizedClient with the specific reason: the
+// client authenticated, but may not use this grant as it is configured.
+func UnauthorizedClientBecause(detail, instance string) *Problem {
+	return newProblem("unauthorized-client", "Unauthorized Client", http.StatusForbidden, detail, instance).
+		WithOAuth("unauthorized_client", detail)
+}
+```
+
+```go
+// InvalidScopeBecause names the scope that made the request invalid.
+func InvalidScopeBecause(detail, instance string) *Problem {
+	return newProblem("invalid-scope", "Invalid Scope", http.StatusBadRequest, detail, instance).
+		WithOAuth("invalid_scope", detail)
+}
+```
+
+- [ ] **Step 5: Wire the owner check into `TokenHandler`**
+
+In `api/internal/handler/token.go`, add a field to `TokenHandler`:
+
+```go
+	// clients derives whether a developer-page client is usable (owner
+	// active). It is the same rule GET /internal/oauth-clients reports.
+	clients *oauthclient.InternalService
+```
+
+and set it in `NewTokenHandler`'s returned struct (no signature change, built from two arguments it already takes):
+
+```go
+		clients:    oauthclient.NewInternalService(clientRepo, userSvc),
+```
+
+- [ ] **Step 6: Split `clientCredentials` into the first-party and developer-page paths**
+
+Replace the body of `clientCredentials`, from the `if oauthClient.IsPublic() || !oauthClient.FirstParty {` check through `if len(scp) == 0 { ... }`, with:
+
+```go
+	if oauthClient.IsPublic() {
+		return apierror.UnauthorizedClient(c.Path()).Send(c)
+	}
+	// The secret is verified before anything about scopes or owners is
+	// revealed, for first-party and developer-page clients alike.
+	ok, verifyErr := crypto.VerifyPassword(clientSecret, oauthClient.ClientSecretHash)
+	if verifyErr != nil {
+		return apierror.ServerError(c.Path()).WithCause(verifyErr).Send(c)
+	}
+	if !ok {
+		return apierror.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
+	}
+
+	requested := strings.Fields(c.FormValue("scope"))
+	var scp []string
+	if oauthClient.FirstParty {
+		// Unchanged: first-party clients are clamped silently to what they hold.
+		scp = oauthClient.FilterScopes(requested)
+	} else {
+		var problem *apierror.Problem
+		if scp, problem = h.machineScopesForDeveloperClient(c, oauthClient, requested); problem != nil {
+			return problem.Send(c)
+		}
+	}
+	if len(scp) == 0 {
+		return apierror.InvalidScope(c.Path()).Send(c)
+	}
+```
+
+Leave the rest (`AudiencesFor`, `SignAccessToken`, the JSON response) as it is. Update the function's doc comment:
+
+```go
+// clientCredentials issues a machine-to-machine token (RFC 6749 §4.4).
+// First-party confidential clients: as always, clamped to their scopes,
+// internal:* included. Developer-page confidential clients: only when their
+// owner is active and every scope they hold is published m2m by its resource
+// server; see machineScopesForDeveloperClient. Public clients never.
+```
+
+Add the helper below `clientCredentials`:
+
+```go
+// machineScopesForDeveloperClient decides client_credentials for a
+// confidential client that is not first-party (created on the developer
+// page). It refuses the whole request rather than issuing a subset:
+//   - the owner must be active (InternalService.Active, the rule the internal
+//     route reports);
+//   - every scope the client HOLDS must be an active public m2m scope. One
+//     sign-in scope means the client is a sign-in client, and it gets no
+//     machine token. internal:* scopes never qualify;
+//   - every scope REQUESTED must be held.
+func (h *TokenHandler) machineScopesForDeveloperClient(c fiber.Ctx, oc *oauthclient.OAuthClient, requested []string) ([]string, *apierror.Problem) {
+	active, err := h.clients.Active(c.Context(), oc)
+	if err != nil {
+		return nil, apierror.ServerError(c.Path()).WithCause(err)
+	}
+	if !active {
+		return nil, apierror.UnauthorizedClientBecause("The account that owns this client is not active.", c.Path())
+	}
+	bad, err := h.catalogSvc.ValidateMachineGrantable(c.Context(), oc.AllowedScopes)
+	if err != nil {
+		return nil, apierror.ServerError(c.Path()).WithCause(err)
+	}
+	if bad != "" {
+		return nil, apierror.UnauthorizedClientBecause(fmt.Sprintf(
+			"client_credentials requires every scope this client holds to be published for machine-to-machine use; %q is not. Use a separate client for user sign-in.", bad), c.Path())
+	}
+	for _, scope := range requested {
+		if !oc.HasScope(scope) {
+			return nil, apierror.InvalidScopeBecause(fmt.Sprintf("Scope %q is not granted to this client.", scope), c.Path())
+		}
+	}
+	return requested, nil
+}
+```
+
+Add `"fmt"` to `token.go`'s imports if it is not already there.
+
+- [ ] **Step 7: Run the token tests, then the whole suite**
+
+Run: `go test ./internal/handler/ -run 'TestClientCredentials' -v && go build ./... && go vet ./... && go test ./...`
+Expected: PASS. All eight new tests pass. The existing `TestClientCredentialsIssuesToken`, `...RejectsPublicClient`, `...RejectsThirdPartyClient` (internal scope → still `403 unauthorized_client`) and `...RejectsBadSecret` pass. Every package reports `ok`.
+
+- [ ] **Step 8: Document the grant**
+
+In `README.md` § "Service-to-service tokens (`client_credentials`)", replace the sentence "Public or third-party clients get `403 unauthorized_client`." with:
+
+```markdown
+Public clients get `403 unauthorized_client`. A confidential **developer-page**
+client (not first-party) gets a token only when its owner's account is active
+**and** every scope it holds is published `"m2m": true` by its resource server
+(`docs/resource-server-scope-registry.md`). Otherwise the whole request is
+refused: `403 unauthorized_client` naming the held scope that is not m2m (or
+"owner not active"), or `400 invalid_scope` naming a requested scope the client
+does not hold. Such a client never receives an `internal:*` scope. First-party
+clients are clamped silently to their `allowed_scopes`, as before.
+```
+
+In `api/ENDPOINTS.md`, replace the `client_credentials` paragraph's second sentence ("Restricted to **confidential first-party** clients (`!IsPublic() && FirstParty`).") with:
+
+```markdown
+Public clients → `403 unauthorized_client`. The secret is verified first
+(`401 invalid_client`). **First-party** confidential clients: scopes clamped to
+`allowed_scopes` (unchanged). **Developer-page** confidential clients
+(`machineScopesForDeveloperClient`): owner active (`InternalService.Active`),
+every held scope active + public + `m2m` (`CatalogService.ValidateMachineGrantable`),
+every requested scope held — else the whole request is refused
+(`403 unauthorized_client` / `400 invalid_scope`, the detail naming the scope).
+```
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add api/internal/apierror/problem.go api/internal/handler/token.go api/internal/handler/testhelpers_test.go api/internal/handler/client_credentials_m2m_test.go README.md api/ENDPOINTS.md
+git commit -m "feat(token): client_credentials for developer-page clients holding only m2m scopes"
+```
+
+---
+
+## What ctech-billing must publish (billing part 3 plan, not this one)
+
+In `ctech-billing/api/internal/oauthresource/scope-manifest.json`, add `"m2m": true` to exactly these entries. All are `"visibility": "public"`, `"status": "active"`.
+
+| Scope | `m2m` |
+|---|---|
+| `billing:subscriptions:read` | `true` |
+| `billing:subscriptions:write` | `true` |
+| `billing:invoices:read` | `true` |
+| `billing:invoices:write` | `true` |
+| `billing:usage:write` | `true` |
+| `billing:customers:read` | `true` |
+| `billing:customers:write` | `true` |
+| `billing:entitlements:read` | `true` |
+| `billing:products:read` | `true` |
+| `billing:products:write` | `true` |
+| `billing:organization:read` | `true` |
+
+These must **not** carry it, because they are user scopes: `billing:my-invoices:read`, `billing:my-invoices:write`, `billing:my-subscriptions:read`, `billing:my-subscriptions:write`, `billing:finance:read`, `billing:finance:write`, and the new `billing:organization:write` from spec § 6.1.
+
+Example entry:
+
+```json
+    {
+      "name": "billing:invoices:write",
+      "descriptions": { "pt-BR": "…", "en": "…" },
+      "visibility": "public",
+      "status": "active",
+      "m2m": true
+    }
+```
+
+Notes for that plan:
+- **Order.** Publish only after this plan's ctech-account deploy is live in the same environment. An older Account ignores the unknown field, stores the same hash, and a later identical publish changes nothing. If it was published early, re-run billing's `deploy.yml` scopes stage by hand (`workflow_dispatch`, `scopes: true`).
+- **Billing's Go struct.** `api/internal/oauthresource/resource.go`'s `Scope` struct may add `M2M bool \`json:"m2m,omitempty"\`` if the RFC 9728 document or the AllScopes test should know about it. The publish workflow sends the raw file either way.
+- **When connecting a credential (spec § 5.1), billing should also refuse** a client holding any non-m2m scope, for example with a code like `client_not_machine_only`. Otherwise billing admits a credential that ctech-account will never issue a token to. `allowed_scopes` from the internal route is enough to check this against billing's own manifest.
 
 ## Deploy (operator runbook, spec § 9 step 1)
 
@@ -1383,6 +2105,7 @@ This happens after the PR is merged. Environments are `dev`, `stage` and `prod`,
 
    Expected: the list holds `internal:account:org-member`, `internal:account:user-organizations` and `internal:account:oauth-client-read`.
 4. **Nothing to restart in billing.** The token endpoint clamps the requested scope to `allowed_scopes` at issue time. Billing's next token request that asks for `internal:account:oauth-client-read` gets it, and its existing tokens keep working for the membership routes.
-5. Tick the deploy line in `PLAN.md` (in a follow-up `docs:` commit) and tell billing that § 9 step 1 is done.
+5. **Developer-page `client_credentials` (Tasks 5–6) needs no operator step.** It is live with the deploy and stays inert until a resource server publishes `m2m` scopes. Check that it is inert: no first-party client's behaviour changed (wallet, billing and dfe M2M calls keep working), and no manifest's hash moved in the boot or publish logs.
+6. Tick the deploy lines in `PLAN.md` (in a follow-up `docs:` commit). Tell billing that § 9 step 1 is done **and** that it may now publish the `m2m` marks (§ "What ctech-billing must publish"), in each environment only after this deploy is live there.
 
-**Rollback:** revert the PR and redeploy. The route disappears. The extra scope on billing's client grants nothing without the route, so it can stay.
+**Rollback:** revert the PR and redeploy. The route disappears. The extra scope on billing's client grants nothing without the route, so it can stay. Developer-page clients go back to `403 unauthorized_client`. Any `m2m` marks already published stay in the stored manifests: the older Account ignores them, and they take effect again on redeploy.
