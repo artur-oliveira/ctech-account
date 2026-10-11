@@ -48,6 +48,35 @@ V2 rows override legacy `pk=SERVICE` rows at read time. This makes migration
 non-disruptive. `cmd/seedscopes` remains only for built-in OIDC identity scopes,
 the registry root permission, and legacy compatibility data.
 
+## Machine-to-machine scopes (`m2m`)
+
+A manifest scope may carry `"m2m": true`:
+
+```json
+{ "name": "billing:invoices:write", "descriptions": { "en": "…", "pt-BR": "…" },
+  "visibility": "public", "status": "active", "m2m": true }
+```
+
+It means the resource server accepts this scope from machine clients. A
+confidential **developer-page** client (not first-party) may use
+`grant_type=client_credentials` only when **every** scope it holds is an
+active, public, `m2m` scope and its owner's account is active. Otherwise the
+whole request is refused (`403 unauthorized_client` naming the offending held
+scope, or `400 invalid_scope` naming a requested scope the client does not hold),
+never answered with a subset. First-party clients are unaffected.
+
+- Optional, default `false`, and only valid on `public` scopes: `internal`
+  scopes are machine-only already and are never grantable to developer-page
+  clients, so the registry rejects `m2m` on them.
+- Serialized `omitempty`: manifests without it keep their hash.
+- Publish order: Account must be deployed with this field **before** a resource
+  server publishes it. An older Account silently drops the unknown field, and
+  because the stored hash then matches, a later identical publish changes
+  nothing. If that happened, re-run the resource server's publish after
+  Account is deployed.
+- Shown in `GET /v1.0/scopes` (`"m2m": true` on the entry), so the developer
+  page can tell which scopes work for machine access.
+
 ## Account's system-owned resource
 
 At API startup, `RegistryService.BootstrapAccount` creates or reconciles

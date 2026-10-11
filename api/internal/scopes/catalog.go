@@ -7,6 +7,9 @@ type ScopeEntry struct {
 	Scope         string `json:"scope"          dynamodbav:"scope"`
 	Description   string `json:"description"    dynamodbav:"description"`    // English
 	DescriptionPT string `json:"description_pt" dynamodbav:"description_pt"` // Brazilian Portuguese
+	// M2M is ScopeDefinition.M2M carried into the catalog. Serialized in JSON
+	// (not json:"-") because the Valkey catalog cache round-trips it.
+	M2M bool `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
 }
 
 // ServiceScopes groups the scopes a platform service exposes.
@@ -124,10 +127,10 @@ var defaultCatalog = []ServiceScopes{
 		Service: IdentityService,
 		Name:    "Identity (OpenID Connect)",
 		Scopes: []ScopeEntry{
-			{OpenID, "Confirm the user's identity (user ID)", "Confirmar a identidade do usuário (ID de usuário)"},
-			{Profile, "See name and profile picture", "Ver nome e foto de perfil"},
-			{Email, "See the email address", "Ver o endereço de e-mail"},
-			{KYC, "See the identity verification level", "Ver o nível de verificação de identidade"},
+			{Scope: OpenID, Description: "Confirm the user's identity (user ID)", DescriptionPT: "Confirmar a identidade do usuário (ID de usuário)"},
+			{Scope: Profile, Description: "See name and profile picture", DescriptionPT: "Ver nome e foto de perfil"},
+			{Scope: Email, Description: "See the email address", DescriptionPT: "Ver o endereço de e-mail"},
+			{Scope: KYC, Description: "See the identity verification level", DescriptionPT: "Ver o nível de verificação de identidade"},
 		},
 	},
 	// Account's API permissions are bootstrapped from the embedded v2 Resource
@@ -141,22 +144,22 @@ var defaultCatalog = []ServiceScopes{
 		Name:     "CTech DFe",
 		Audience: "https://dfe.aoctech.app",
 		Scopes: []ScopeEntry{
-			{"dfe:nfes:read", "Read NF-e documents and their events", "Consultar NF-e e seus eventos"},
-			{"dfe:nfes:write", "Issue and cancel NF-e documents", "Emitir e cancelar NF-e"},
-			{"dfe:nfces:read", "Read NFC-e documents and their events", "Consultar NFC-e e seus eventos"},
-			{"dfe:nfces:write", "Issue and cancel NFC-e documents", "Emitir e cancelar NFC-e"},
-			{"dfe:mdfes:read", "Read MDF-e documents and their events", "Consultar MDF-e e seus eventos"},
-			{"dfe:mdfes:write", "Issue and cancel MDF-e documents", "Emitir e cancelar MDF-e"},
-			{"dfe:organizations:read", "Read organizations", "Consultar organizações"},
-			{"dfe:organizations:write", "Manage organizations", "Gerenciar organizações"},
-			{"dfe:organization_certificates:read", "List digital certificates", "Listar certificados digitais"},
-			{"dfe:organization_certificates:write", "Manage digital certificates", "Gerenciar certificados digitais"},
-			{"dfe:organization_products:read", "Read products", "Consultar produtos"},
-			{"dfe:organization_products:write", "Manage products", "Gerenciar produtos"},
-			{"dfe:organization_persons:read", "Read persons (customers/suppliers)", "Consultar pessoas (clientes/fornecedores)"},
-			{"dfe:organization_persons:write", "Manage persons (customers/suppliers)", "Gerenciar pessoas (clientes/fornecedores)"},
-			{"dfe:organization_vehicles:read", "Read vehicles", "Consultar veículos"},
-			{"dfe:organization_vehicles:write", "Manage vehicles", "Gerenciar veículos"},
+			{Scope: "dfe:nfes:read", Description: "Read NF-e documents and their events", DescriptionPT: "Consultar NF-e e seus eventos"},
+			{Scope: "dfe:nfes:write", Description: "Issue and cancel NF-e documents", DescriptionPT: "Emitir e cancelar NF-e"},
+			{Scope: "dfe:nfces:read", Description: "Read NFC-e documents and their events", DescriptionPT: "Consultar NFC-e e seus eventos"},
+			{Scope: "dfe:nfces:write", Description: "Issue and cancel NFC-e documents", DescriptionPT: "Emitir e cancelar NFC-e"},
+			{Scope: "dfe:mdfes:read", Description: "Read MDF-e documents and their events", DescriptionPT: "Consultar MDF-e e seus eventos"},
+			{Scope: "dfe:mdfes:write", Description: "Issue and cancel MDF-e documents", DescriptionPT: "Emitir e cancelar MDF-e"},
+			{Scope: "dfe:organizations:read", Description: "Read organizations", DescriptionPT: "Consultar organizações"},
+			{Scope: "dfe:organizations:write", Description: "Manage organizations", DescriptionPT: "Gerenciar organizações"},
+			{Scope: "dfe:organization_certificates:read", Description: "List digital certificates", DescriptionPT: "Listar certificados digitais"},
+			{Scope: "dfe:organization_certificates:write", Description: "Manage digital certificates", DescriptionPT: "Gerenciar certificados digitais"},
+			{Scope: "dfe:organization_products:read", Description: "Read products", DescriptionPT: "Consultar produtos"},
+			{Scope: "dfe:organization_products:write", Description: "Manage products", DescriptionPT: "Gerenciar produtos"},
+			{Scope: "dfe:organization_persons:read", Description: "Read persons (customers/suppliers)", DescriptionPT: "Consultar pessoas (clientes/fornecedores)"},
+			{Scope: "dfe:organization_persons:write", Description: "Manage persons (customers/suppliers)", DescriptionPT: "Gerenciar pessoas (clientes/fornecedores)"},
+			{Scope: "dfe:organization_vehicles:read", Description: "Read vehicles", DescriptionPT: "Consultar veículos"},
+			{Scope: "dfe:organization_vehicles:write", Description: "Manage vehicles", DescriptionPT: "Gerenciar veículos"},
 		},
 	},
 	// Internal scopes are machine-to-machine only; each downstream service gets
@@ -171,7 +174,7 @@ var defaultCatalog = []ServiceScopes{
 		Scopes: []ScopeEntry{
 			// This root permission must exist before the Account Resource Server
 			// can bootstrap. Once v2 is present, its manifest overrides this row.
-			{InternalAccountScopeRegistryWrite, "Publish a resource server scope manifest", "Publicar o manifesto de escopos de um servidor de recursos"},
+			{Scope: InternalAccountScopeRegistryWrite, Description: "Publish a resource server scope manifest", DescriptionPT: "Publicar o manifesto de escopos de um servidor de recursos"},
 		},
 	},
 	{
@@ -180,16 +183,16 @@ var defaultCatalog = []ServiceScopes{
 		Audience: "https://wallet.aoctech.app",
 		Internal: true,
 		Scopes: []ScopeEntry{
-			{InternalWalletConfirmDeposit, "Confirm deposits to real wallet", "Confirmar depósito na carteira"},
-			{InternalWalletCredit, "Credit value for sandbox wallet", "Creditar valores na carteira virtual"},
-			{InternalWalletDebit, "Debit value for sandbox wallet", "Debitar valores da carteira virtual"},
-			{"internal:wallet:balance", "Check wallet balance", "Ver saldo da carteira"},
-			{"internal:wallet:debit-real", "Debit value for real wallet", "Debitar valores da carteira (Dinheiro real)"},
-			{"internal:wallet:game-status", "Check wallet game status", "Verifica status da carteira de jogos"},
-			{"internal:wallet:game-hold", "Hold value for game wallet", "Reserva os valores da carteira de jogos"},
-			{"internal:wallet:game-cashout", "Cashout value for real wallet", "Retorna valores para a carteira de jogos"},
-			{"internal:wallet:sandbox-purchase", "Purchases sandbox credits", "Compra créditos sandbox"},
-			{"internal:wallet:product-purchase", "Purchase product", "Compra de produtos"},
+			{Scope: InternalWalletConfirmDeposit, Description: "Confirm deposits to real wallet", DescriptionPT: "Confirmar depósito na carteira"},
+			{Scope: InternalWalletCredit, Description: "Credit value for sandbox wallet", DescriptionPT: "Creditar valores na carteira virtual"},
+			{Scope: InternalWalletDebit, Description: "Debit value for sandbox wallet", DescriptionPT: "Debitar valores da carteira virtual"},
+			{Scope: "internal:wallet:balance", Description: "Check wallet balance", DescriptionPT: "Ver saldo da carteira"},
+			{Scope: "internal:wallet:debit-real", Description: "Debit value for real wallet", DescriptionPT: "Debitar valores da carteira (Dinheiro real)"},
+			{Scope: "internal:wallet:game-status", Description: "Check wallet game status", DescriptionPT: "Verifica status da carteira de jogos"},
+			{Scope: "internal:wallet:game-hold", Description: "Hold value for game wallet", DescriptionPT: "Reserva os valores da carteira de jogos"},
+			{Scope: "internal:wallet:game-cashout", Description: "Cashout value for real wallet", DescriptionPT: "Retorna valores para a carteira de jogos"},
+			{Scope: "internal:wallet:sandbox-purchase", Description: "Purchases sandbox credits", DescriptionPT: "Compra créditos sandbox"},
+			{Scope: "internal:wallet:product-purchase", Description: "Purchase product", DescriptionPT: "Compra de produtos"},
 		},
 	},
 }

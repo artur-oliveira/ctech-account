@@ -124,6 +124,35 @@ func (s *CatalogService) ValidateGrantable(ctx context.Context, ss []string) (st
 	return "", nil
 }
 
+// ValidateMachineGrantable returns the first scope in ss that a developer-page
+// (non-first-party) client may not hold for client_credentials, or "" when it
+// may hold them all. A scope qualifies only if it is active, public and marked
+// m2m by its resource server. Deprecated scopes are merged into the internal
+// bucket, so they never qualify. Lookup errors fail closed.
+func (s *CatalogService) ValidateMachineGrantable(ctx context.Context, ss []string) (string, error) {
+	services, err := s.Catalog(ctx)
+	if err != nil {
+		return "", err
+	}
+	index := make(map[string]struct{})
+	for _, svc := range services {
+		if svc.Internal {
+			continue
+		}
+		for _, e := range svc.Scopes {
+			if e.M2M {
+				index[e.Scope] = struct{}{}
+			}
+		}
+	}
+	for _, sc := range ss {
+		if _, ok := index[sc]; !ok {
+			return sc, nil
+		}
+	}
+	return "", nil
+}
+
 // AudiencesFor returns the distinct audience identifiers of the services whose
 // scopes appear in ss (e.g. a dfe:* scope pulls in dfe's SERVICE_AUDIENCE).
 // Services without a configured audience contribute nothing.
@@ -177,7 +206,7 @@ func mergeResourceServers(legacy []ServiceScopes, resources []ResourceServer) []
 	for _, resource := range resources {
 		var public, internal []ScopeEntry
 		for _, scope := range resource.Scopes {
-			entry := ScopeEntry{Scope: scope.Scope, Description: scope.Description, DescriptionPT: scope.DescriptionPT}
+			entry := ScopeEntry{Scope: scope.Scope, Description: scope.Description, DescriptionPT: scope.DescriptionPT, M2M: scope.M2M}
 			if scope.Status == StatusDeprecated {
 				// Deprecated entries remain internal to token audience resolution;
 				// public discovery and new grants must not expose them.
