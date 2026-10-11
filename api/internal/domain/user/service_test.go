@@ -728,3 +728,35 @@ func TestClearPendingDeletion_DoesNotClobberConcurrentRequest(t *testing.T) {
 		t.Fatalf("newer request's block was wiped: state=%q request=%q", got.DeletionState, got.DeletionRequestID)
 	}
 }
+
+// IsActive is the owner check behind the internal OAuth client route: a client
+// whose owner cannot sign in must not be accepted as anyone's credential.
+func TestIsActive(t *testing.T) {
+	repo := newMockRepo()
+	svc := user.NewService(repo)
+	ctx := context.Background()
+	u, err := svc.Register(ctx, "active@example.com", "password123", "Ana", "Lima")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if ok, err := svc.IsActive(ctx, u.ID()); err != nil || !ok {
+		t.Fatalf("a fresh account: IsActive = %v, %v; want true, nil", ok, err)
+	}
+
+	repo.byID[u.ID()].DeletionState = user.DeletionStatePending
+	if ok, err := svc.IsActive(ctx, u.ID()); err != nil || ok {
+		t.Fatalf("an account locked for deletion: IsActive = %v, %v; want false, nil", ok, err)
+	}
+
+	repo.byID[u.ID()].DeletionState = ""
+	repo.byID[u.ID()].IsEnabled = false
+	if ok, err := svc.IsActive(ctx, u.ID()); err != nil || ok {
+		t.Fatalf("a disabled account: IsActive = %v, %v; want false, nil", ok, err)
+	}
+
+	// Unknown is an answer, not an outage: the caller read the id from another row.
+	if ok, err := svc.IsActive(ctx, "no-such-user"); err != nil || ok {
+		t.Fatalf("an unknown account: IsActive = %v, %v; want false, nil", ok, err)
+	}
+}
