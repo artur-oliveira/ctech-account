@@ -1,5 +1,7 @@
 'use client'
 
+import { Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchOAuthClients } from '@/lib/queries'
@@ -16,9 +18,23 @@ import {
 } from './oauth-client-actions'
 import { AppWindow } from 'lucide-react'
 import { toast } from 'sonner'
+import { readClientPrefill } from './prefill'
 
 export default function OAuthClientsPage() {
+  // useSearchParams needs a Suspense boundary in a static export.
+  return (
+    <Suspense fallback={<div className="h-24 animate-pulse bg-muted rounded-lg" />}>
+      <OAuthClients />
+    </Suspense>
+  )
+}
+
+function OAuthClients() {
   const { t } = useTranslation()
+  const router = useRouter()
+  // ?new=1&scopes=a,b opens "new client" with those scopes (a product's link,
+  // e.g. ctech-billing's console credentials page).
+  const prefill = readClientPrefill(useSearchParams())
   const { data: clients = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['oauth-clients'],
     queryFn: fetchOAuthClients,
@@ -101,7 +117,14 @@ export default function OAuthClientsPage() {
           <h1 className="text-2xl font-semibold">{t('oauthClients.title')}</h1>
           <p className="text-muted-foreground text-sm mt-1">{t('oauthClients.subtitle')}</p>
         </div>
-        <CreateOAuthClientDialog />
+        <CreateOAuthClientDialog
+          prefill={prefill}
+          onClosed={() => {
+            // Drop the parameters: closing and pressing "new client" again
+            // starts from the defaults, and Back does not reopen the dialog.
+            if (prefill.open) router.replace('/account/oauth-clients')
+          }}
+        />
       </div>
 
       <ResponsiveDataList

@@ -343,6 +343,7 @@
       "redirectURIs": "Redirect URIs",
       "redirectURIsHint": "One or more callback URLs, separated by spaces. Use HTTPS; HTTP is allowed only for localhost during development.",
       "redirectURIsError": "Enter at least one complete HTTPS callback URL. HTTP is allowed only for localhost.",
+      "prefillHint": "Scopes suggested by the product that sent you here. For machine access, keep only these scopes and choose the confidential type.",
       "scopes": "Allowed scopes",
       "scopesHint": "Pick which data and actions the application may request.",
       "audience": "Audience (optional)",
