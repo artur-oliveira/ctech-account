@@ -591,10 +591,27 @@ func (memScopesRepo) LoadResources(_ context.Context) ([]scopesPkg.ResourceServe
 		manifest.Scopes[i].Description = manifest.Scopes[i].Descriptions["en"]
 		manifest.Scopes[i].DescriptionPT = manifest.Scopes[i].Descriptions["pt-BR"]
 	}
-	return []scopesPkg.ResourceServer{{
-		SK: scopesPkg.AccountResourceID, DisplayName: manifest.DisplayName,
-		Audience: "http://localhost", Scopes: manifest.Scopes,
-	}}, nil
+	scope := func(name string, m2m bool) scopesPkg.ScopeDefinition {
+		return scopesPkg.ScopeDefinition{Scope: name, Description: name, DescriptionPT: name,
+			Visibility: scopesPkg.VisibilityPublic, Status: scopesPkg.StatusActive, M2M: m2m}
+	}
+	return []scopesPkg.ResourceServer{
+		{
+			SK: scopesPkg.AccountResourceID, DisplayName: manifest.DisplayName,
+			Audience: "http://localhost", Scopes: manifest.Scopes,
+		},
+		// A stand-in for ctech-billing's published manifest: integration scopes
+		// marked m2m, a user scope not.
+		{
+			SK: "billing", DisplayName: "CTech Cobranças (test)", Audience: "https://billing.example.test",
+			Scopes: []scopesPkg.ScopeDefinition{
+				scope("billing:invoices:write", true),
+				scope("billing:customers:read", true),
+				scope("billing:customers:write", true),
+				scope("billing:my-invoices:read", false),
+			},
+		},
+	}, nil
 }
 
 // newTestCatalogService builds a CatalogService over the seed with cache disabled.

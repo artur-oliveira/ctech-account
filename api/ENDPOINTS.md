@@ -220,8 +220,13 @@ widened. Same cookie/public-vs-confidential rule as above.
 No refresh token, no cookie.
 
 **`client_credentials`** (M2M) — `{ client_id, client_secret, scope? }`
-(`token.go:145`). Restricted to **confidential first-party** clients
-(`!IsPublic() && FirstParty`). Signs access token with `sub = client_id`, **empty
+(`token.go:145`). Public clients → `403 unauthorized_client`. The secret is verified first
+(`401 invalid_client`). **First-party** confidential clients: scopes clamped to
+`allowed_scopes` (unchanged). **Developer-page** confidential clients
+(`machineScopesForDeveloperClient`): owner active (`InternalService.Active`),
+every held scope active + public + `m2m` (`CatalogService.ValidateMachineGrantable`),
+every requested scope held — else the whole request is refused
+(`403 unauthorized_client` / `400 invalid_scope`, the detail naming the scope). Signs access token with `sub = client_id`, **empty
 `sid`** (so `RequireInternalScope` accepts it), `azp = client_id`, no refresh,
 no MFA/KYC claims. Used by ctech-wallet for `internal:*` scopes.
 

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -68,6 +69,9 @@ type TokenHandler struct {
 	issuerURL  string
 	cfg        *config.Config
 	audit      *audit.Service
+	// clients derives whether a developer-page client is usable (owner
+	// active). It is the same rule GET /internal/oauth-clients reports.
+	clients *oauthclient.InternalService
 }
 
 func NewTokenHandler(
@@ -93,6 +97,7 @@ func NewTokenHandler(
 		issuerURL:  issuerURL,
 		cfg:        cfg,
 		audit:      auditSvc,
+		clients:    oauthclient.NewInternalService(clientRepo, userSvc),
 	}
 }
 
@@ -155,8 +160,10 @@ func (h *TokenHandler) apiKeyExchange(c fiber.Ctx) error {
 }
 
 // clientCredentials issues a machine-to-machine token (RFC 6749 §4.4).
-// Restricted to confidential first-party clients: internal:* scopes gate
-// service-to-service APIs, and third parties must never reach them.
+// First-party confidential clients: as always, clamped to their scopes,
+// internal:* included. Developer-page confidential clients: only when their
+// owner is active and every scope they hold is published m2m by its resource
+// server; see machineScopesForDeveloperClient. Public clients never.
 func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 	clientID := c.FormValue("client_id")
 	clientSecret := c.FormValue("client_secret")
@@ -172,9 +179,11 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
-	if oauthClient.IsPublic() || !oauthClient.FirstParty {
+	if oauthClient.IsPublic() {
 		return apierror.UnauthorizedClient(c.Path()).Send(c)
 	}
+	// The secret is verified before anything about scopes or owners is
+	// revealed, for first-party and developer-page clients alike.
 	ok, verifyErr := crypto.VerifyPassword(clientSecret, oauthClient.ClientSecretHash)
 	if verifyErr != nil {
 		return apierror.ServerError(c.Path()).WithCause(verifyErr).Send(c)
@@ -184,7 +193,16 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 	}
 
 	requested := strings.Fields(c.FormValue("scope"))
-	scp := oauthClient.FilterScopes(requested)
+	var scp []string
+	if oauthClient.FirstParty {
+		// Unchanged: first-party clients are clamped silently to what they hold.
+		scp = oauthClient.FilterScopes(requested)
+	} else {
+		var problem *apierror.Problem
+		if scp, problem = h.machineScopesForDeveloperClient(c, oauthClient, requested); problem != nil {
+			return problem.Send(c)
+		}
+	}
 	if len(scp) == 0 {
 		return apierror.InvalidScope(c.Path()).Send(c)
 	}
@@ -209,6 +227,39 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 		"expires_in":   accessTokenTTLSeconds,
 		"scope":        strings.Join(scp, " "),
 	})
+}
+
+// machineScopesForDeveloperClient decides client_credentials for a
+// confidential client that is not first-party (created on the developer
+// page). It refuses the whole request rather than issuing a subset:
+//   - the owner must be active (InternalService.Active, the rule the internal
+//     route reports);
+//   - every scope the client HOLDS must be an active public m2m scope. One
+//     sign-in scope means the client is a sign-in client, and it gets no
+//     machine token. internal:* scopes never qualify;
+//   - every scope REQUESTED must be held.
+func (h *TokenHandler) machineScopesForDeveloperClient(c fiber.Ctx, oc *oauthclient.OAuthClient, requested []string) ([]string, *apierror.Problem) {
+	active, err := h.clients.Active(c.Context(), oc)
+	if err != nil {
+		return nil, apierror.ServerError(c.Path()).WithCause(err)
+	}
+	if !active {
+		return nil, apierror.UnauthorizedClientBecause("The account that owns this client is not active.", c.Path())
+	}
+	bad, err := h.catalogSvc.ValidateMachineGrantable(c.Context(), oc.AllowedScopes)
+	if err != nil {
+		return nil, apierror.ServerError(c.Path()).WithCause(err)
+	}
+	if bad != "" {
+		return nil, apierror.UnauthorizedClientBecause(fmt.Sprintf(
+			"client_credentials requires every scope this client holds to be published for machine-to-machine use; %q is not. Use a separate client for user sign-in.", bad), c.Path())
+	}
+	for _, scope := range requested {
+		if !oc.HasScope(scope) {
+			return nil, apierror.InvalidScopeBecause(fmt.Sprintf("Scope %q is not granted to this client.", scope), c.Path())
+		}
+	}
+	return requested, nil
 }
 
 func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {

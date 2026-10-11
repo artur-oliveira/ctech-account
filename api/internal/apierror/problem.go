@@ -177,6 +177,12 @@ func InvalidScope(instance string) *Problem {
 		WithOAuth("invalid_scope", "no valid scopes requested")
 }
 
+// InvalidScopeBecause names the scope that made the request invalid.
+func InvalidScopeBecause(detail, instance string) *Problem {
+	return newProblem("invalid-scope", "Invalid Scope", http.StatusBadRequest, detail, instance).
+		WithOAuth("invalid_scope", detail)
+}
+
 func ServerError(instance string) *Problem {
 	return newProblem("server-error", "Internal Server Error", http.StatusInternalServerError,
 		"An unexpected error occurred. Please try again later.", instance)
@@ -287,9 +293,14 @@ func AgeRequirementNotMet(instance string) *Problem {
 
 // UnauthorizedClient → 403 with OAuth error code unauthorized_client (RFC 6749).
 func UnauthorizedClient(instance string) *Problem {
-	return newProblem("unauthorized-client", "Unauthorized Client", http.StatusForbidden,
-		"This client is not authorized to use this grant type.", instance).
-		WithOAuth("unauthorized_client", "This client is not authorized to use this grant type.")
+	return UnauthorizedClientBecause("This client is not authorized to use this grant type.", instance)
+}
+
+// UnauthorizedClientBecause is UnauthorizedClient with the specific reason: the
+// client authenticated, but may not use this grant as it is configured.
+func UnauthorizedClientBecause(detail, instance string) *Problem {
+	return newProblem("unauthorized-client", "Unauthorized Client", http.StatusForbidden, detail, instance).
+		WithOAuth("unauthorized_client", detail)
 }
 
 // EmailNotVerified is returned when credentials are valid but the account's email

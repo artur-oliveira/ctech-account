@@ -437,8 +437,14 @@ grant_type=client_credentials&client_id=...&client_secret=...&scope=internal:acc
 → { access_token (RS256, 15 min), scope, expires_in }   # no refresh token
 ```
 
-Public or third-party clients get `403 unauthorized_client`. The requested scope is
-clamped to the client's `allowed_scopes`. The token carries `sub = client_id` and an
+Public clients get `403 unauthorized_client`. A confidential **developer-page**
+client (not first-party) gets a token only when its owner's account is active
+**and** every scope it holds is published `"m2m": true` by its resource server
+(`docs/resource-server-scope-registry.md`). Otherwise the whole request is
+refused: `403 unauthorized_client` naming the held scope that is not m2m (or
+"owner not active"), or `400 invalid_scope` naming a requested scope the client
+does not hold. Such a client never receives an `internal:*` scope. First-party
+clients are clamped silently to their `allowed_scopes`, as before. The token carries `sub = client_id` and an
 **empty `sid`** — internal routes (`/v1.0/internal/*`) accept only tokens with an empty
 `sid` plus the required `internal:*` scope, so user tokens and API-key tokens (which
 always carry a `sid`) can never reach them.
