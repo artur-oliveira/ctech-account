@@ -6,6 +6,12 @@
 //	  -scopes internal:account:kyc
 //
 // The client secret is printed once after the DynamoDB write succeeds.
+//
+// With -grant it instead adds -scopes to an existing confidential first-party
+// M2M client, keeping its current scopes and secret (re-runnable):
+//
+//	AWS_REGION=... TABLE_PREFIX=prod go run ./cmd/createclient -grant \
+//	  -client-id <id> -scopes internal:account:oauth-client-read
 package main
 
 import (
@@ -37,10 +43,11 @@ type ssmParameterWriter interface {
 
 func main() {
 	clientID := flag.String("client-id", "", "stable OAuth client_id (required)")
-	name := flag.String("name", "", "human-readable client name (required)")
+	name := flag.String("name", "", "human-readable client name (required unless -grant)")
 	scopeList := flag.String("scopes", "", "comma-separated service scopes (required)")
 	ssmPathClient := flag.String("ssm-path-client", "", "optional SSM path for the client_id (String)")
 	ssmPathSecret := flag.String("ssm-path-secret", "", "optional SSM path for the client_secret (SecureString)")
+	grant := flag.Bool("grant", false, "add -scopes to the existing M2M client -client-id instead of creating one")
 	flag.Parse()
 
 	if flag.NArg() != 0 {
@@ -50,11 +57,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := oauthclient.ValidateM2MInput(*clientID, *name, requestedScopes); err != nil {
-		log.Fatalf("invalid arguments: %v", err)
-	}
-	if err := validateSSMPaths(*ssmPathClient, *ssmPathSecret); err != nil {
-		log.Fatalf("invalid arguments: %v", err)
+	if *grant {
+		if strings.TrimSpace(*clientID) == "" {
+			log.Fatal("invalid arguments: -client-id is required")
+		}
+		if err := validateGrantFlags(*name, *ssmPathClient, *ssmPathSecret); err != nil {
+			log.Fatalf("invalid arguments: %v", err)
+		}
+	} else {
+		if err := oauthclient.ValidateM2MInput(*clientID, *name, requestedScopes); err != nil {
+			log.Fatalf("invalid arguments: %v", err)
+		}
+		if err := validateSSMPaths(*ssmPathClient, *ssmPathSecret); err != nil {
+			log.Fatalf("invalid arguments: %v", err)
+		}
 	}
 
 	tablePrefix := os.Getenv("TABLE_PREFIX")
@@ -77,6 +93,15 @@ func main() {
 	}
 	catalog := scopes.NewCatalogService(scopes.NewRepository(db, tablePrefix), cacheClient)
 	service := oauthclient.NewOperatorService(oauthclient.NewRepository(db, tablePrefix), catalog)
+
+	if *grant {
+		_, added, err := service.GrantM2MScopes(ctx, *clientID, requestedScopes)
+		if err != nil {
+			log.Fatalf("granting scopes: %v", err)
+		}
+		fmt.Print(formatGrantResult(*clientID, added))
+		return
+	}
 
 	created, secret, err := service.CreateM2M(ctx, *clientID, *name, requestedScopes)
 	if err != nil {
@@ -169,4 +194,21 @@ func parseScopes(raw string) ([]string, error) {
 		result = append(result, scope)
 	}
 	return result, nil
+}
+
+// validateGrantFlags refuses the create-only flags in -grant mode: a grant
+// changes no name and issues no secret, so an SSM path there would be a
+// silent no-op an operator reads as "stored".
+func validateGrantFlags(name, ssmPathClient, ssmPathSecret string) error {
+	if name != "" || ssmPathClient != "" || ssmPathSecret != "" {
+		return fmt.Errorf("-grant takes only -client-id and -scopes")
+	}
+	return nil
+}
+
+func formatGrantResult(clientID string, added []string) string {
+	if len(added) == 0 {
+		return fmt.Sprintf("client_id: %s\nno change: every scope was already granted\n", clientID)
+	}
+	return fmt.Sprintf("client_id: %s\ngranted: %s\n", clientID, strings.Join(added, ","))
 }

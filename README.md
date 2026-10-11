@@ -404,6 +404,29 @@ the operator can recover a client that was already created. Token audiences are
 derived from the registered scopes' catalog entries rather than configured on the
 client.
 
+To add scopes to an **existing** M2M client (keeping its secret and current
+scopes), run the same command with `-grant`. It only adds, it writes nothing
+when every scope is already present (safe to re-run), and it refuses
+self-service clients and scope-registry publishers:
+
+```bash
+AWS_REGION=us-east-1 TABLE_PREFIX=prod go run ./cmd/createclient -grant \
+  -client-id <client_id> -scopes internal:account:oauth-client-read
+# client_id: <client_id>
+# granted: internal:account:oauth-client-read      (or: no change: every scope was already granted)
+```
+
+`-grant` takes only `-client-id` and `-scopes`. The scopes must already be in
+the runtime catalog: after a deploy that publishes a new scope, run it once the
+new revision has booted (log line `Account Resource Server ready (... changed=true ...)`).
+With `VALKEY_URL` set, also wait up to 5 minutes for the catalog cache to expire.
+Leave `VALKEY_URL` unset to read the table directly.
+
+**ctech-billing's client** (the id at `/ctech-billing/{env}/billing/account-client-id`)
+holds `internal:account:org-member`, `internal:account:user-organizations` and
+`internal:account:oauth-client-read`, granted per environment as in
+`docs/plans/2026-10-10-oauth-client-internal-route.md` § Deploy.
+
 ### Service-to-service tokens (`client_credentials`)
 
 First-party **confidential** clients (e.g. ctech-wallet) obtain machine tokens directly:
