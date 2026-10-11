@@ -77,14 +77,20 @@ func (s *Service) Register(ctx context.Context, orgID, actorUserID, actorName, r
 	return c, nil
 }
 
-// List returns an organization's companies, ordered by the name people read.
+// List returns an organization's companies, ordered by the name people read
+// and then by id, so two companies sharing a legal name (two branches of one
+// razão social) keep the same order on every read.
 func (s *Service) List(ctx context.Context, orgID string) ([]*Company, error) {
 	companies, err := s.repo.List(ctx, orgID)
 	if err != nil {
 		return nil, err
 	}
 	sort.Slice(companies, func(i, j int) bool {
-		return strings.ToLower(companies[i].LegalName) < strings.ToLower(companies[j].LegalName)
+		a, b := strings.ToLower(companies[i].LegalName), strings.ToLower(companies[j].LegalName)
+		if a != b {
+			return a < b
+		}
+		return companies[i].ID < companies[j].ID
 	})
 	return companies, nil
 }

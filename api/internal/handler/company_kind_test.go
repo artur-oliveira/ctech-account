@@ -45,6 +45,7 @@ func TestTheCompanyRoutesCarryTheOrganizationKind(t *testing.T) {
 	for _, path := range []string{
 		"/v1.0/internal/companies/" + real.ID + "/actors/" + ownerID,
 		"/v1.0/internal/organizations/" + orgID + "/companies/" + real.ID,
+		"/v1.0/internal/organizations/" + orgID + "/companies",
 	} {
 		resp := a.do(t, http.MethodGet, path, internal, "")
 		var body map[string]any

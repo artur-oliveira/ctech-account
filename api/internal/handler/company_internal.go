@@ -38,6 +38,66 @@ func (h *CompanyHandler) RegisterInternal(v1 fiber.Router, internalAuth ...fiber
 	// for nothing else.
 	identity := with(h.internalIdentity)
 	v1.Get("/internal/organizations/:organization_id/companies/:company_id", identity[0], identity[1:]...)
+	// The organization's companies, each with the identity above: what a
+	// product needs to offer a picker before it holds a company id
+	// (ctech-billing console self-service part 2, decision 1).
+	list := with(h.internalList)
+	v1.Get("/internal/organizations/:organization_id/companies", list[0], list[1:]...)
+}
+
+// internalCompanyDTO is one company of the internal list: the identity read's
+// company fields plus the id. The organization fields are hoisted to the
+// envelope, said once. No timestamps, no import provenance, no role.
+type internalCompanyDTO struct {
+	CompanyID string `json:"company_id"`
+	TaxID     string `json:"tax_id"`
+	TaxIDKind string `json:"tax_id_kind"`
+	LegalName string `json:"legal_name"`
+	TradeName string `json:"trade_name"`
+}
+
+// internalList lists an organization's companies, ordered by legal name then
+// id, at most InternalCompanyListLimit of them, truncated saying whether there
+// were more.
+//
+// An unknown organization is 404, as the identity read answers a pair that does
+// not resolve, and for the same reason: the caller was handed this id. An
+// organization with no companies is 200 with an empty list.
+func (h *CompanyHandler) internalList(c fiber.Ctx) error {
+	orgID := c.Params("organization_id")
+	if len(orgID) > maxInternalOrganizationIDLength {
+		// No organization has such an id; a key that long would only come
+		// back from DynamoDB as a validation error, read as a 500.
+		return apierror.NotFound("organization", c.Path()).Send(c)
+	}
+	kind, err := h.orgs.KindOf(c.Context(), orgID)
+	if errors.Is(err, organization.ErrNotFound) {
+		return apierror.NotFound("organization", c.Path()).Send(c)
+	}
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	companies, err := h.svc.List(c.Context(), orgID)
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	}
+	truncated := len(companies) > InternalCompanyListLimit
+	if truncated {
+		companies = companies[:InternalCompanyListLimit]
+	}
+	out := make([]internalCompanyDTO, 0, len(companies))
+	for _, item := range companies {
+		out = append(out, internalCompanyDTO{
+			CompanyID: item.ID, TaxID: item.TaxID, TaxIDKind: item.TaxIDKind,
+			LegalName: item.LegalName, TradeName: item.TradeName,
+		})
+	}
+	return c.JSON(fiber.Map{
+		"organization_id":   orgID,
+		"organization_kind": kind,
+		"companies":         out,
+		"truncated":         truncated,
+	})
 }
 
 // internalIdentity returns who a company IS: the tax id, its kind, the legal
@@ -107,3 +167,15 @@ func (h *CompanyHandler) internalReach(c fiber.Ctx) error {
 	// refuse a company in a space on its own (ctech-dfe spec 2026-10-09).
 	return c.JSON(fiber.Map{"may_act": true, "organization_id": orgID, "organization_kind": kind})
 }
+
+// InternalCompanyListLimit caps the internal company list. One organization's
+// page comes back in one answer: at most this many identities, a few hundred
+// bytes each, well under what a caller's body cap reads (ctech-billing caps at
+// 256 KiB). Every company is read and sorted first, so an accountant past it
+// gets the first InternalCompanyListLimit by legal name, and truncated.
+const InternalCompanyListLimit = 200
+
+// maxInternalOrganizationIDLength bounds the organization id the list accepts,
+// as the internal OAuth client route bounds a client id (128). Organization ids
+// are UUIDs (36 characters).
+const maxInternalOrganizationIDLength = 128

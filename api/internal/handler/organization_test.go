@@ -33,6 +33,8 @@ type memOrgRepo struct {
 	// listInvitationsErr fails ListInvitations, for the paths that must
 	// survive one unreadable workspace.
 	listInvitationsErr error
+	// getErr fails Get, for the paths that must answer without reading.
+	getErr error
 }
 
 func newMemOrgRepo() *memOrgRepo {
@@ -58,6 +60,9 @@ func (m *memOrgRepo) CreateWithOwner(_ context.Context, org *orgDomain.Organizat
 }
 
 func (m *memOrgRepo) Get(_ context.Context, id string) (*orgDomain.Organization, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	org, ok := m.orgs[id]
 	if !ok {
 		return nil, orgDomain.ErrNotFound

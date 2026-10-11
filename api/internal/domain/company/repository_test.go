@@ -1,8 +1,12 @@
 package company
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"gopkg.aoctech.app/account/api/internal/database"
 )
 
 func TestKeysNamespaceTheThreeRowKinds(t *testing.T) {
@@ -49,5 +53,41 @@ func TestActorIDsAreRecoveredFromTheSortKey(t *testing.T) {
 	companyID, userID := actorIDsFromSK(actorSK("cmp_1", "usr#odd"))
 	if companyID != "cmp_1" || userID != "usr#odd" {
 		t.Errorf("got %q %q, want cmp_1 usr#odd", companyID, userID)
+	}
+}
+
+// An organization past one Query page (an accountant's hundreds of CNPJs, or a
+// 1 MB page) must come back whole: the list is sorted by name afterwards, and
+// sorting a first page by id would hand out an arbitrary subset.
+func TestListCompaniesReadsEveryPage(t *testing.T) {
+	page := func(ids ...string) []map[string]types.AttributeValue {
+		out := make([]map[string]types.AttributeValue, 0, len(ids))
+		for _, id := range ids {
+			out = append(out, map[string]types.AttributeValue{
+				"pk":         &types.AttributeValueMemberS{Value: orgPK("org_1")},
+				"sk":         &types.AttributeValueMemberS{Value: companySK(id)},
+				"legal_name": &types.AttributeValueMemberS{Value: "Empresa " + id},
+			})
+		}
+		return out
+	}
+	pages := []*database.QueryResult{
+		{Items: page("cmp_1", "cmp_2"), LastEvaluatedKey: map[string]types.AttributeValue{"sk": &types.AttributeValueMemberS{Value: companySK("cmp_2")}}},
+		{Items: page("cmp_3")},
+	}
+	var calls []database.QueryOpts
+	query := func(_ context.Context, opts database.QueryOpts) (*database.QueryResult, error) {
+		calls = append(calls, opts)
+		return pages[len(calls)-1], nil
+	}
+	got, err := listCompanies(context.Background(), query, "org_1")
+	if err != nil {
+		t.Fatalf("listCompanies: %v", err)
+	}
+	if len(got) != 3 || got[2].ID != "cmp_3" || got[0].OrganizationID != "org_1" {
+		t.Fatalf("got %d companies (%+v), want all three pages' worth", len(got), got)
+	}
+	if len(calls) != 2 || calls[1].ExclusiveStartKey == nil || calls[0].PK != orgPK("org_1") || calls[0].SKPrefix != companySKPrefix {
+		t.Fatalf("calls = %+v, want a second call from the first page's key", calls)
 	}
 }
