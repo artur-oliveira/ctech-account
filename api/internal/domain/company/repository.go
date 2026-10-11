@@ -175,19 +175,40 @@ func unmarshalCompany(item map[string]types.AttributeValue) (*Company, error) {
 }
 
 func (r *repo) List(ctx context.Context, orgID string) ([]*Company, error) {
-	res, err := r.companies.Query(ctx, database.QueryOpts{
-		PK: orgPK(orgID), SKPrefix: companySKPrefix, Limit: 500,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("listing companies: %w", err)
-	}
-	out := make([]*Company, 0, len(res.Items))
-	for _, item := range res.Items {
-		c, err := unmarshalCompany(item)
+	return listCompanies(ctx, r.companies.Query, orgID)
+}
+
+// listCompanyPageSize is one Query page of company rows. The loop below reads
+// every page: callers sort the whole list by name, and sorting one page (which
+// DynamoDB returns in id order) would hand out an arbitrary subset.
+const listCompanyPageSize = 500
+
+// listCompanies reads every company row of one organization, page by page. Only
+// the COMPANY# rows of the partition are read (a key condition, not a filter).
+func listCompanies(ctx context.Context, query func(context.Context, database.QueryOpts) (*database.QueryResult, error), orgID string) ([]*Company, error) {
+	var out []*Company
+	var start map[string]types.AttributeValue
+	for {
+		res, err := query(ctx, database.QueryOpts{
+			PK: orgPK(orgID), SKPrefix: companySKPrefix, Limit: listCompanyPageSize, ExclusiveStartKey: start,
+		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("listing companies: %w", err)
 		}
-		out = append(out, c)
+		for _, item := range res.Items {
+			c, err := unmarshalCompany(item)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, c)
+		}
+		if len(res.LastEvaluatedKey) == 0 {
+			break
+		}
+		start = res.LastEvaluatedKey
+	}
+	if out == nil {
+		out = []*Company{}
 	}
 	return out, nil
 }

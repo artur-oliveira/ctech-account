@@ -65,6 +65,11 @@ type internalCompanyDTO struct {
 // organization with no companies is 200 with an empty list.
 func (h *CompanyHandler) internalList(c fiber.Ctx) error {
 	orgID := c.Params("organization_id")
+	if len(orgID) > maxInternalOrganizationIDLength {
+		// No organization has such an id; a key that long would only come
+		// back from DynamoDB as a validation error, read as a 500.
+		return apierror.NotFound("organization", c.Path()).Send(c)
+	}
 	kind, err := h.orgs.KindOf(c.Context(), orgID)
 	if errors.Is(err, organization.ErrNotFound) {
 		return apierror.NotFound("organization", c.Path()).Send(c)
@@ -166,5 +171,11 @@ func (h *CompanyHandler) internalReach(c fiber.Ctx) error {
 // InternalCompanyListLimit caps the internal company list. One organization's
 // page comes back in one answer: at most this many identities, a few hundred
 // bytes each, well under what a caller's body cap reads (ctech-billing caps at
-// 256 KiB). An accountant past it gets the first page by name and truncated.
+// 256 KiB). Every company is read and sorted first, so an accountant past it
+// gets the first InternalCompanyListLimit by legal name, and truncated.
 const InternalCompanyListLimit = 200
+
+// maxInternalOrganizationIDLength bounds the organization id the list accepts,
+// as the internal OAuth client route bounds a client id (128). Organization ids
+// are UUIDs (36 characters).
+const maxInternalOrganizationIDLength = 128

@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -147,5 +148,32 @@ func TestTheInternalCompanyListIsCapped(t *testing.T) {
 	}
 	if body.Companies[0]["company_id"] != "cmp_0000" {
 		t.Fatalf("first = %v, want the first by name", body.Companies[0]["company_id"])
+	}
+}
+
+// Billing holds several internal scopes; holding a different one is not this
+// grant. And no token at all is 401, not a list.
+func TestTheInternalCompanyListRefusesAnotherScopeAndNoToken(t *testing.T) {
+	a := newInternalReachApp(t)
+	orgID, _, _ := a.seedOrg(t, "list-otherscope@example.com")
+	other := a.issueServiceToken(t, []string{scopes.InternalAccountOrgMember})
+	if resp := a.do(t, http.MethodGet, listCompaniesPath(orgID), other, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("another internal scope: status = %d, want 403", resp.StatusCode)
+	}
+	if resp := a.do(t, http.MethodGet, listCompaniesPath(orgID), "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token: status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// An id no organization could have is 404 without a database read, as the
+// internal OAuth client route answers one: a key past DynamoDB's limit would
+// otherwise surface as a 500.
+func TestAnOverlongOrganizationIDIsNotFoundOnTheList(t *testing.T) {
+	a := newInternalReachApp(t)
+	internal := a.issueServiceToken(t, []string{scopes.InternalAccountCompanyActor})
+	a.orgRepo.getErr = errors.New("must not be read")
+	resp := a.do(t, http.MethodGet, listCompaniesPath(strings.Repeat("o", 129)), internal, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (%s)", resp.StatusCode, bodyString(resp))
 	}
 }

@@ -423,11 +423,13 @@ Returns `200 { organization_id, organization_kind, companies: [{ company_id,
 tax_id, tax_id_kind, legal_name, trade_name }], truncated }` — the identity read's
 company fields per item (`trade_name` is `""` when absent), the organization
 fields once in the envelope. Ordered by legal name (case-insensitive), then
-`company_id`. Capped at **200** companies (`handler.InternalCompanyListLimit`):
-past it the first 200 by name come back and `truncated` is `true`. No
-pagination cursor. An organization with no companies → `200` with
-`companies: []`; an organization that does not exist → `404` problem (as the
-identity read answers an unresolved pair). Timestamps, import provenance
+`company_id`. Every company row is read (the repository follows DynamoDB
+pages) and sorted before the cap: capped at **200** companies
+(`handler.InternalCompanyListLimit`), past it the first 200 by name come back
+and `truncated` is `true`. No pagination cursor. An organization with no
+companies → `200` with `companies: []`; an organization that does not exist, or
+an id over 128 characters (no database read), → `404` problem (as the identity
+read answers an unresolved pair). Timestamps, import provenance
 (`source_system`/`source_ref`), actors and any role are never returned.
 
 ---

@@ -20,11 +20,12 @@ case "$ENV" in dev | stage | prod) ;; *)
   exit 2
   ;;
 esac
-case "$SCOPE" in internal:account:*) ;; *)
-  echo "not an internal account scope: $SCOPE" >&2
+# Exactly one scope: createclient -scopes splits on commas, so a list here would
+# grant more than this runner says it does.
+if [[ ! "$SCOPE" =~ ^internal:account:[a-z][a-z-]*$ ]]; then
+  echo "not exactly one internal account scope: $SCOPE" >&2
   exit 2
-  ;;
-esac
+fi
 
 REGION=us-east-1
 PARAM="/ctech-billing/$ENV/billing/account-client-id"
