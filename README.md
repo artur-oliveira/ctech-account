@@ -129,6 +129,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/account/kyc/enhanced`                        | `account:kyc:write` + step-up           | Finalizes an Enhanced submission once all 3 documents are uploaded → `enhanced/pending`                                                                                                             |
 | `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation)                                                                                                         |
 | `GET`    | `/v1.0/internal/organizations/:organization_id/members/:user_id` | Service token (`internal:account:org-member`) | Whether the person belongs to the organization: `200 {"member":true,"role":"admin"}`, or `200 {"member":false}` for a non-member **and** for an organization that does not exist (identical on purpose: no probe for which ids are real). The role is read from the membership row on every call, never from a token; the caller caches it. First consumer: ctech-billing finance spaces (billing ADR 0025). |
+| `GET`    | `/v1.0/internal/organizations/:organization_id/companies` | Service token (`internal:account:company-actor`) | The organization's companies for a product's company picker: `200 {"organization_id","organization_kind","companies":[{"company_id","tax_id","tax_id_kind","legal_name","trade_name"}],"truncated":false}`, the same company fields as the identity read `GET /v1.0/internal/organizations/:organization_id/companies/:company_id`. Ordered by legal name, then `company_id`; at most 200 (`truncated: true` past that, no cursor). No companies → `companies: []`; unknown organization → `404`. Never timestamps, import provenance, actors or roles. First consumer: ctech-billing console self-service part 2 (merchant application). |
 | `GET`    | `/v1.0/internal/users/:user_id/organizations` | Service token (`internal:account:user-organizations`) | The organizations the person belongs to with their role in each: `200 {"organizations":[{"id","display_name","role"}]}`; an unknown user is an empty list, not a 404. It is how a product builds a space switcher, because `GET /v1.0/organizations` is first-party-only (`RequireClientID`). Information only: the product still resolves every request through the membership route. Owned `personal` entries also carry `people` (members, owner excluded) and `pending_invitations` (unexpired), for ctech-billing's plan screen. Its own scope, not `org-member`: enumerating every workspace of any user is a wider grant than checking one membership. |
 | `GET`    | `/v1.0/internal/oauth-clients/:client_id` | Service token (`internal:account:oauth-client-read`) | One OAuth client for a product that must know who owns it: `200 {"client_id","owner_user_id","allowed_scopes","active"}` — never the secret, redirect URIs, audience or first-party status. `active` is derived (there is no status field): the client is confidential with a secret **and** its owner is `system` or an account that is enabled and not locked by a deletion request. Unknown client (or an id longer than 128 characters) → `404`. First consumer: ctech-billing, which admits a merchant's client as an API credential only when the person connecting it is `owner_user_id` (billing console self-service spec § 6.3). |
 | `GET`    | `/v1.0/organizations/:id/plan-usage` | First-party, owner of a space | The people page's counter: `200 {"people","pending_invitations","limit","plan"}` (`limit` −1 = unlimited); 404 on an organization; 503 `plan_unavailable` when billing cannot be read. |
@@ -423,12 +424,16 @@ With `VALKEY_URL` set, also wait up to 5 minutes for the catalog cache to expire
 Leave `VALKEY_URL` unset to read the table directly.
 
 **ctech-billing's client** (the id at `/ctech-billing/{env}/billing/account-client-id`)
-holds `internal:account:org-member`, `internal:account:user-organizations` and
-`internal:account:oauth-client-read`, granted per environment as in
+holds `internal:account:org-member`, `internal:account:user-organizations`,
+`internal:account:oauth-client-read` and `internal:account:company-actor` (the
+company list and identity reads for the merchant application, billing console
+self-service part 2), granted per environment as in
 `docs/plans/2026-10-10-oauth-client-internal-route.md` § Deploy. The runner
-`api/cmd/createclient/grant-billing-oauth-client-read.sh <env>` (with `AWS_PROFILE`
-set) does steps 2-3 of that runbook: it reads the client id from SSM, runs the
-grant and prints the client's `allowed_scopes`. It never reads a secret.
+`api/cmd/createclient/grant-billing-scope.sh <env> <scope>` (with `AWS_PROFILE`
+set) does steps 2-3 of that runbook for any internal scope: it reads the client id
+from SSM, runs the grant and prints the client's `allowed_scopes`. It never reads a
+secret. `grant-billing-oauth-client-read.sh <env>` is that runner with the scope
+fixed to `internal:account:oauth-client-read`.
 
 ### Service-to-service tokens (`client_credentials`)
 

@@ -335,3 +335,24 @@ func TestReachOfOnAnUnknownCompanyLooksLikeARefusal(t *testing.T) {
 			unknownOrg, unknownOK, unknownErr, refusedOrg, refusedOK, refusedErr)
 	}
 }
+
+// Two companies with the same legal name (an accountant holding two branches of
+// one razão social) must come back in the same order every time, or a picker
+// built on the list reshuffles between reads. The id breaks the tie.
+func TestListBreaksANameTieByID(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+	for _, id := range []string{"cmp_c", "cmp_a", "cmp_b"} {
+		_ = repo.Create(ctx, &Company{OrganizationID: "org_1", ID: id, TaxID: id, TaxIDKind: KindCNPJ, LegalName: "Acme LTDA"}, nil)
+	}
+	for range 20 {
+		companies, err := svc.List(ctx, "org_1")
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		got := []string{companies[0].ID, companies[1].ID, companies[2].ID}
+		if got[0] != "cmp_a" || got[1] != "cmp_b" || got[2] != "cmp_c" {
+			t.Fatalf("order = %v, want by id within one name", got)
+		}
+	}
+}

@@ -413,6 +413,23 @@ or an existing, enabled account with no `deletion_state`
 128 characters → `404` problem (the last without a DynamoDB read). The secret hash,
 redirect URIs, audience, `first_party` and `managed_resource_id` are never returned.
 
+## Internal — `GET /v1.0/internal/organizations/:organization_id/companies`  *(M2M; `RequireAuth` + `RequireInternalScope(internal:account:company-actor)`)*
+Service-to-service list of an organization's companies, used by **ctech-billing**
+for the merchant application's company picker (console self-service part 2,
+decision 1) (`company_internal.go` `internalList`). Same scope and guard as its
+siblings `GET /v1.0/internal/organizations/:organization_id/companies/:company_id`
+(identity) and `GET /v1.0/internal/companies/:company_id/actors/:user_id` (reach).
+Returns `200 { organization_id, organization_kind, companies: [{ company_id,
+tax_id, tax_id_kind, legal_name, trade_name }], truncated }` — the identity read's
+company fields per item (`trade_name` is `""` when absent), the organization
+fields once in the envelope. Ordered by legal name (case-insensitive), then
+`company_id`. Capped at **200** companies (`handler.InternalCompanyListLimit`):
+past it the first 200 by name come back and `truncated` is `true`. No
+pagination cursor. An organization with no companies → `200` with
+`companies: []`; an organization that does not exist → `404` problem (as the
+identity read answers an unresolved pair). Timestamps, import provenance
+(`source_system`/`source_ref`), actors and any role are never returned.
+
 ---
 
 ## Known implementation note
