@@ -80,6 +80,15 @@ const InternalAccountOrgMember = "internal:account:org-member"
 // authorize a request must not also be able to enumerate.
 const InternalAccountUserOrganizations = "internal:account:user-organizations"
 
+// InternalAccountOAuthClientRead lets a product read one OAuth client's owner,
+// granted scopes and whether it is active, never its secret, so it can check
+// that the person connecting a client to the product owns it (ctech-billing
+// console self-service spec § 6.3, D5).
+//
+// Its own scope: reading any client by id is not a membership question, and a
+// client that resolves memberships must not gain it by sharing a grant.
+const InternalAccountOAuthClientRead = "internal:account:oauth-client-read"
+
 // InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
 // publisher to reconcile the scope manifest bound to its OAuth client. It is
 // an Account-owned root permission and therefore remains in the built-in
