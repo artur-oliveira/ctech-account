@@ -343,6 +343,7 @@
       "redirectURIs": "Redirect URIs",
       "redirectURIsHint": "Uma ou mais URLs de retorno, separadas por espaços. Use HTTPS; HTTP só é permitido para localhost durante o desenvolvimento.",
       "redirectURIsError": "Informe ao menos uma URL de retorno HTTPS completa. HTTP só é permitido para localhost.",
+      "prefillHint": "Escopos sugeridos pelo produto que trouxe você aqui. Para acesso de máquina, mantenha só esses escopos e escolha o tipo confidencial.",
       "scopes": "Escopos permitidos",
       "scopesHint": "Selecione quais dados e ações a aplicação poderá solicitar.",
       "audience": "Audience (opcional)",

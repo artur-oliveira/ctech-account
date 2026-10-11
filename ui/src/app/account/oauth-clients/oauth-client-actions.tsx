@@ -27,6 +27,7 @@ import {
 import { isAxiosError } from '@/lib/axios'
 import { ScopePicker } from '@/components/scope-picker'
 import type { OAuthClient } from '@/lib/types'
+import type { ClientPrefill } from './prefill'
 import { toast } from 'sonner'
 import { Plus, Copy, RefreshCw, Trash2, Pencil } from 'lucide-react'
 
@@ -137,11 +138,11 @@ function ClientFormFields({
   )
 }
 
-export function CreateOAuthClientDialog() {
+export function CreateOAuthClientDialog({ prefill, onClosed }: { prefill?: ClientPrefill; onClosed?: () => void } = {}) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(prefill?.open ?? false)
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
-  const [scopes, setScopes] = useState<string[]>(DEFAULT_CLIENT_SCOPES)
+  const [scopes, setScopes] = useState<string[]>(prefill?.scopes ?? DEFAULT_CLIENT_SCOPES)
   const [validationError, setValidationError] = useState('')
   const queryClient = useQueryClient()
 
@@ -182,6 +183,7 @@ export function CreateOAuthClientDialog() {
     setCreatedSecret(null)
     setScopes(DEFAULT_CLIENT_SCOPES)
     reset()
+    onClosed?.()
   }
 
   return (
@@ -204,6 +206,11 @@ export function CreateOAuthClientDialog() {
           <SecretReveal secret={createdSecret} onDone={handleClose} />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {prefill?.scopes && (
+              <Alert>
+                <AlertDescription className="text-xs">{t('oauthClients.dialog.prefillHint')}</AlertDescription>
+              </Alert>
+            )}
             <ClientFormFields scopes={scopes} onScopesChange={setScopes} />
             {validationError && <Alert variant="destructive"><AlertDescription>{validationError}</AlertDescription></Alert>}
             <fieldset className="space-y-2 border-0">

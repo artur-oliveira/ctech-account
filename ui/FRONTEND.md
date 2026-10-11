@@ -32,6 +32,13 @@ Top-level:
 - `/account/*` — **guarded** account hub: `profile`, `security` (+`security/totp`,
   `security/passkeys`), `sessions`, `api-keys`, `oauth-clients`,
   `connected-apps`, `activity`, `identity` (KYC).
+- `/account/oauth-clients?new=1&scopes=a,b,c` is a cross-repo link contract (first caller:
+  ctech-billing's console credentials page). `new=1` opens the "new client" dialog; `scopes` replaces
+  the default `openid profile email` with exactly the listed scopes, keeping only scope-shaped tokens
+  (`resource:…`, so identity scopes cannot be injected), deduplicated, at most 32
+  (`app/account/oauth-clients/prefill.ts`). The server re-validates every scope on create, so the link
+  is a convenience, never authority. Closing the dialog `router.replace`s the bare path, so reopening
+  starts from the defaults and Back does not reopen it.
 - Static/legal: `/terms`, `/terms/v1`, `/terms/v2`, `/privacy`, `/privacy/v1`,
   `/privacy/v2`, `/cookies`, `/legal`, `/kyc-policy`, `/data-processing`,
   `/security-policy`, `/acceptable-use`, `/responsible-disclosure`,
