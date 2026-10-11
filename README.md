@@ -425,7 +425,10 @@ Leave `VALKEY_URL` unset to read the table directly.
 **ctech-billing's client** (the id at `/ctech-billing/{env}/billing/account-client-id`)
 holds `internal:account:org-member`, `internal:account:user-organizations` and
 `internal:account:oauth-client-read`, granted per environment as in
-`docs/plans/2026-10-10-oauth-client-internal-route.md` § Deploy.
+`docs/plans/2026-10-10-oauth-client-internal-route.md` § Deploy. The runner
+`api/cmd/createclient/grant-billing-oauth-client-read.sh <env>` (with `AWS_PROFILE`
+set) does steps 2-3 of that runbook: it reads the client id from SSM, runs the
+grant and prints the client's `allowed_scopes`. It never reads a secret.
 
 ### Service-to-service tokens (`client_credentials`)
 
