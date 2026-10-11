@@ -130,6 +130,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `GET`    | `/v1.0/internal/kyc/:user_id`                       | Service token (`internal:account:kyc`) | Full unmasked identity record incl. `phone_number` (ctech-wallet withdrawal-key validation)                                                                                                         |
 | `GET`    | `/v1.0/internal/organizations/:organization_id/members/:user_id` | Service token (`internal:account:org-member`) | Whether the person belongs to the organization: `200 {"member":true,"role":"admin"}`, or `200 {"member":false}` for a non-member **and** for an organization that does not exist (identical on purpose: no probe for which ids are real). The role is read from the membership row on every call, never from a token; the caller caches it. First consumer: ctech-billing finance spaces (billing ADR 0025). |
 | `GET`    | `/v1.0/internal/users/:user_id/organizations` | Service token (`internal:account:user-organizations`) | The organizations the person belongs to with their role in each: `200 {"organizations":[{"id","display_name","role"}]}`; an unknown user is an empty list, not a 404. It is how a product builds a space switcher, because `GET /v1.0/organizations` is first-party-only (`RequireClientID`). Information only: the product still resolves every request through the membership route. Owned `personal` entries also carry `people` (members, owner excluded) and `pending_invitations` (unexpired), for ctech-billing's plan screen. Its own scope, not `org-member`: enumerating every workspace of any user is a wider grant than checking one membership. |
+| `GET`    | `/v1.0/internal/oauth-clients/:client_id` | Service token (`internal:account:oauth-client-read`) | One OAuth client for a product that must know who owns it: `200 {"client_id","owner_user_id","allowed_scopes","active"}` — never the secret, redirect URIs, audience or first-party status. `active` is derived (there is no status field): the client is confidential with a secret **and** its owner is `system` or an account that is enabled and not locked by a deletion request. Unknown client (or an id longer than 128 characters) → `404`. First consumer: ctech-billing, which admits a merchant's client as an API credential only when the person connecting it is `owner_user_id` (billing console self-service spec § 6.3). |
 | `GET`    | `/v1.0/organizations/:id/plan-usage` | First-party, owner of a space | The people page's counter: `200 {"people","pending_invitations","limit","plan"}` (`limit` −1 = unlimited); 404 on an organization; 503 `plan_unavailable` when billing cannot be read. |
 | `GET`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token                  | Current manifest and revision ETag                                                                                                                                                                  |
 | `PUT`    | `/v1.0/internal/resource-servers/:id/manifest`      | Bound publisher token + `If-Match`     | Idempotently reconcile the service-owned scope manifest                                                                                                                                             |
@@ -403,6 +404,32 @@ the operator can recover a client that was already created. Token audiences are
 derived from the registered scopes' catalog entries rather than configured on the
 client.
 
+To add scopes to an **existing** M2M client (keeping its secret and current
+scopes), run the same command with `-grant`. It only adds, it writes nothing
+when every scope is already present (safe to re-run), and it refuses
+self-service clients and scope-registry publishers:
+
+```bash
+AWS_REGION=us-east-1 TABLE_PREFIX=prod go run ./cmd/createclient -grant \
+  -client-id <client_id> -scopes internal:account:oauth-client-read
+# client_id: <client_id>
+# granted: internal:account:oauth-client-read      (or: no change: every scope was already granted)
+```
+
+`-grant` takes only `-client-id` and `-scopes`. The scopes must already be in
+the runtime catalog: after a deploy that publishes a new scope, run it once the
+new revision has booted (log line `Account Resource Server ready (... changed=true ...)`).
+With `VALKEY_URL` set, also wait up to 5 minutes for the catalog cache to expire.
+Leave `VALKEY_URL` unset to read the table directly.
+
+**ctech-billing's client** (the id at `/ctech-billing/{env}/billing/account-client-id`)
+holds `internal:account:org-member`, `internal:account:user-organizations` and
+`internal:account:oauth-client-read`, granted per environment as in
+`docs/plans/2026-10-10-oauth-client-internal-route.md` § Deploy. The runner
+`api/cmd/createclient/grant-billing-oauth-client-read.sh <env>` (with `AWS_PROFILE`
+set) does steps 2-3 of that runbook: it reads the client id from SSM, runs the
+grant and prints the client's `allowed_scopes`. It never reads a secret.
+
 ### Service-to-service tokens (`client_credentials`)
 
 First-party **confidential** clients (e.g. ctech-wallet) obtain machine tokens directly:
@@ -413,8 +440,14 @@ grant_type=client_credentials&client_id=...&client_secret=...&scope=internal:acc
 → { access_token (RS256, 15 min), scope, expires_in }   # no refresh token
 ```
 
-Public or third-party clients get `403 unauthorized_client`. The requested scope is
-clamped to the client's `allowed_scopes`. The token carries `sub = client_id` and an
+Public clients get `403 unauthorized_client`. A confidential **developer-page**
+client (not first-party) gets a token only when its owner's account is active
+**and** every scope it holds is published `"m2m": true` by its resource server
+(`docs/resource-server-scope-registry.md`). Otherwise the whole request is
+refused: `403 unauthorized_client` naming the held scope that is not m2m (or
+"owner not active"), or `400 invalid_scope` naming a requested scope the client
+does not hold. Such a client never receives an `internal:*` scope. First-party
+clients are clamped silently to their `allowed_scopes`, as before. The token carries `sub = client_id` and an
 **empty `sid`** — internal routes (`/v1.0/internal/*`) accept only tokens with an empty
 `sid` plus the required `internal:*` scope, so user tokens and API-key tokens (which
 always carry a `sid`) can never reach them.

@@ -28,6 +28,8 @@ var (
 	ErrScopesRequired      = errors.New("at least one scope is required")
 	ErrOIDCScopeForM2M     = errors.New("OIDC identity scopes are not valid for machine-to-machine clients")
 	ErrDuplicateScope      = errors.New("duplicate scope")
+	ErrNotM2MClient        = errors.New("client is not a confidential first-party machine-to-machine client")
+	ErrPublisherClient     = errors.New("a scope-registry publisher is bound to its single scope and cannot be granted others")
 )
 
 // OperatorScopeCatalog exposes the complete runtime catalog, including
@@ -60,10 +62,15 @@ func ValidateM2MInput(clientID, name string, allowedScopes []string) error {
 	if name == "" || len(name) > maxOperatorClientNameLen {
 		return ErrInvalidClientName
 	}
+	return validateM2MScopes(allowedScopes)
+}
+
+// validateM2MScopes is the scope half of ValidateM2MInput, shared with
+// GrantM2MScopes: grammar, no OIDC identity scopes, no duplicates.
+func validateM2MScopes(allowedScopes []string) error {
 	if len(allowedScopes) == 0 {
 		return ErrScopesRequired
 	}
-
 	seen := make(map[string]struct{}, len(allowedScopes))
 	for _, scope := range allowedScopes {
 		if !scopes.IsValid(scope) {
@@ -231,20 +238,8 @@ func (s *OperatorService) createM2M(ctx context.Context, clientID, name string, 
 		return nil, "", err
 	}
 
-	catalog, err := s.catalog.Catalog(ctx)
-	if err != nil {
-		return nil, "", fmt.Errorf("consulting scope catalog: %w", err)
-	}
-	registered := make(map[string]struct{})
-	for _, service := range catalog {
-		for _, entry := range service.Scopes {
-			registered[entry.Scope] = struct{}{}
-		}
-	}
-	for _, scope := range allowedScopes {
-		if _, ok := registered[scope]; !ok {
-			return nil, "", ErrInvalidScope{Scope: scope}
-		}
+	if err := s.requireRegistered(ctx, allowedScopes); err != nil {
+		return nil, "", err
 	}
 
 	if _, err := s.repo.GetByID(ctx, clientID); err == nil {
@@ -277,4 +272,72 @@ func (s *OperatorService) createM2M(ctx context.Context, clientID, name string, 
 		return nil, "", fmt.Errorf("persisting client: %w", err)
 	}
 	return client, rawSecret, nil
+}
+
+// requireRegistered refuses any scope that is not in the runtime catalog,
+// internal ones included (operator paths may grant them; self-service never can).
+func (s *OperatorService) requireRegistered(ctx context.Context, requested []string) error {
+	catalog, err := s.catalog.Catalog(ctx)
+	if err != nil {
+		return fmt.Errorf("consulting scope catalog: %w", err)
+	}
+	registered := make(map[string]struct{})
+	for _, service := range catalog {
+		for _, entry := range service.Scopes {
+			registered[entry.Scope] = struct{}{}
+		}
+	}
+	for _, scope := range requested {
+		if _, ok := registered[scope]; !ok {
+			return ErrInvalidScope{Scope: scope}
+		}
+	}
+	return nil
+}
+
+// GrantM2MScopes adds scopes to an existing confidential first-party M2M
+// client and returns the scopes it actually added, in request order. It only
+// adds: existing grants are kept and nothing is removed. A call that adds
+// nothing writes nothing, so a runbook can re-run it.
+//
+// A self-service client is refused (ErrNotM2MClient): granting one an
+// internal scope would hand a third party a service-to-service grant. A
+// scope-registry publisher is refused (ErrPublisherClient): it is bound to
+// exactly one permission by design (CreateResourcePublisher).
+func (s *OperatorService) GrantM2MScopes(ctx context.Context, clientID string, scopesToAdd []string) (*OAuthClient, []string, error) {
+	clientID = strings.TrimSpace(clientID)
+	if err := validateM2MScopes(scopesToAdd); err != nil {
+		return nil, nil, err
+	}
+	if err := s.requireRegistered(ctx, scopesToAdd); err != nil {
+		return nil, nil, err
+	}
+
+	client, err := s.repo.GetByID(ctx, clientID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading client %q: %w", clientID, err)
+	}
+	if client.IsPublic() || !client.FirstParty {
+		return nil, nil, ErrNotM2MClient
+	}
+	if client.ManagedResourceID != "" {
+		return nil, nil, ErrPublisherClient
+	}
+
+	allowed := append([]string(nil), client.AllowedScopes...)
+	var added []string
+	for _, scope := range scopesToAdd {
+		if !slices.Contains(allowed, scope) {
+			allowed = append(allowed, scope)
+			added = append(added, scope)
+		}
+	}
+	if len(added) == 0 {
+		return client, nil, nil
+	}
+	if err := s.repo.Update(ctx, clientID, map[string]any{"allowed_scopes": allowed}); err != nil {
+		return nil, nil, fmt.Errorf("updating client scopes: %w", err)
+	}
+	client.AllowedScopes = allowed
+	return client, added, nil
 }

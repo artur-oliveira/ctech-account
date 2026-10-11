@@ -212,6 +212,17 @@ Spec: `docs/specs/2026-10-10-space-plan-limits.md`. Plan: `docs/plans/2026-10-10
 - [x] Counts on the internal user-organizations route
 - [x] Deploy: `account-billing` client registered (2026-10-10); `PLAN_LIMITS=on` in the infra workflow after ctech-billing's seed
 
+## Internal OAuth client route (ctech-billing console self-service)
+
+Spec: `ctech-billing/docs/specs/2026-10-10-console-self-service.md` § 6.3. Plan: `docs/plans/2026-10-10-oauth-client-internal-route.md`.
+
+- [ ] Scope `internal:account:oauth-client-read` in the Account manifest
+- [ ] `GET /v1.0/internal/oauth-clients/:client_id` → `{client_id, owner_user_id, allowed_scopes, active}`, unknown → 404
+- [ ] `createclient -grant` (add scopes to an existing M2M client)
+- [ ] Deploy: scope granted to billing's client in dev, stage, prod
+- [ ] `m2m` scope marker in the manifest; `client_credentials` for developer-page clients holding only `m2m` scopes with an active owner (first-party unchanged)
+- [ ] ctech-billing marks its integration scopes `m2m` (billing part 3 plan), after this deploy
+
 ## Pending Decisions
 
 | Decision                         | Options                                              | Status                                         |

@@ -163,6 +163,22 @@ func (s *Service) GetByID(ctx context.Context, userID string) (*User, error) {
 	return s.repo.GetByID(ctx, userID)
 }
 
+// IsActive reports whether the account can still be acted for: it exists, is
+// enabled and is not locked by a deletion request. These are the same gates
+// Login applies after the password. An unknown user is (false, nil), never an
+// error: the caller holds an owner id read from another row, and a missing
+// owner is an answer, not an outage.
+func (s *Service) IsActive(ctx context.Context, userID string) (bool, error) {
+	u, err := s.repo.GetByID(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("loading user: %w", err)
+	}
+	return u.IsEnabled && u.DeletionState == "", nil
+}
+
 func (s *Service) GetByEmail(ctx context.Context, email string) (*User, error) {
 	return s.repo.GetByEmail(ctx, email)
 }

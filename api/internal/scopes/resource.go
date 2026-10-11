@@ -42,6 +42,11 @@ type ScopeDefinition struct {
 	DescriptionPT string            `json:"description_pt,omitempty" dynamodbav:"description_pt"`
 	Visibility    string            `json:"visibility"            dynamodbav:"visibility"`
 	Status        string            `json:"status"                dynamodbav:"status"`
+	// M2M marks a public scope the resource server accepts from machine
+	// clients: a confidential developer-page client may use client_credentials
+	// only when every scope it holds is marked. omitempty everywhere, so a
+	// manifest without the field keeps its hash. Refused on internal scopes.
+	M2M bool `json:"m2m,omitempty" dynamodbav:"m2m,omitempty"`
 }
 
 // ResourceServer is the current v2 manifest plus immutable routing and
@@ -136,6 +141,9 @@ func ValidateManifest(m Manifest) error {
 		case VisibilityInternal:
 			if !strings.HasPrefix(entry.Scope, InternalServicePrefix+":"+m.ResourceServerID+":") {
 				return fmt.Errorf("%w: internal scope %q is outside namespace %q", ErrInvalidResource, entry.Scope, m.ResourceServerID)
+			}
+			if entry.M2M {
+				return fmt.Errorf("%w: internal scope %q cannot be marked m2m; m2m is for public scopes machine clients may hold", ErrInvalidResource, entry.Scope)
 			}
 		default:
 			return fmt.Errorf("%w: scope %q visibility must be public or internal", ErrInvalidResource, entry.Scope)

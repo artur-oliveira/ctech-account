@@ -220,8 +220,13 @@ widened. Same cookie/public-vs-confidential rule as above.
 No refresh token, no cookie.
 
 **`client_credentials`** (M2M) — `{ client_id, client_secret, scope? }`
-(`token.go:145`). Restricted to **confidential first-party** clients
-(`!IsPublic() && FirstParty`). Signs access token with `sub = client_id`, **empty
+(`token.go:145`). Public clients → `403 unauthorized_client`. The secret is verified first
+(`401 invalid_client`). **First-party** confidential clients: scopes clamped to
+`allowed_scopes` (unchanged). **Developer-page** confidential clients
+(`machineScopesForDeveloperClient`): owner active (`InternalService.Active`),
+every held scope active + public + `m2m` (`CatalogService.ValidateMachineGrantable`),
+every requested scope held — else the whole request is refused
+(`403 unauthorized_client` / `400 invalid_scope`, the detail naming the scope). Signs access token with `sub = client_id`, **empty
 `sid`** (so `RequireInternalScope` accepts it), `azp = client_id`, no refresh,
 no MFA/KYC claims. Used by ctech-wallet for `internal:*` scopes.
 
@@ -395,6 +400,18 @@ Service-to-service read used by **ctech-wallet** (`kyc.go:38`). Requires a
 machine token (empty `sid`) carrying `internal:account:kyc`. Returns the **full,
 unmasked** identity record `{ level, method, doc_status, cpf, legal_name,
 birth_date, address }` (`kyc.go:158`). No human-facing scope governs this.
+
+## Internal — `GET /v1.0/internal/oauth-clients/:client_id`  *(M2M; `RequireAuth` + `RequireInternalScope(internal:account:oauth-client-read)`)*
+Service-to-service read used by **ctech-billing** to verify who owns an OAuth
+client before admitting it as a merchant credential (`oauth_client_internal.go`).
+Requires a machine token (empty `sid`) carrying `internal:account:oauth-client-read`;
+any other internal scope is `403`. Returns exactly
+`{ client_id, owner_user_id, allowed_scopes, active }` — `allowed_scopes` is `[]`
+when empty. `active` = confidential with a secret hash **and** owner is `system`
+or an existing, enabled account with no `deletion_state`
+(`domain/oauth/client/internal_view.go`). Unknown client, empty id or an id over
+128 characters → `404` problem (the last without a DynamoDB read). The secret hash,
+redirect URIs, audience, `first_party` and `managed_resource_id` are never returned.
 
 ---
 

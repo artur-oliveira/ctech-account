@@ -83,3 +83,33 @@ func TestStoreCredentialsStopsAfterFailure(t *testing.T) {
 		t.Fatalf("writes = %+v, want only secret attempt", writer.inputs)
 	}
 }
+
+// -grant changes no name and issues no secret, so an SSM path there would be a
+// silent no-op an operator reads as "stored".
+func TestValidateGrantFlagsRefusesCreateOnlyFlags(t *testing.T) {
+	if err := validateGrantFlags("", "", ""); err != nil {
+		t.Fatalf("bare -grant: %v", err)
+	}
+	for _, tc := range []struct{ name, client, secret string }{
+		{"Billing", "", ""},
+		{"", "/ctech-billing/dev/billing/account-client-id", ""},
+		{"", "", "/ctech-billing/dev/billing/account-client-secret"},
+	} {
+		if err := validateGrantFlags(tc.name, tc.client, tc.secret); err == nil {
+			t.Fatalf("validateGrantFlags(%q, %q, %q) = nil, want an error", tc.name, tc.client, tc.secret)
+		}
+	}
+}
+
+func TestFormatGrantResult(t *testing.T) {
+	got := formatGrantResult("billing-account", []string{"internal:account:oauth-client-read"})
+	want := "client_id: billing-account\ngranted: internal:account:oauth-client-read\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got = formatGrantResult("billing-account", nil)
+	want = "client_id: billing-account\nno change: every scope was already granted\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

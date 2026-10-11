@@ -2,8 +2,10 @@ package scopes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -221,5 +223,106 @@ func TestCatalogV2OverridesLegacyAndResolvesExactAudiences(t *testing.T) {
 	audiences, err := service.AudiencesFor(context.Background(), []string{"dfe:nfes:write", "dfe:unknown:read"})
 	if err != nil || len(audiences) != 1 || audiences[0] != "https://dfe.example.test" {
 		t.Fatalf("audiences = %v, err=%v", audiences, err)
+	}
+}
+
+func m2mScope(name string) ScopeDefinition {
+	s := publicScope(name)
+	s.M2M = true
+	return s
+}
+
+// Internal scopes are machine-only already and never grantable to a
+// developer-page client: marking one m2m would read as a permission that does
+// not exist.
+func TestValidateManifestRejectsM2MOnAnInternalScope(t *testing.T) {
+	internal := ScopeDefinition{Scope: "internal:dfe:sync", Descriptions: map[string]string{"en": "x", "pt-BR": "x"}, Visibility: VisibilityInternal, Status: StatusActive, M2M: true}
+	if err := ValidateManifest(dfeManifest(internal)); !errors.Is(err, ErrInvalidResource) {
+		t.Fatalf("m2m on an internal scope: err = %v, want ErrInvalidResource", err)
+	}
+	if err := ValidateManifest(dfeManifest(m2mScope("dfe:nfes:read"))); err != nil {
+		t.Fatalf("m2m on a public scope: %v", err)
+	}
+}
+
+// Every manifest published before this field existed must keep its hash, or
+// its next publish would advance a revision for nothing. Marking a scope m2m
+// must change the hash, or the publish would be a silent no-op.
+func TestManifestHashIsStableWithoutM2M(t *testing.T) {
+	plain := dfeManifest(publicScope("dfe:nfes:read"))
+	canonical, err := json.Marshal(canonicalManifest(plain))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(canonical), "m2m") {
+		t.Fatalf("a manifest without m2m serializes the field: %s", canonical)
+	}
+	before, _ := ManifestHash(plain)
+	after, _ := ManifestHash(dfeManifest(m2mScope("dfe:nfes:read")))
+	if before == after {
+		t.Fatal("marking a scope m2m did not change the manifest hash")
+	}
+}
+
+func TestPublishingM2MReachesTheCatalog(t *testing.T) {
+	repo := &registryRepoStub{}
+	registry := NewRegistryService(repo, nil)
+	ctx := context.Background()
+	if _, err := registry.Provision(ctx, "dfe", "CTech DF-e", "https://dfe.example.test", "scope-publisher-dfe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := registry.Publish(ctx, "scope-publisher-dfe", dfeManifest(publicScope("dfe:nfes:read")), 0, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	next, changed, err := registry.Publish(ctx, "scope-publisher-dfe", dfeManifest(m2mScope("dfe:nfes:read")), 1, "", "")
+	if err != nil || !changed || next.Revision != 2 || !next.Scopes[0].M2M {
+		t.Fatalf("publishing m2m: resource=%+v changed=%v err=%v", next, changed, err)
+	}
+	catalog := NewCatalogService(catalogV2RepoStub{resource: []ResourceServer{*repo.resource}}, nil)
+	if bad, err := catalog.ValidateMachineGrantable(ctx, []string{"dfe:nfes:read"}); err != nil || bad != "" {
+		t.Fatalf("published m2m scope not machine-grantable: bad=%q err=%v", bad, err)
+	}
+}
+
+func TestValidateMachineGrantable(t *testing.T) {
+	repo := catalogV2RepoStub{
+		legacy: []ServiceScopes{{Service: "internal:wallet", Internal: true, Scopes: []ScopeEntry{{Scope: "internal:wallet:credit"}}}},
+		resource: []ResourceServer{{SK: "billing", DisplayName: "Billing", Audience: "https://billing.example.test", Scopes: []ScopeDefinition{
+			{Scope: "billing:invoices:write", Description: "w", DescriptionPT: "w", Visibility: VisibilityPublic, Status: StatusActive, M2M: true},
+			{Scope: "billing:my-invoices:read", Description: "r", DescriptionPT: "r", Visibility: VisibilityPublic, Status: StatusActive},
+			{Scope: "billing:old:write", Description: "o", DescriptionPT: "o", Visibility: VisibilityPublic, Status: StatusDeprecated, M2M: true},
+		}}},
+	}
+	catalog := NewCatalogService(repo, nil)
+	ctx := context.Background()
+	if bad, err := catalog.ValidateMachineGrantable(ctx, []string{"billing:invoices:write"}); err != nil || bad != "" {
+		t.Fatalf("m2m scope: bad=%q err=%v", bad, err)
+	}
+	for _, scope := range []string{"billing:my-invoices:read", "billing:old:write", "internal:wallet:credit", "billing:unknown:read"} {
+		bad, err := catalog.ValidateMachineGrantable(ctx, []string{"billing:invoices:write", scope})
+		if err != nil || bad != scope {
+			t.Fatalf("%s: bad=%q err=%v, want it refused", scope, bad, err)
+		}
+	}
+	if bad, err := catalog.ValidateMachineGrantable(ctx, nil); err != nil || bad != "" {
+		t.Fatalf("no scopes: bad=%q err=%v, want nothing refused", bad, err)
+	}
+}
+
+// The catalog is cached in Valkey as JSON: a field dropped there would make
+// every m2m scope ungrantable for five minutes after each cache fill (the
+// ScopeEntry.Audience bug this struct's comment records).
+func TestM2MSurvivesTheCatalogCacheEncoding(t *testing.T) {
+	in := []ServiceScopes{{Service: "billing", Scopes: []ScopeEntry{{Scope: "billing:invoices:write", M2M: true}}}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []ServiceScopes
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out[0].Scopes[0].M2M {
+		t.Fatalf("m2m lost in the cache encoding: %s", raw)
 	}
 }
