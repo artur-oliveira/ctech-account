@@ -9,7 +9,6 @@ import (
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
-	totpDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
@@ -23,15 +22,14 @@ type PasskeyHandler struct {
 	passkeySvc *passkey.Service
 	userSvc    *user.Service
 	sessionSvc *session.Service
-	totpSvc    TOTPService
 	cache      *cache.Client
 	cfg        *config.Config
 	audit      *audit.Service
 	emailCli   *email.Client // nil when FROM_EMAIL is not set
 }
 
-func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, totpSvc TOTPService, valkeyCache *cache.Client, cfg *config.Config, auditSvc *audit.Service, emailCli *email.Client) *PasskeyHandler {
-	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, totpSvc: totpSvc, cache: valkeyCache, cfg: cfg, audit: auditSvc, emailCli: emailCli}
+func NewPasskeyHandler(passkeySvc *passkey.Service, userSvc *user.Service, sessionSvc *session.Service, valkeyCache *cache.Client, cfg *config.Config, auditSvc *audit.Service, emailCli *email.Client) *PasskeyHandler {
+	return &PasskeyHandler{passkeySvc: passkeySvc, userSvc: userSvc, sessionSvc: sessionSvc, cache: valkeyCache, cfg: cfg, audit: auditSvc, emailCli: emailCli}
 }
 
 // RegisterManagement registers the authenticated passkey management routes under /account/mfa.
@@ -239,14 +237,8 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		return apierror.AccountPendingDeletion(c.Path()).Send(c)
 	}
 
-	// Passkey is the first factor; TOTP (if configured) is required as the second.
-	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), userID); totpErr == nil && totpSecret.IsSetup() {
-		recordAudit(c, h.audit, userID, audit.EventLoginMFARequired, map[string]string{"method": session.AMRWebAuthn})
-		return issueMFAToken(c, h.cache, userID, "Passkey", clientIP(c), c.Get("User-Agent"), session.AMRWebAuthn, []string{session.AMRTOTP})
-	} else if totpErr != nil && !errors.Is(totpErr, totpDomain.ErrNotFound) {
-		return apierror.ServerError(c.Path()).WithCause(totpErr).Send(c)
-	}
-
+	// A passkey is a password-replacing primary factor. TOTP is not an extra
+	// login prompt here; recent step-up remains required for sensitive actions.
 	ip := clientIP(c)
 	loc := geo.Lookup(ip)
 	seen, seenErr := h.sessionSvc.HasSeenDevice(c.Context(), u.ID(), "Passkey", loc.Country)

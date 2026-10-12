@@ -196,7 +196,7 @@ export function CreateOAuthClientDialog({ prefill, onClosed }: { prefill?: Clien
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('oauthClients.dialog.createTitle')}</DialogTitle>
           <DialogDescription>{t('oauthClients.dialog.createDescription')}</DialogDescription>
@@ -281,7 +281,7 @@ export function EditOAuthClientDialog({ client }: { client: OAuthClient }) {
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('oauthClients.dialog.editTitle')}</DialogTitle>
           <DialogDescription>{client.client_id}</DialogDescription>
@@ -327,7 +327,7 @@ export function RegenerateSecretButton({ clientId }: { clientId: string }) {
         onConfirm={() => mutate()}
       />
       <Dialog open={secret !== null} onOpenChange={(v) => { if (!v) setSecret(null) }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t('oauthClients.dialog.newSecretTitle')}</DialogTitle>
           </DialogHeader>

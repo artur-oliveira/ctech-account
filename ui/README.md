@@ -63,17 +63,25 @@ Zustand auth/step-up stores, and the complete auth flow.
 **Auth flow in one paragraph.** It is a static-export SPA (no server). The
 in-memory access token lives only in `store/auth.ts` (never `localStorage`);
 the refresh token is the HttpOnly `ctech_rt` cookie set by the Go API. Password
-and passkey login can either issue the SSO `ctech_session` cookie directly or
-return an MFA continuation. The SPA stores that short-lived continuation only
-in `sessionStorage`, verifies the TOTP code at `/login/mfa`, then starts the
+login may return an MFA continuation; passkey login issues a session directly,
+even when TOTP is enrolled. Sensitive actions still require recent step-up MFA.
+The SPA stores a password-login continuation only in `sessionStorage`, verifies
+the TOTP code at `/login/mfa`, then starts the
 OAuth PKCE dance via `@aoctech/auth-client` (`lib/oauth-client.ts`). The MFA UI
-accepts both the `totp` challenge label and the RFC 8176 `otp` AMR value so
-passkey + TOTP works across deployed API versions. OAuth redirects through
+accepts both the `totp` challenge label and the RFC 8176 `otp` AMR value for
+password + TOTP across deployed API versions. OAuth redirects through
 `GET /v1.0/authorize` and exchanges the code at `POST /v1.0/token`. A background
 `AuthInitializer` silent-refreshes from `ctech_rt` on boot; the `lib/axios.ts`
 interceptor auto-refreshes on 401 and opens the step-up (`max_age=0`) dialog on
 a `403 step-up-required`. The OAuth `client_id` is `CLIENT_ID` (`lib/env.ts`) =
 `NEXT_PUBLIC_OAUTH_CLIENT_ID` (default `accounts`).
+
+On mobile, the authenticated account shell uses a fixed bottom bar for the
+dashboard, identity, spaces, and security; **Menu** opens the complete account
+navigation. The content reserves space below the bar and respects device safe
+areas. Shared inputs and buttons use compact visual heights while keeping
+mobile controls at a practical touch size. OAuth client dialogs expand on
+larger screens so redirect URIs and scope selection have room.
 
 Passkey enrollment asks for a recognizable name before opening the browser's
 WebAuthn security prompt and persists that name through the existing register

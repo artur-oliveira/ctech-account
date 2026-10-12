@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Menu, X } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { IdCard, LayoutDashboard, Menu, Shield, Users, X } from 'lucide-react'
 import { AccountNav } from '@/components/account-nav'
+import { cn } from '@/lib/utils'
 
 /**
- * Mobile-only disclosure for the account section nav. The desktop sidebar is
- * hidden below `md`, so this is the only way to reach account sub-pages on
- * small screens. Reuses AccountNav wholesale to avoid duplicating navItems.
+ * Mobile bottom navigation for primary account destinations. The Menu panel
+ * reuses AccountNav wholesale so every account destination stays reachable.
  */
 export function AccountMobileNav() {
   const { t } = useTranslation()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -44,33 +47,45 @@ export function AccountMobileNav() {
     }
   }, [open])
 
+  const primaryLinks = [
+    { href: '/account', label: t('nav.dashboard'), icon: LayoutDashboard, exact: true },
+    { href: '/account/identity', label: t('nav.identity'), icon: IdCard },
+    { href: '/account/spaces', label: t('nav.spaces'), icon: Users },
+    { href: '/account/security', label: t('nav.security'), icon: Shield },
+  ]
+
   return (
     <div className="md:hidden">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-expanded={open}
-        aria-controls="account-mobile-nav"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex size-9 items-center justify-center rounded-lg text-foreground hover:bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/70"
-      >
-        {open ? <X className="size-5" /> : <Menu className="size-5" />}
-        <span className="sr-only">{t('nav.menu')}</span>
-      </button>
-
       {open && (
         <>
-          <div aria-hidden="true" className="fixed inset-0 z-30 bg-black/10 backdrop-blur-xs" />
+          <button aria-label={t('nav.closeMenu')} onClick={() => { setOpen(false); triggerRef.current?.focus() }} className="fixed inset-0 z-40 bg-black/20" />
           <div
             ref={panelRef}
             id="account-mobile-nav"
             onClick={() => setOpen(false)}
-            className="absolute inset-x-0 top-14 z-40 border-b bg-background p-3 ring-1 ring-foreground/10"
+            className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-50 max-h-[min(70dvh,36rem)] overflow-y-auto border-t bg-background px-4 py-3 shadow-lg"
           >
             <AccountNav />
           </div>
         </>
       )}
+      <nav aria-label={t('nav.accountNavigation')} className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-1 pt-1 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {primaryLinks.map(({ href, label, icon: Icon, exact }) => {
+            const active = exact ? pathname === href : pathname.startsWith(href)
+            return (
+              <Link key={href} href={href} aria-current={active ? 'page' : undefined} className={cn('flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md text-xs font-medium leading-tight', active ? 'text-primary' : 'text-muted-foreground')}>
+                <Icon className="size-5" />
+                <span className="max-w-full truncate">{label}</span>
+              </Link>
+            )
+          })}
+          <button ref={triggerRef} type="button" aria-expanded={open} aria-controls="account-mobile-nav" onClick={() => setOpen((value) => !value)} className="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md text-xs font-medium leading-tight text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {open ? <X className="size-5" /> : <Menu className="size-5" />}
+            <span>{t('nav.menu')}</span>
+          </button>
+        </div>
+      </nav>
     </div>
   )
 }

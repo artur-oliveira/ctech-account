@@ -17,6 +17,8 @@
     "identity": "Identity",
     "support": "Support",
     "menu": "Menu",
+    "closeMenu": "Close menu",
+    "accountNavigation": "Account navigation",
     "organizations": "Organizations",
     "spaces": "Spaces",
     "admin": "Admin workspace"
