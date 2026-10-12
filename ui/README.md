@@ -81,7 +81,11 @@ dashboard, identity, spaces, and security; **Menu** opens the complete account
 navigation. The content reserves space below the bar and respects device safe
 areas. Shared inputs and buttons use compact visual heights while keeping
 mobile controls at a practical touch size. OAuth client dialogs expand on
-larger screens so redirect URIs and scope selection have room.
+larger screens so redirect URIs and scope selection have room. The shared
+dialog stacks content in document order so rows do not stretch into unused
+vertical space. Scope catalogs open selected compact groups by default; larger
+groups stay collapsed with their selected count visible. Dialogs keep viewport
+height limits and scroll only when content exceeds the available height.
 
 Passkey enrollment asks for a recognizable name before opening the browser's
 WebAuthn security prompt and persists that name through the existing register
