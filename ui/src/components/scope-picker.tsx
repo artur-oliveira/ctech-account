@@ -34,9 +34,11 @@ function ServiceGroup({
   onChange: (scopes: string[]) => void
   language: string
 }) {
-  const [open, setOpen] = useState(true)
   const codes = service.scopes.map((e) => e.scope)
   const selectedCount = codes.filter((c) => selected.has(c)).length
+  // Keep the initial picker compact for large catalogs. A selected service
+  // opens by default only when its scope list is small enough to scan inline.
+  const [open, setOpen] = useState(selectedCount > 0 && codes.length <= 8)
   const allSelected = selectedCount === codes.length
   const someSelected = selectedCount > 0 && !allSelected
 
