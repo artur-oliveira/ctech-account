@@ -79,7 +79,7 @@
 - [x] `POST /v1.0/auth/passkeys/authenticate/begin` — discoverable login challenge
 - [x] `POST /v1.0/auth/passkeys/authenticate/complete` — validates assertion → creates session
 - [x] Passkey-first login in `GET /v1.0/authorize` flow — explicit button plus privacy-preserving Conditional UI/autofill; no email-enrollment probe; after successful auth `ctech_session` is set and `/authorize` redirects normally
-- [x] Passkey + TOTP preserves AMR as `["webauthn","otp"]` (password + TOTP remains `["pwd","otp"]`)
+- [x] Passkey is a primary login factor and issues a session without a TOTP prompt; password + TOTP remains `["pwd","otp"]`; sensitive actions use step-up MFA
 
 ---
 

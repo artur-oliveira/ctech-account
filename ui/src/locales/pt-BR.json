@@ -17,6 +17,8 @@
     "identity": "Identidade",
     "support": "Suporte",
     "menu": "Menu",
+    "closeMenu": "Fechar menu",
+    "accountNavigation": "Navegação da conta",
     "organizations": "Organizações",
     "spaces": "Espaços",
     "admin": "Área administrativa"

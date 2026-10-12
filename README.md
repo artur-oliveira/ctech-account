@@ -142,7 +142,7 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `POST`   | `/v1.0/auth/step-up/passkeys/begin`                 | Bearer                                 | Step-up WebAuthn assertion challenge for the current user                                                                                                                                           |
 | `POST`   | `/v1.0/auth/step-up/passkeys/complete`              | Bearer                                 | Validate step-up assertion → stamps fresh MFA proof                                                                                                                                                 |
 | `POST`   | `/v1.0/auth/passkeys/authenticate/begin`            | —                                      | Discoverable WebAuthn challenge used by the explicit passkey button and privacy-preserving Conditional UI — passkey is a primary, password-replacing factor                                         |
-| `POST`   | `/v1.0/auth/passkeys/authenticate/complete`         | —                                      | Validate assertion → session cookie                                                                                                                                                                 |
+| `POST`   | `/v1.0/auth/passkeys/authenticate/complete`         | —                                      | Validate assertion → session cookie (passkey is a primary login factor and does not prompt for TOTP; sensitive actions still require step-up MFA)                                                       |
 | `GET`    | `/v1.0/account/mfa/totp/setup`                      | `account:mfa:write`                     | Generate TOTP provisioning URI                                                                                                                                                                      |
 | `POST`   | `/v1.0/account/mfa/totp/confirm`                    | `account:mfa:write`                     | Activate TOTP + get backup codes                                                                                                                                                                    |
 | `DELETE` | `/v1.0/account/mfa/totp`                            | `account:mfa:write` + step-up           | Remove TOTP from account                                                                                                                                                                            |
@@ -584,10 +584,11 @@ token with the fresh claim, and retries. Users with no MFA enrolled get
 `403 mfa-enrollment-required` from the challenge. `grant_type=api_key`
 tokens carry none of these claims and can never pass step-up.
 
-Login AMR preserves the complete authentication chain: password + TOTP issues
-`["pwd","otp"]`, passkey alone issues `["webauthn"]`, and passkey + TOTP issues
-`["webauthn","otp"]`. Passkey is never represented as password and is never a
-second-factor gate after a password login.
+Login AMR preserves the authentication method: password + TOTP issues
+`["pwd","otp"]`, while passkey login issues `["webauthn"]` without a second
+TOTP prompt, even when TOTP is configured. Passkey is a primary login factor,
+never a second-factor gate after password login. Sensitive actions continue to
+require recent step-up MFA (TOTP or passkey).
 
 Every security-relevant event (logins, MFA challenges, password/MFA/key/client
 mutations, session revocations, token-reuse detections) is recorded in the

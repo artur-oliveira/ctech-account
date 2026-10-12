@@ -222,7 +222,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 
 	v1 := app.Group("/v1.0")
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterAuth(v1.Group("/auth"))
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, disabledCache, cfg, auditSvc, nil).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
 
@@ -235,7 +235,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewConsentsHandler(consentDomain.NewService(newMemConsentRepo()), sharedClientRepo, auditSvc).Register(account)
 	handler.NewMFAHandler(noop, userSvc, cfg, auditSvc).Register(account, stepUp)
 	handler.NewActivityHandler(auditSvc).Register(account)
-	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, noop, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
+	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, disabledCache, cfg, auditSvc, nil).RegisterManagement(account, stepUp)
 	handler.NewTermsHandler(userSvc, auditSvc).Register(account)
 	revocation := commoncache.NewMemoryBackend(1024)
 	jwtSvc.SetRevocation(revocation)
