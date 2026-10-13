@@ -99,7 +99,7 @@ describe('invitation acceptance', () => {
 
     await user.click(await screen.findByRole('button', { name: /accept invitation/i }))
 
-    expect(await screen.findByText(/verify your e-mail address first/i)).toBeInTheDocument()
+    expect(await screen.findByText(/verify your e-mail address, then return here/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /resend verification/i })).toBeInTheDocument()
   })
 
@@ -114,7 +114,7 @@ describe('invitation acceptance', () => {
 
     await user.click(await screen.findByRole('button', { name: /accept invitation/i }))
 
-    expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument()
+    expect(await screen.findByText(/expired or was already used/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /resend verification/i })).not.toBeInTheDocument()
   })
 
