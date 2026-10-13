@@ -103,10 +103,10 @@ describe('invitations tab', () => {
     renderTab()
     await user.click(await screen.findByRole('button', {name: /invite/i}))
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getByText(/not be able to act|não poderá agir/i)).toBeInTheDocument()
+    expect(dialog.getByText(/cannot act for any company|não poderá agir/i)).toBeInTheDocument()
 
     await user.click(dialog.getByRole('checkbox', {name: /Acme LTDA/}))
-    expect(dialog.queryByText(/not be able to act|não poderá agir/i)).toBeNull()
+    expect(dialog.queryByText(/cannot act for any company|não poderá agir/i)).toBeNull()
   })
 
   // An organization with no companies shows no picker at all, rather than an
