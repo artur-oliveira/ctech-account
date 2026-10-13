@@ -442,6 +442,11 @@ func (s *Service) Purge(ctx context.Context, userID, requestID string, cpfMAC fu
 		markers = append(markers, EmailMarkerPK(u.Email))
 	}
 	var kyc *KYCRetention
+	retainedDocs := make([]KYCDocument, 0, len(u.KYCDocuments))
+	for _, d := range u.KYCDocuments {
+		d.Key = KYCRetentionDocKey(userID, d.ID)
+		retainedDocs = append(retainedDocs, d)
+	}
 	if u.CPF != "" {
 		tomb.CPFHMAC = cpfMAC(u.CPF)
 		markers = append(markers, CPFMarkerPK(u.CPF))
@@ -457,7 +462,7 @@ func (s *Service) Purge(ctx context.Context, userID, requestID string, cpfMAC fu
 				KYCLevel: u.KYCLevel, KYCStatus: u.KYCStatus, KYCBasicVerifiedAt: u.KYCBasicVerifiedAt,
 				KYCVerifiedAt: u.KYCVerifiedAt, KYCReviewedAt: u.KYCReviewedAt, KYCReviewedBy: u.KYCReviewedBy,
 				KYCReviewDecision: u.KYCReviewDecision, KYCRiskScore: u.KYCRiskScore,
-				KYCRiskSignals: u.KYCRiskSignals, KYCDocuments: u.KYCDocuments,
+				KYCRiskSignals: u.KYCRiskSignals, KYCDocuments: retainedDocs,
 			},
 		}
 	}

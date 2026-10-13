@@ -116,3 +116,32 @@ func (s *S3) DeleteObject(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// ListKeys returns every object key under prefix (current versions).
+func (s *S3) ListKeys(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	p := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(prefix)})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing %s: %w", prefix, err)
+		}
+		for _, o := range page.Contents {
+			keys = append(keys, aws.ToString(o.Key))
+		}
+	}
+	return keys, nil
+}
+
+// CopyObject copies srcKey to dstKey inside the bucket.
+func (s *S3) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	_, err := s.client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(s.bucket),
+		CopySource: aws.String(s.bucket + "/" + srcKey),
+		Key:        aws.String(dstKey),
+	})
+	if err != nil {
+		return fmt.Errorf("copying %s: %w", srcKey, err)
+	}
+	return nil
+}
