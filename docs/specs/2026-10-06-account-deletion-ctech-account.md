@@ -54,7 +54,7 @@ Internal (client-credentials, protocol §3):
 
 | Method & path | Purpose |
 |---|---|
-| `POST /internal/erasure/ack` | Participant acks. Scope `account:erasure:ack`; `service` must match the caller's client. |
+| `POST /internal/erasure/ack` | Participant acks. Scope `internal:account:erasure-ack`; `service` must match the caller's client. |
 | `GET /internal/erasure/purged-since?ts=` | Backup-restore replay list (protocol §8). |
 
 Support/admin (gated by `SupportRole` = `admin`, reusing the support-tickets guard):
@@ -232,6 +232,6 @@ Metrics: requests by state, time-to-purge, acks by service, DLQ depth (participa
 ## 12. Documentation updates required with the implementation
 
 `api/ENDPOINTS.md` (new endpoints), `README.md`/`PLAN.md` (feature entry),
-`docs/resource-server-scope-registry.md` (new scopes `account:erasure:ack`,
-`erasure:eligibility`, `account:deletion:cancel`), the privacy policy, and each
+`docs/resource-server-scope-registry.md` (new scopes `internal:account:erasure-ack`, `internal:account:erasure-subject`,
+`internal:{service}:erasure-eligibility` (minted by account), `account:deletion:cancel`), the privacy policy, and each
 participant repo's docs for its consumer and runbook.
