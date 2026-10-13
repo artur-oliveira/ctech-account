@@ -31,3 +31,22 @@ test('user-erasure topic denies publish to every principal but the app role', ()
     },
   })
 })
+
+test('app role may list KYC objects and move them to retention', () => {
+  const app = new cdk.App()
+  const env = {account: '868899309401', region: 'us-east-1'}
+  const tables = new DynamoDBStack(app, 'TestIAMTables2', {env, environment: 'prod'}).tables
+  const stack = new IAMStack(app, 'TestIAMStack2', {
+    env, environment: 'prod', dynamoDBTables: tables,
+    deploymentsBucketArn: 'arn:aws:s3:::deployments', logsBucketArn: 'arn:aws:s3:::logs',
+    kycDocumentsBucketArn: 'arn:aws:s3:::kyc',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {Statement: Match.arrayWith([
+      Match.objectLike({Action: 's3:ListBucket', Resource: 'arn:aws:s3:::kyc',
+        Condition: {StringLike: {'s3:prefix': 'kyc/*'}}}),
+      Match.objectLike({Action: 's3:PutObject', Resource: 'arn:aws:s3:::kyc/retention/*'}),
+      Match.objectLike({Action: 's3:DeleteObject', Resource: 'arn:aws:s3:::kyc/kyc/*'}),
+    ])},
+  })
+})

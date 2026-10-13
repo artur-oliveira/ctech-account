@@ -37,3 +37,15 @@ test('users table exposes the KYC review queue index', () => {
     ]),
   })
 })
+
+test('users table expires KYC retention items via TTL', () => {
+  const app = new cdk.App()
+  const stack = new DynamoDBStack(app, 'TestUsersTTLStack', {
+    env: {account: '868899309401', region: 'us-east-1'},
+    environment: 'prod',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::DynamoDB::GlobalTable', {
+    TableName: 'prod_account_users',
+    TimeToLiveSpecification: {AttributeName: 'expires_at', Enabled: true},
+  })
+})

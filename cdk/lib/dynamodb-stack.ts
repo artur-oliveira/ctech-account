@@ -32,6 +32,9 @@ export class DynamoDBStack extends cdk.Stack {
         pointInTimeRecoveryEnabled: pitr,
       },
       removalPolicy,
+      // KYCRET#{user_id} retention items of deleted accounts expire 5 years after
+      // the purge (account-deletion D6). No other users-table item sets expires_at.
+      timeToLiveAttribute: 'expires_at',
       globalSecondaryIndexes: [
         {
           indexName: 'email-index',

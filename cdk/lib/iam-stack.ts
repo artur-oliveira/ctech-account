@@ -91,6 +91,21 @@ export class IAMStack extends cdk.Stack {
       actions: ['s3:PutObject', 's3:GetObject'],
       resources: [`${kycDocumentsBucketArn}/kyc/*`],
     }));
+    // Account deletion: list a user's KYC prefix, copy documents to retention/
+    // (kept 5 years by the bucket lifecycle) and delete the originals.
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [kycDocumentsBucketArn],
+      conditions: {StringLike: {'s3:prefix': 'kyc/*'}},
+    }));
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject'],
+      resources: [`${kycDocumentsBucketArn}/retention/*`],
+    }));
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:DeleteObject'],
+      resources: [`${kycDocumentsBucketArn}/kyc/*`],
+    }));
     // EC2 — update-realip.sh reads the AWS-managed CloudFront origin-facing
     // prefix list. Both actions are read-only and do not support resource-level
     // permissions, so Resource must be *.
