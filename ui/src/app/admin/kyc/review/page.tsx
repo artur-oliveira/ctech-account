@@ -100,7 +100,7 @@ function ReviewPageContent() {
             [t('adminKyc.cpf'), review.cpf], [t('adminKyc.birthDate'), formatDate(review.birth_date)],
             [t('adminKyc.phone'), review.phone_number], [t('adminKyc.submitted'), formatDate(review.submitted_at)],
             [t('adminKyc.risk'), String(review.risk_score)],
-            [t('adminKyc.address'), `${review.address.street}, ${review.address.number} — ${review.address.city}/${review.address.state}`],
+            [t('adminKyc.address'), `${review.address.street}, ${review.address.number} • ${review.address.city}/${review.address.state}`],
           ].map(([label, value]) => (
             <div key={label}>
               <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
@@ -185,7 +185,7 @@ function ReviewPageContent() {
                   <p
                     className="text-xs text-muted-foreground">{formatDistanceToNow(event.created_at)} · {event.actor_role || '—'}</p>
                   {event.reason_code &&
-                      <p className="mt-1 text-muted-foreground">{t(`adminKyc.rejectionReasons.${event.reason_code}`)}{event.details ? ` — ${event.details}` : ''}</p>}
+                      <p className="mt-1 text-muted-foreground">{t(`adminKyc.rejectionReasons.${event.reason_code}`)}{event.details ? `; ${event.details}` : ''}</p>}
                 </div>
               </li>
             ))}

@@ -4,7 +4,7 @@
     "tagline": "Account portal"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Account",
     "profile": "Profile",
     "security": "Security",
     "authenticator": "Authenticator app",
@@ -106,7 +106,7 @@
   "notFound": {
     "header": "Page not found",
     "description": "The page you are trying to access does not exists or was removed",
-    "backToAccount": "Back to to account",
+    "backToAccount": "Back to account",
     "backToLogin": "Back to sign in"
   },
   "register": {
@@ -145,7 +145,7 @@
   "callback": {
     "completing": "Completing sign in…",
     "missingCode": "Missing authorization code or verifier. Please sign in again.",
-    "invalidState": "Invalid state. Possible CSRF — please sign in again.",
+    "invalidState": "Invalid state. Possible CSRF; please sign in again.",
     "tokenError": "Token exchange failed. Please sign in again.",
     "backToSignIn": "Back to sign in"
   },
@@ -229,9 +229,9 @@
       "create": "Create key",
       "creating": "Creating…",
       "done": "Done",
-      "copyWarning": "Copy this key now — you won't be able to see it again.",
+      "copyWarning": "Copy this key now; it won't be shown again.",
       "scopesHint": "Pick the permissions this key grants. Less is safer.",
-      "securityNotice": "Use a separate key for each integration. Choose an expiry whenever possible and revoke the key immediately if it is exposed."
+      "securityNotice": "Use one key per integration, set an expiry, and revoke it if exposed."
     }
   },
   "security": {
@@ -250,7 +250,7 @@
     },
     "passkeys": {
       "title": "Passkeys",
-      "description": "Biometric or hardware-key login — no password required.",
+      "description": "Passwordless login with biometrics or a security key.",
       "manage": "Manage",
       "count_one": "{{count}} passkey registered",
       "count_other": "{{count}} passkeys registered"
@@ -277,11 +277,11 @@
       "title": "Set up authenticator app",
       "subtitle": "Scan the QR code with an authenticator app, then verify with a code.",
       "alreadyConfigured": "TOTP already configured",
-      "alreadyDesc": "An authenticator app is already set up for your account. Remove it from the security page to set up a new one.",
-      "step1Title": "Step 1 — Scan QR code",
+      "alreadyDesc": "Remove the current app from Security before setting up another.",
+      "step1Title": "Step 1 • Scan QR code",
       "step1Desc": "Open your authenticator app and scan the code below.",
       "cantScan": "Can't scan? Enter manually",
-      "step2Title": "Step 2 — Verify code",
+      "step2Title": "Step 2 • Verify code",
       "step2Desc": "Enter the 6-digit code from your authenticator app to confirm setup.",
       "code": "Verification code",
       "activate": "Activate",
@@ -343,9 +343,9 @@
       "editTitle": "Edit application",
       "name": "Name",
       "redirectURIs": "Redirect URIs",
-      "redirectURIsHint": "One or more callback URLs, separated by spaces. Use HTTPS; HTTP is allowed only for localhost during development.",
+      "redirectURIsHint": "Separate callback URLs with spaces. Use HTTPS; HTTP is allowed only for localhost in development.",
       "redirectURIsError": "Enter at least one complete HTTPS callback URL. HTTP is allowed only for localhost.",
-      "prefillHint": "Scopes suggested by the product that sent you here. For machine access, keep only these scopes and choose the confidential type.",
+      "prefillHint": "Scopes suggested by the product. For machine access, keep these and choose confidential client.",
       "scopes": "Allowed scopes",
       "scopesHint": "Pick which data and actions the application may request.",
       "audience": "Audience (optional)",
@@ -359,7 +359,7 @@
       "save": "Save",
       "saving": "Saving…",
       "done": "Done",
-      "secretWarning": "Copy the client secret now — it is shown only once and cannot be recovered.",
+      "secretWarning": "Copy the client secret now; it cannot be shown again.",
       "newSecretTitle": "New client secret"
     }
   },
@@ -422,7 +422,7 @@
   "consent": {
     "title": "{{app}} is requesting access",
     "description": "The application is asking permission to access the following data on your account:",
-    "reviewNotice": "Only continue if you recognize {{app}} and expected to connect it. You can review or revoke this access later.",
+    "reviewNotice": "Connect {{app}} only if you recognize it; you can revoke access later.",
     "identityPermissions": "Identity information",
     "accountPermissions": "Account access",
     "unknownApp": "An application",
@@ -452,7 +452,7 @@
     "openid": "Confirm your identity (user ID)",
     "profile": "See your name and profile picture",
     "email": "See your email address",
-    "service": "{{service}} — {{action}} on {{resource}}",
+    "service": "{{service}} • {{action}} on {{resource}}",
     "allResources": "all resources",
     "allActions": "full access"
   },
@@ -565,9 +565,9 @@
     "submitFailed": "Something went wrong. Try again.",
     "cpfInvalid": "That CPF doesn't look right. Double-check the 11 digits.",
     "fieldRequired": "This field is required.",
-    "submissionLocked": "Your verification is already under way. You can't make changes until we finish reviewing it or it expires.",
+    "submissionLocked": "Your verification is under review. Wait for it to finish or expire.",
     "mfaRequiredTitle": "Two-factor authentication required",
-    "mfaRequired": "Identity verification requires two-factor authentication. Set up an authenticator app or a passkey to continue.",
+    "mfaRequired": "Turn on two-factor authentication to verify your identity.",
     "mfaRequiredCta": "Set up two-factor authentication",
     "submitEnhancedCta": "Submit for review",
     "submittedOn": "Submitted on {{date}}",
@@ -575,7 +575,7 @@
     "documentIdBack": "ID - back",
     "selfieWithDocument": "Selfie holding the document",
     "selfieWithDocumentInstruction": "Hold your document next to your face and take the photo.",
-    "selfieWithDocumentConsentBody": "We'll ask for camera access to take a photo of you holding your identity document. The photo is used only for identity verification and reviewed by our team.",
+    "selfieWithDocumentConsentBody": "Take a photo holding your ID. Our team will use it to verify your identity.",
     "selfieWithDocumentDone": "Photo uploaded.",
     "capturePhoto": "Take photo",
     "retakePhoto": "Take another photo",
@@ -592,8 +592,8 @@
     "documentPreviewChangeFile": "Choose a different file",
     "documentPreviewConfirm": "Upload this photo",
     "documentPreviewUnavailable": "Preview isn't available for this file type, but it will still upload correctly.",
-    "documentsPrivacyNote": "Your ID photos are used only to verify your identity and are stored securely. They're never shared beyond that.",
-    "documentCaptureTips": "Make sure all four corners are visible, the photo is in focus, and there's no glare on the document.",
+    "documentsPrivacyNote": "Your photos are stored securely and used only to verify your identity.",
+    "documentCaptureTips": "Show all four corners; avoid blur and glare.",
     "uploading": "Uploading…",
     "uploadSuccess": "Document uploaded.",
     "documentReplaced": "Document replaced.",
@@ -602,7 +602,7 @@
     "fileTooLarge": "The file is too large (maximum 5 MB).",
     "fileTypeUnsupported": "Unsupported file type. Use JPG, PNG, HEIC or PDF.",
     "rejectionReason": "Reason: {{reason}}",
-    "rejectionGuidance": "Re-upload your identity documents to resubmit — partial resubmissions aren't accepted.",
+    "rejectionGuidance": "Upload all identity documents again; partial resubmissions aren't accepted.",
     "contactSupport": "Contact support",
     "expiresOn": "This submission expires on {{date}}.",
     "documentType": "Document type",
@@ -615,7 +615,7 @@
   "home": {
     "cta": {
       "login": "Sign in",
-      "dashboard": "Go to dashboard"
+      "dashboard": "Go to account"
     },
     "title": "One identity for the entire CTech ecosystem",
     "description": "Sign in once and access Wallet, DF-e, and upcoming CTech products with enterprise-grade security.",
@@ -691,8 +691,8 @@
       "rejected": "Rejected"
     },
     "documentTypes": {
-      "id_front": "ID — front",
-      "id_back": "ID — back",
+      "id_front": "ID • front",
+      "id_back": "ID • back",
       "selfie_with_document": "Selfie with ID"
     },
     "events": {
@@ -812,7 +812,7 @@
       "back": "Back to queue",
       "close": "Close",
       "closeTitle": "Close this ticket?",
-      "closeDescription": "Closing is final: neither the customer nor agents can reply, change status, escalate, or add notes. A new question requires a new ticket.",
+      "closeDescription": "The ticket will be closed; no more replies or changes will be allowed.",
       "closeConfirm": "Close permanently",
       "closedImmutable": "Closed ticket. The conversation, status, notes, and escalation are now read-only.",
       "internalTools": "Internal tools",
@@ -862,7 +862,7 @@
     },
     "empty": {
       "title": "You are not in any organization yet",
-      "body": "An organization is a shared workspace: invite colleagues, give them a role, and bill it as one. Create one to get started."
+      "body": "Bring your team and companies together in one place."
     },
     "create": {
       "action": "New organization",
@@ -895,20 +895,20 @@
       "empty": "No pending invitations.",
       "invite": "Invite someone",
       "inviteTitle": "Invite someone",
-      "inviteDescription": "They accept with a link. Nothing is e-mailed — you send the link yourself.",
+      "inviteDescription": "They accept with a link you send them.",
       "emailLabel": "E-mail address",
       "roleLabel": "Role",
       "submit": "Create invitation",
       "submitting": "Creating…",
       "linkTitle": "Send this link",
-      "linkWarning": "This link is shown once. Close this dialog and it is gone for good — you would have to invite them again.",
+      "linkWarning": "Copy this link now; it won't be shown again.",
       "copy": "Copy link",
       "done": "Done",
       "revoke": "Revoke",
       "revokeTitle": "Revoke this invitation?",
       "revokeBody": "The link stops working. If they already accepted, this changes nothing.",
       "companiesLabel": "Companies this person may act for",
-      "noCompaniesHint": "No companies selected. They will join the organization but will not be able to act for any company until somebody grants access.",
+      "noCompaniesHint": "Without a company selected, they cannot act for any company.",
       "searchCompanies": "Search companies",
       "selectedCompanies": "{{count}} selected",
       "selectVisible": "Select visible",
@@ -930,7 +930,7 @@
       "leaveDescription": "You lose access. Somebody with admin rights has to invite you back.",
       "leaveConfirmTitle": "Leave this organization?",
       "leaveConfirmBody": "You lose access immediately and cannot let yourself back in.",
-      "ownerCannotLeave": "You own this organization, so you cannot leave it. Transfer it to another member first — an organization with no owner has nobody who can invite, rename or hand it on.",
+      "ownerCannotLeave": "Transfer ownership to another member before leaving this organization.",
       "noOtherMembers": "There is nobody else here to hand it to. Invite somebody first."
     },
     "invite": {
@@ -942,8 +942,8 @@
       "accepting": "Accepting…",
       "open": "Open it",
       "missingToken": "This link is incomplete. Ask whoever invited you for a new one.",
-      "invalid": "This invitation is no longer valid. It may have expired, been used already, or been sent to a different address. Ask whoever invited you for a new one.",
-      "unverified": "Verify your e-mail address first. We sent you a link when you signed up — open it, then come back to this page.",
+      "invalid": "This invitation expired or was already used. Ask for a new one.",
+      "unverified": "Verify your e-mail address, then return here to accept the invitation.",
       "resend": "Resend verification e-mail",
       "resent": "Verification e-mail sent.",
       "retry": "Try again",
@@ -956,7 +956,7 @@
       "add": "Add company",
       "addTitle": "Add a company",
       "tradeNameOptional": "Trade name (optional)",
-      "addBody": "The CNPJ or CPF you issue documents in the name of. Fiscal settings — inscrição estadual, certificate — stay in the DF-e.",
+      "addBody": "The CNPJ or CPF used to issue documents. Fiscal settings stay in DF-e.",
       "taxId": "CNPJ or CPF",
       "taxIdHint": "CPF accepts 11 digits. CNPJ accepts 14 letters or digits and is formatted automatically.",
       "lookingUp": "Looking up the CNPJ…",
@@ -971,12 +971,12 @@
       "submit": "Create organization",
       "retryCompany": "Try adding the company again",
       "failed": "Could not create the organization.",
-      "organizationCreatedCompanyFailed": "The organization was created, but the company was not added. Fix the company details and retry; another organization will not be created.",
+      "organizationCreatedCompanyFailed": "Organization created, company not added. Retry without creating another.",
       "handoffBanner": "Creating an organization for {{product}}. You will be returned there when you are done.",
       "handoffInvalidTitle": "This link is not valid",
-      "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create an organization from your account.",
+      "handoffInvalidBody": "Invalid product link. You can still create an organization from your account.",
       "goToOrganizations": "Go to my organizations",
-      "companyRequiredInHandoff": "A CNPJ or CPF is required: the product that sent you here needs a company, not only a workspace."
+      "companyRequiredInHandoff": "This product requires a company. Enter its CNPJ or CPF."
     }
   },
   "spaces": {
@@ -986,7 +986,7 @@
     "role": "Access",
     "empty": {
       "title": "You do not have any space yet",
-      "body": "A space is for sharing something with other people without the paperwork: a home, a budget, a side project. Name it and invite whoever you like."
+      "body": "Create a space to share with other people."
     },
     "roles": {
       "owner": "Owner",
@@ -1008,7 +1008,7 @@
       "failed": "Could not create the space.",
       "handoffBanner": "Creating a space for {{product}}. You will be returned there when you are done.",
       "handoffInvalidTitle": "This link is not valid",
-      "handoffInvalidBody": "The product that sent you here is not configured correctly. You can still create a space from your account.",
+      "handoffInvalidBody": "Invalid product link. You can still create a space from your account.",
       "goToSpaces": "Go to my spaces"
     },
     "detail": {
@@ -1036,7 +1036,7 @@
       "leave": "Leave the space",
       "leaveDescription": "You lose access. Only the owner can invite you back.",
       "leaveConfirmTitle": "Leave this space?",
-      "ownerCannotLeave": "You own this space, so you cannot leave it. Transfer it to somebody with full access first — a space with no owner has nobody who can invite, rename or hand it on.",
+      "ownerCannotLeave": "Transfer ownership to someone with full access before leaving this space.",
       "noOtherMembers": "Nobody here has full access. Give somebody full access before transferring."
     },
     "toast": {

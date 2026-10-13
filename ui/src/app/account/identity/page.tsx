@@ -77,7 +77,7 @@ function DocumentList({status}: { status: KYCStatus }) {
     <ul className="text-muted-foreground space-y-1 text-sm">
       {status.documents.map((doc) => (
         <li key={doc.id}>
-          {t(DOCUMENT_LABEL_KEY[doc.type])} — {t('identity.uploadedOn', {date: formatDate(doc.uploaded_at)})}
+          {t(DOCUMENT_LABEL_KEY[doc.type])} • {t('identity.uploadedOn', {date: formatDate(doc.uploaded_at)})}
         </li>
       ))}
     </ul>
@@ -122,7 +122,7 @@ function EnhancedSection({status}: { status: KYCStatus }) {
           <AlertDescription className="space-y-2">
             {(status.rejection_code || status.rejection_reason) && (
               <p>{t('identity.rejectionReason', {
-                reason: `${status.rejection_code ? t(`adminKyc.rejectionReasons.${status.rejection_code}`) : ''}${status.rejection_code && status.rejection_reason ? ' — ' : ''}${status.rejection_reason ?? ''}`,
+                reason: `${status.rejection_code ? t(`adminKyc.rejectionReasons.${status.rejection_code}`) : ''}${status.rejection_code && status.rejection_reason ? '; ' : ''}${status.rejection_reason ?? ''}`,
               })}</p>
             )}
             <p>{t('identity.rejectionGuidance')}</p>
@@ -232,7 +232,7 @@ export default function IdentityPage() {
               <Alert>
                 <CheckCircle2 className="size-4"/>
                 <AlertDescription>
-                  {t('identity.verifiedOn', {date: formatDate(status.verified_at ?? null)})} — {t('identity.lockedNote')}
+                  {t('identity.verifiedOn', {date: formatDate(status.verified_at ?? null)})} • {t('identity.lockedNote')}
                 </AlertDescription>
               </Alert>
               <SubmittedDetails status={status}/>

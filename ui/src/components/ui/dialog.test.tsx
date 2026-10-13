@@ -15,6 +15,7 @@ describe('DialogContent', () => {
     )
     const content = await screen.findByRole('dialog')
     expect(content.className).toMatch(/max-h-\[calc\(100dvh-2rem\)\]/)
+    expect(content.className).toMatch(/min-h-0/)
     expect(content.className).toMatch(/overflow-y-auto/)
   })
 })

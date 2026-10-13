@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
   title: {
     default: 'CTech Account',
-    template: '%s | CTech Account',
+    template: '%s · CTech Account',
   },
 
   description:

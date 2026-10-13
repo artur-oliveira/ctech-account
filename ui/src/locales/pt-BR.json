@@ -4,7 +4,7 @@
     "tagline": "Portal da conta"
   },
   "nav": {
-    "dashboard": "Painel",
+    "dashboard": "Conta",
     "profile": "Perfil",
     "security": "Segurança",
     "authenticator": "App autenticador",
@@ -77,7 +77,7 @@
     "title": "Redefinir senha",
     "description": "Informe seu e-mail e enviaremos um link de redefinição.",
     "submit": "Enviar link de redefinição",
-    "sent": "Se existe uma conta com esse e-mail, um link de redefinição foi enviado. Verifique sua caixa de entrada.",
+    "sent": "Se o e-mail estiver cadastrado, enviaremos um link de redefinição.",
     "backToLogin": "Voltar para o login"
   },
   "resetPassword": {
@@ -106,7 +106,7 @@
   "notFound": {
     "header": "Página não encontrada",
     "description": "A página que você acessou não existe ou foi removido.",
-    "backToAccount": "Ir para o painel",
+    "backToAccount": "Ir para a conta",
     "backToLogin": "Voltar para o login"
   },
   "register": {
@@ -145,7 +145,7 @@
   "callback": {
     "completing": "Concluindo login…",
     "missingCode": "Código de autorização ou verificador ausente. Faça login novamente.",
-    "invalidState": "Estado inválido. Possível CSRF — faça login novamente.",
+    "invalidState": "Estado inválido. Possível CSRF; faça login novamente.",
     "tokenError": "Falha na troca do token. Faça login novamente.",
     "backToSignIn": "Voltar para o login"
   },
@@ -229,9 +229,9 @@
       "create": "Criar chave",
       "creating": "Criando…",
       "done": "Concluído",
-      "copyWarning": "Copie esta chave agora — você não poderá vê-la novamente.",
+      "copyWarning": "Copie esta chave agora; você não poderá vê-la novamente.",
       "scopesHint": "Selecione as permissões que esta chave concede. Menos é mais seguro.",
-      "securityNotice": "Use uma chave separada para cada integração. Escolha uma validade sempre que possível e revogue a chave imediatamente se ela for exposta."
+      "securityNotice": "Use uma chave por integração, defina uma validade e revogue-a se for exposta."
     }
   },
   "security": {
@@ -250,7 +250,7 @@
     },
     "passkeys": {
       "title": "Chaves de acesso",
-      "description": "Login biométrico ou com chave de hardware — sem senha.",
+      "description": "Login biométrico ou com chave de hardware; sem senha.",
       "manage": "Gerenciar",
       "count_one": "{{count}} chave de acesso cadastrada",
       "count_other": "{{count}} chaves de acesso cadastradas"
@@ -277,11 +277,11 @@
       "title": "Configurar app autenticador",
       "subtitle": "Escaneie o QR code com um app autenticador e verifique com um código.",
       "alreadyConfigured": "TOTP já configurado",
-      "alreadyDesc": "Um app autenticador já está configurado para sua conta. Remova-o na página de segurança para configurar um novo.",
-      "step1Title": "Passo 1 — Escanear QR code",
+      "alreadyDesc": "Remova o app atual na página de segurança antes de configurar outro.",
+      "step1Title": "Passo 1 • Escanear QR code",
       "step1Desc": "Abra seu app autenticador e escaneie o código abaixo.",
       "cantScan": "Não consegue escanear? Insira manualmente",
-      "step2Title": "Passo 2 — Verificar código",
+      "step2Title": "Passo 2 • Verificar código",
       "step2Desc": "Insira o código de 6 dígitos do seu app autenticador para confirmar a configuração.",
       "code": "Código de verificação",
       "activate": "Ativar",
@@ -343,9 +343,9 @@
       "editTitle": "Editar aplicação",
       "name": "Nome",
       "redirectURIs": "Redirect URIs",
-      "redirectURIsHint": "Uma ou mais URLs de retorno, separadas por espaços. Use HTTPS; HTTP só é permitido para localhost durante o desenvolvimento.",
+      "redirectURIsHint": "Separe as URLs por espaços. Use HTTPS; HTTP só é permitido para localhost em desenvolvimento.",
       "redirectURIsError": "Informe ao menos uma URL de retorno HTTPS completa. HTTP só é permitido para localhost.",
-      "prefillHint": "Escopos sugeridos pelo produto que trouxe você aqui. Para acesso de máquina, mantenha só esses escopos e escolha o tipo confidencial.",
+      "prefillHint": "Escopos sugeridos pelo produto. Para acesso de máquina, mantenha-os e escolha o tipo confidencial.",
       "scopes": "Escopos permitidos",
       "scopesHint": "Selecione quais dados e ações a aplicação poderá solicitar.",
       "audience": "Audience (opcional)",
@@ -359,7 +359,7 @@
       "save": "Salvar",
       "saving": "Salvando…",
       "done": "Concluir",
-      "secretWarning": "Copie o client secret agora — ele é exibido apenas uma vez e não pode ser recuperado.",
+      "secretWarning": "Copie o client secret agora; ele é exibido apenas uma vez e não pode ser recuperado.",
       "newSecretTitle": "Novo client secret"
     }
   },
@@ -422,7 +422,7 @@
   "consent": {
     "title": "{{app}} está solicitando acesso",
     "description": "A aplicação está pedindo permissão para acessar os seguintes dados da sua conta:",
-    "reviewNotice": "Continue apenas se você reconhecer {{app}} e esperava conectá-lo. Você poderá revisar ou revogar esse acesso depois.",
+    "reviewNotice": "Conecte {{app}} apenas se você reconhecer o app; você pode revogar o acesso depois.",
     "identityPermissions": "Informações de identidade",
     "accountPermissions": "Acesso à conta",
     "unknownApp": "Uma aplicação",
@@ -452,7 +452,7 @@
     "openid": "Confirmar sua identidade (ID de usuário)",
     "profile": "Ver seu nome e foto de perfil",
     "email": "Ver seu endereço de e-mail",
-    "service": "{{service}} — {{action}} em {{resource}}",
+    "service": "{{service}} • {{action}} em {{resource}}",
     "allResources": "todos os recursos",
     "allActions": "acesso completo"
   },
@@ -565,9 +565,9 @@
     "submitFailed": "Algo deu errado. Tente novamente.",
     "cpfInvalid": "Esse CPF não parece correto. Confira os 11 dígitos.",
     "fieldRequired": "Este campo é obrigatório.",
-    "submissionLocked": "Sua verificação já está em andamento. Você não pode fazer alterações até que a análise termine ou ela expire.",
+    "submissionLocked": "Sua verificação está em análise. Aguarde a conclusão ou expiração.",
     "mfaRequiredTitle": "Autenticação em dois fatores obrigatória",
-    "mfaRequired": "A verificação de identidade exige autenticação em dois fatores. Configure um aplicativo autenticador ou uma chave de acesso para continuar.",
+    "mfaRequired": "Ative a autenticação em dois fatores para verificar sua identidade.",
     "mfaRequiredCta": "Configurar autenticação em dois fatores",
     "submitEnhancedCta": "Enviar para análise",
     "submittedOn": "Enviado em {{date}}",
@@ -575,7 +575,7 @@
     "documentIdBack": "Documento - verso",
     "selfieWithDocument": "Selfie segurando o documento",
     "selfieWithDocumentInstruction": "Segure seu documento ao lado do rosto e tire a foto.",
-    "selfieWithDocumentConsentBody": "Vamos pedir acesso à câmera para tirar uma foto sua segurando o documento de identidade. A foto é usada apenas para verificação de identidade e revisada pela nossa equipe.",
+    "selfieWithDocumentConsentBody": "Tire uma foto segurando seu documento. Nossa equipe a usará para verificar sua identidade.",
     "selfieWithDocumentDone": "Foto enviada.",
     "capturePhoto": "Tirar foto",
     "retakePhoto": "Tirar outra foto",
@@ -591,9 +591,9 @@
     "documentPreviewTitle": "Revise sua foto antes de enviar",
     "documentPreviewChangeFile": "Escolher outro arquivo",
     "documentPreviewConfirm": "Enviar esta foto",
-    "documentPreviewUnavailable": "A pré-visualização não está disponível para este tipo de arquivo, mas o envio funcionará normalmente.",
-    "documentsPrivacyNote": "Suas fotos de documento são usadas apenas para verificar sua identidade e são armazenadas com segurança. Nunca são compartilhadas além disso.",
-    "documentCaptureTips": "Verifique se os quatro cantos estão visíveis, a foto está nítida e não há reflexos sobre o documento.",
+    "documentPreviewUnavailable": "Não há prévia deste arquivo; você ainda pode enviá-lo.",
+    "documentsPrivacyNote": "Suas fotos são armazenadas com segurança e usadas apenas para verificar sua identidade.",
+    "documentCaptureTips": "Mostre os quatro cantos do documento; evite fotos desfocadas ou com reflexo.",
     "uploading": "Enviando…",
     "uploadSuccess": "Documento enviado.",
     "documentReplaced": "Documento substituído.",
@@ -602,7 +602,7 @@
     "fileTooLarge": "O arquivo é muito grande (máximo 5 MB).",
     "fileTypeUnsupported": "Tipo de arquivo não suportado. Use JPG, PNG, HEIC ou PDF.",
     "rejectionReason": "Motivo: {{reason}}",
-    "rejectionGuidance": "Reenvie seus documentos de identidade para reenviar — reenvios parciais não são aceitos.",
+    "rejectionGuidance": "Envie novamente todos os documentos; não aceitamos reenvios parciais.",
     "contactSupport": "Falar com o suporte",
     "expiresOn": "Este envio expira em {{date}}.",
     "underReviewNote": "Analisamos os envios na ordem em que chegam e enviaremos um e-mail assim que houver uma decisão.",
@@ -615,10 +615,10 @@
   "home": {
     "cta": {
       "login": "Entrar",
-      "dashboard": "Ir para o painel"
+      "dashboard": "Ir para a conta"
     },
     "title": "Uma identidade para todo o ecossistema CTech",
-    "description": "Entre uma vez e acesse a Wallet, o DF-e e os próximos produtos CTech com segurança de nível empresarial.",
+    "description": "Acesse os produtos CTech com uma única conta.",
     "footer": {
       "terms": "Termos de Uso",
       "support": "Ajuda",
@@ -691,13 +691,13 @@
       "rejected": "Rejeitado"
     },
     "documentTypes": {
-      "id_front": "Documento — frente",
-      "id_back": "Documento — verso",
+      "id_front": "Documento • frente",
+      "id_back": "Documento • verso",
       "selfie_with_document": "Selfie com documento"
     },
     "events": {
       "kyc": {
-        "documents.viewed": "acessou os documentos protegidos",
+        "documents_viewed": "acessou os documentos protegidos",
         "verified": "aprovou a identidade",
         "rejected": "rejeitou a identidade"
       }
@@ -767,7 +767,7 @@
       "replyPlaceholder": "Escreva uma resposta",
       "reply": "Responder",
       "replying": "Enviando…",
-      "closedHelp": "Este atendimento foi encerrado e preservado como histórico. Se precisar de mais ajuda, abra um novo ticket.",
+      "closedHelp": "Atendimento encerrado. Abra outro ticket se precisar de ajuda.",
       "realtime": {
         "connected": "Atualizações em tempo real",
         "connecting": "Conectando…",
@@ -812,7 +812,7 @@
       "back": "Voltar para a fila",
       "close": "Encerrar",
       "closeTitle": "Encerrar este ticket?",
-      "closeDescription": "O encerramento é definitivo: cliente e agentes não poderão responder, alterar o status, escalar ou adicionar notas. Uma nova dúvida exigirá outro ticket.",
+      "closeDescription": "O ticket será encerrado e não poderá receber novas respostas ou alterações.",
       "closeConfirm": "Encerrar definitivamente",
       "closedImmutable": "Ticket encerrado. A conversa, o status, as notas e o escalonamento agora são somente leitura.",
       "internalTools": "Ferramentas internas",
@@ -862,7 +862,7 @@
     },
     "empty": {
       "title": "Você ainda não está em nenhuma organização",
-      "body": "Uma organização é um espaço compartilhado: convide colegas, defina o papel de cada um e receba uma cobrança só. Crie uma para começar."
+      "body": "Reúna sua equipe e suas empresas em um só lugar."
     },
     "create": {
       "action": "Nova organização",
@@ -895,20 +895,20 @@
       "empty": "Nenhum convite pendente.",
       "invite": "Convidar alguém",
       "inviteTitle": "Convidar alguém",
-      "inviteDescription": "A pessoa aceita por um link. Nada é enviado por e-mail — você mesmo manda o link.",
+      "inviteDescription": "A pessoa aceita por um link. Nada é enviado por e-mail; você mesmo manda o link.",
       "emailLabel": "Endereço de e-mail",
       "roleLabel": "Papel",
       "submit": "Criar convite",
       "submitting": "Criando…",
       "linkTitle": "Envie este link",
-      "linkWarning": "Este link aparece uma vez só. Ao fechar esta janela ele se perde de vez — você teria que convidar a pessoa outra vez.",
+      "linkWarning": "Copie o link agora; ele não será exibido novamente.",
       "copy": "Copiar link",
       "done": "Pronto",
       "revoke": "Revogar",
       "revokeTitle": "Revogar este convite?",
       "revokeBody": "O link para de funcionar. Se a pessoa já aceitou, isto não muda nada.",
       "companiesLabel": "Empresas pelas quais esta pessoa pode agir",
-      "noCompaniesHint": "Nenhuma empresa selecionada. A pessoa entra na organização, mas não poderá agir por nenhuma empresa até alguém conceder acesso.",
+      "noCompaniesHint": "Sem empresas selecionadas, a pessoa não poderá agir por nenhuma empresa.",
       "searchCompanies": "Buscar empresas",
       "selectedCompanies": "{{count}} selecionada(s)",
       "selectVisible": "Selecionar visíveis",
@@ -930,7 +930,7 @@
       "leaveDescription": "Você perde o acesso. Alguém com permissão de administrador precisa convidá-lo de volta.",
       "leaveConfirmTitle": "Sair desta organização?",
       "leaveConfirmBody": "Você perde o acesso na hora e não consegue voltar sozinho.",
-      "ownerCannotLeave": "Você é o dono desta organização, então não pode sair dela. Transfira-a antes para outro membro — uma organização sem dono não tem quem convide, renomeie ou a repasse.",
+      "ownerCannotLeave": "Você é o dono desta organização, então não pode sair dela. Transfira-a antes para outro membro.",
       "noOtherMembers": "Não há mais ninguém aqui para receber. Convide alguém antes."
     },
     "invite": {
@@ -942,8 +942,8 @@
       "accepting": "Aceitando…",
       "open": "Abrir",
       "missingToken": "Este link está incompleto. Peça um novo a quem convidou você.",
-      "invalid": "Este convite não vale mais. Ele pode ter expirado, já ter sido usado ou ter sido enviado para outro endereço. Peça um novo a quem convidou você.",
-      "unverified": "Verifique seu endereço de e-mail primeiro. Mandamos um link quando você se cadastrou — abra o link e volte para esta página.",
+      "invalid": "Convite inválido ou expirado. Peça um novo.",
+      "unverified": "Verifique seu e-mail e volte para aceitar o convite.",
       "resend": "Reenviar e-mail de verificação",
       "resent": "E-mail de verificação enviado.",
       "retry": "Tentar de novo",
@@ -956,7 +956,7 @@
       "add": "Adicionar empresa",
       "addTitle": "Adicionar uma empresa",
       "tradeNameOptional": "Nome fantasia (opcional)",
-      "addBody": "O CNPJ ou CPF em nome de quem os documentos são emitidos. Configuração fiscal — inscrição estadual, certificado — fica no DF-e.",
+      "addBody": "O CNPJ ou CPF em nome de quem os documentos são emitidos. A configuração fiscal fica no DF-e.",
       "taxId": "CNPJ ou CPF",
       "taxIdHint": "O CPF aceita 11 dígitos. O CNPJ aceita 14 letras ou dígitos e é formatado automaticamente.",
       "lookingUp": "Consultando o CNPJ…",
@@ -971,22 +971,22 @@
       "submit": "Criar organização",
       "retryCompany": "Tentar adicionar a empresa novamente",
       "failed": "Não foi possível criar a organização.",
-      "organizationCreatedCompanyFailed": "A organização foi criada, mas a empresa não foi adicionada. Corrija os dados e tente de novo; outra organização não será criada.",
+      "organizationCreatedCompanyFailed": "Organização criada, empresa não adicionada. Tente adicioná-la sem criar outra.",
       "handoffBanner": "Criando uma organização para o {{product}}. Você volta para lá ao terminar.",
       "handoffInvalidTitle": "Este link não é válido",
-      "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar uma organização pela sua conta.",
+      "handoffInvalidBody": "Link do produto inválido. Você ainda pode criar uma organização pela sua conta.",
       "goToOrganizations": "Ir para minhas organizações",
-      "companyRequiredInHandoff": "Informe o CNPJ ou CPF: o produto que te trouxe aqui precisa de uma empresa, não só de um espaço de trabalho."
+      "companyRequiredInHandoff": "Este produto exige uma empresa. Informe o CNPJ ou CPF."
     }
   },
   "spaces": {
     "title": "Espaços",
-    "subtitle": "Lugares para dividir com quem você quiser: a casa, um orçamento, um projeto.",
+    "subtitle": "Espaços compartilhados com outras pessoas.",
     "create": "Novo espaço",
     "role": "Acesso",
     "empty": {
       "title": "Você ainda não tem nenhum espaço",
-      "body": "Um espaço serve para dividir algo com outras pessoas sem burocracia: a casa, um orçamento, um projeto paralelo. Dê um nome e convide quem quiser."
+      "body": "Crie um espaço para compartilhar com outras pessoas."
     },
     "roles": {
       "owner": "Dono",
@@ -1008,7 +1008,7 @@
       "failed": "Não foi possível criar o espaço.",
       "handoffBanner": "Criando um espaço para o {{product}}. Você volta para lá ao terminar.",
       "handoffInvalidTitle": "Este link não é válido",
-      "handoffInvalidBody": "O produto que te trouxe aqui não está configurado corretamente. Você ainda pode criar um espaço pela sua conta.",
+      "handoffInvalidBody": "Link do produto inválido. Você ainda pode criar um espaço pela sua conta.",
       "goToSpaces": "Ir para meus espaços"
     },
     "detail": {
@@ -1036,7 +1036,7 @@
       "leave": "Sair do espaço",
       "leaveDescription": "Você perde o acesso. Só o dono pode convidá-lo de volta.",
       "leaveConfirmTitle": "Sair deste espaço?",
-      "ownerCannotLeave": "Você é o dono deste espaço, então não pode sair dele. Transfira-o antes para alguém com Acesso total — um espaço sem dono não tem quem convide, renomeie ou o repasse.",
+      "ownerCannotLeave": "Transfira o espaço para alguém com Acesso total antes de sair.",
       "noOtherMembers": "Ninguém aqui tem Acesso total. Dê Acesso total a alguém antes de transferir."
     },
     "toast": {

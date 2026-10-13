@@ -9,6 +9,10 @@ The browser calls the API **cross-origin** at `NEXT_PUBLIC_API_URL`
 CORS applies. `/.well-known/*` is served by the API host only. See
 [`CLAUDE.md`](CLAUDE.md) for why the auth cookies still work.
 
+UI copy lives in `src/locales/pt-BR.json` and `src/locales/en.json`. Keep labels
+and descriptions concise; use “Conta” / “Account” for the account landing page,
+and use bullets or semicolons instead of em dashes in interface text.
+
 Organization company forms look up a complete 14-character CNPJ directly at
 `https://open.cnpja.com/office/:cnpj`. This public request uses the dedicated
 credential-free `cnpjaApi` client from `lib/axios.ts`, never the authenticated
@@ -83,9 +87,10 @@ areas. Shared inputs and buttons use compact visual heights while keeping
 mobile controls at a practical touch size. OAuth client dialogs expand on
 larger screens so redirect URIs and scope selection have room. The shared
 dialog stacks content in document order so rows do not stretch into unused
-vertical space. Scope catalogs open selected compact groups by default; larger
-groups stay collapsed with their selected count visible. Dialogs keep viewport
-height limits and scroll only when content exceeds the available height.
+vertical space. Its flex container and direct forms use `min-h-0`, allowing long
+forms such as API key and OAuth client creation to scroll within the viewport
+height limit. Scope catalogs open selected compact groups by default; larger
+groups stay collapsed with their selected count visible.
 
 Passkey enrollment asks for a recognizable name before opening the browser's
 WebAuthn security prompt and persists that name through the existing register
