@@ -73,6 +73,9 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	if errors.Is(err, deletion.ErrOpenRequest) {
 		return apierror.Conflict("A deletion request is already in progress for this account.", c.Path())
 	}
+	if errors.Is(err, deletion.ErrEligibilityUnavailable) {
+		return apierror.ServiceUnavailable("Could not check every CTech product right now. Try again in a few minutes.", c.Path()).WithCause(err)
+	}
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}

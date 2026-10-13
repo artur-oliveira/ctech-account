@@ -103,7 +103,7 @@ func (s *Service) Request(ctx context.Context, userID string) (*Request, error) 
 		return nil, err
 	}
 	if _, blockers, err := s.ownership.Assess(ctx, userID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrEligibilityUnavailable, err)
 	} else if len(blockers) > 0 {
 		return nil, &BlockedError{Blockers: blockers}
 	}

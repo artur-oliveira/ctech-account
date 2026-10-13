@@ -38,11 +38,14 @@ const (
 func (s State) Open() bool { return s != StateCancelled && s != StateExpired && s != StatePurged }
 
 var (
-	ErrNotFound       = errors.New("deletion: request not found")
-	ErrOpenRequest    = errors.New("deletion: user already has an open request")
-	ErrStateChanged   = errors.New("deletion: request state changed concurrently")
-	ErrInvalidToken   = errors.New("deletion: link is invalid or expired")
-	ErrNotCancellable = errors.New("deletion: request can no longer be cancelled")
+	ErrNotFound    = errors.New("deletion: request not found")
+	ErrOpenRequest = errors.New("deletion: user already has an open request")
+	// ErrEligibilityUnavailable: a participant could not be asked, so the
+	// assessment is unknown (never "eligible").
+	ErrEligibilityUnavailable = errors.New("deletion: eligibility could not be assessed")
+	ErrStateChanged           = errors.New("deletion: request state changed concurrently")
+	ErrInvalidToken           = errors.New("deletion: link is invalid or expired")
+	ErrNotCancellable         = errors.New("deletion: request can no longer be cancelled")
 )
 
 // Workspace is a ctech-account workspace erased with the user, with its kind
