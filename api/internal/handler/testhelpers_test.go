@@ -34,6 +34,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
+	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	riskDomain "gopkg.aoctech.app/account/api/internal/domain/risk"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	supportDomain "gopkg.aoctech.app/account/api/internal/domain/support"
@@ -242,7 +243,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	deletionMail := &fakeDeletionMailer{}
 	deletionSvc := deletion.NewService(newMemDeletionRepo(), userSvc,
 		deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), nil, nil),
-		deletionMail)
+		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo))
 	handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
 		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
@@ -564,6 +565,15 @@ func readJSON(t *testing.T, resp *http.Response, dest any) {
 		t.Fatalf("decoding response body: %v", err)
 	}
 }
+
+// noOrgs is the test app's organization view: nobody owns anything.
+type noOrgs struct{}
+
+func (noOrgs) ListForUser(context.Context, string) ([]*orgDomain.Membership, error) { return nil, nil }
+func (noOrgs) ListMembers(context.Context, string, string) ([]*orgDomain.Membership, error) {
+	return nil, nil
+}
+func (noOrgs) KindOf(context.Context, string) (string, error) { return orgDomain.KindOrganization, nil }
 
 func bodyString(resp *http.Response) string {
 	defer func(Body io.ReadCloser) {
@@ -1197,6 +1207,10 @@ func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _,
 	return nil
 }
 func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+	f.cancelToken = token
+	return nil
+}
+func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string) error {
 	f.cancelToken = token
 	return nil
 }

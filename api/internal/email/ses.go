@@ -77,6 +77,11 @@ func (c *Client) SendDeletionReminderEmail(ctx context.Context, to, firstName, r
 		deletionReminderEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil))
 }
 
+func (c *Client) SendDeletionBlockedEmail(ctx context.Context, to, firstName, requestID, cancelToken string, blockers []string) error {
+	return c.send(ctx, to, "A exclusão da sua conta está pendente — ctech",
+		deletionBlockedEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), blockers))
+}
+
 func (c *Client) SendDeletionCancelledEmail(ctx context.Context, to, firstName string) error {
 	return c.send(ctx, to, "Exclusão da conta cancelada — ctech", deletionCancelledEmailHTML(firstName))
 }
@@ -250,6 +255,28 @@ func deletionReminderEmailHTML(firstName, cancelLink string, graceUntil time.Tim
   ` + ctaButton("Cancelar exclusão", cancelLink)
 	return emailLayout("Último aviso de exclusão", firstName, body,
 		"Se você quer mesmo excluir a conta, não precisa fazer nada.")
+}
+
+var deletionBlockerText = map[string]string{
+	"account.organization_shared_owner": "Você é titular de uma organização com outros membros: transfira a titularidade.",
+	"account.oauth_client_owned":        "Você tem aplicativos OAuth cadastrados: exclua-os.",
+}
+
+func deletionBlockedEmailHTML(firstName, cancelLink string, blockers []string) string {
+	items := ""
+	for _, b := range blockers {
+		text, ok := deletionBlockerText[b]
+		if !ok {
+			text = html.EscapeString(b)
+		}
+		items += "<li>" + text + "</li>"
+	}
+	body := `<p>O prazo para a exclusão da sua conta CTech terminou, mas ela não pôde ser concluída:</p>
+  <ul>` + items + `</ul>
+  <p>Sua conta continua bloqueada. Cancele a exclusão, resolva os itens acima e faça um novo pedido.</p>
+  ` + ctaButton("Cancelar exclusão", cancelLink)
+	return emailLayout("Exclusão pendente", firstName, body,
+		"Se precisar de ajuda, responda a este e-mail ou abra um chamado no suporte.")
 }
 
 func deletionCancelledEmailHTML(firstName string) string {
