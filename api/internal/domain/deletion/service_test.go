@@ -109,8 +109,8 @@ func (f *fakeLocker) Lock(context.Context, *Request) error {
 	}
 	return f.lockErr
 }
-func (f *fakeLocker) Unlock(context.Context, *Request) error { f.unlocks++; return f.unlockErr }
-func (f *fakeLocker) Erase(context.Context, *Request) error  { f.erases++; return nil }
+func (f *fakeLocker) Unlock(context.Context, *Request) error          { f.unlocks++; return f.unlockErr }
+func (f *fakeLocker) Erase(context.Context, *Request, []string) error { f.erases++; return nil }
 
 type fakeMailer struct {
 	blocked                             int

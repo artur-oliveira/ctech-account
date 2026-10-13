@@ -24,7 +24,7 @@ type Users interface {
 type Locker interface {
 	Lock(ctx context.Context, r *Request) error
 	Unlock(ctx context.Context, r *Request) error
-	Erase(ctx context.Context, r *Request) error
+	Erase(ctx context.Context, r *Request, services []string) error
 }
 
 type Mailer interface {
@@ -412,7 +412,7 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		if err := s.locker.Lock(ctx, r); err != nil {
 			return err
 		}
-		if err := s.locker.Erase(ctx, r); err != nil {
+		if err := s.locker.Erase(ctx, r, nil); err != nil {
 			return err
 		}
 		r.State, r.UpdatedAt = StatePurging, ts(now)

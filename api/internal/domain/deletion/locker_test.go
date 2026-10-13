@@ -77,7 +77,7 @@ func TestAccountLocker_UnlockAndErasePublishWithTheirOwnTimestamps(t *testing.T)
 	if err := l.Unlock(context.Background(), r); err != nil {
 		t.Fatalf("Unlock: %v", err)
 	}
-	if err := l.Erase(context.Background(), r); err != nil {
+	if err := l.Erase(context.Background(), r, nil); err != nil {
 		t.Fatalf("Erase: %v", err)
 	}
 	if users.cleared != "r1" || tokens.revoked != 0 || len(pub.msgs) != 2 {
@@ -126,7 +126,7 @@ func TestAccountLocker_ErasePublishesFrozenWorkspaces(t *testing.T) {
 	r := lockedRequest()
 	r.Organizations = []string{"org-1", "space-1"}
 	r.Workspaces = []Workspace{{ID: "org-1", Kind: "organization"}, {ID: "space-1", Kind: "personal"}}
-	if err := l.Erase(context.Background(), r); err != nil {
+	if err := l.Erase(context.Background(), r, nil); err != nil {
 		t.Fatalf("Erase: %v", err)
 	}
 	if len(pub.msgs) != 1 || len(pub.msgs[0].Organizations) != 2 || len(pub.msgs[0].Workspaces) != 2 ||
@@ -135,5 +135,16 @@ func TestAccountLocker_ErasePublishesFrozenWorkspaces(t *testing.T) {
 	}
 	if err := pub.msgs[0].Validate(); err != nil {
 		t.Fatalf("published message is invalid: %v", err)
+	}
+}
+
+func TestAccountLocker_EraseToSubset(t *testing.T) {
+	pub := &fakePub{}
+	l := NewAccountLocker(&fakeBlocker{}, &fakeSessions{}, &fakeKeys{}, &fakeTokens{}, pub, []string{"wallet", "dfe"})
+	if err := l.Erase(context.Background(), lockedRequest(), []string{"dfe"}); err != nil {
+		t.Fatalf("Erase: %v", err)
+	}
+	if len(pub.msgs) != 1 || len(pub.msgs[0].Services) != 1 || pub.msgs[0].Services[0] != "dfe" {
+		t.Fatalf("published %+v", pub.msgs)
 	}
 }

@@ -70,7 +70,7 @@ func (l *AccountLocker) Lock(ctx context.Context, r *Request) error {
 	if err := l.tokens.Revoke(ctx, r.UserID, time.Now()); err != nil {
 		return fmt.Errorf("revoking access tokens: %w", err)
 	}
-	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil)
+	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil, nil)
 }
 
 // Unlock re-enables sign-in. Revoked sessions, API keys and the token
@@ -80,22 +80,25 @@ func (l *AccountLocker) Unlock(ctx context.Context, r *Request) error {
 	if err := l.users.ClearPendingDeletion(ctx, r.UserID, r.ID); err != nil {
 		return fmt.Errorf("unblocking sign-in: %w", err)
 	}
-	return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt), nil, nil)
+	return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt), nil, nil, nil)
 }
 
-func (l *AccountLocker) Erase(ctx context.Context, r *Request) error {
-	return l.publish(ctx, r, erasure.TypeErase, parseTime(r.LockedAt), r.Organizations, r.Workspaces)
+func (l *AccountLocker) Erase(ctx context.Context, r *Request, services []string) error {
+	return l.publish(ctx, r, erasure.TypeErase, parseTime(r.LockedAt), r.Organizations, r.Workspaces, services)
 }
 
 // publish uses the request's own timestamps as issued_at, so a retried
 // publish is a duplicate the participants ignore, never a newer event.
-func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Type, at time.Time, organizations []string, workspaces []Workspace) error {
-	if len(l.services) == 0 {
+func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Type, at time.Time, organizations []string, workspaces []Workspace, services []string) error {
+	if len(services) == 0 {
+		services = l.services
+	}
+	if len(services) == 0 {
 		return nil // no participant subscribed yet (Phase 1)
 	}
 	return l.pub.Publish(ctx, erasure.Message{
 		Version: erasure.Version, Type: typ, RequestID: r.ID, Sub: r.UserID,
-		Scope: erasure.ScopeAccount, Services: l.services, Organizations: organizations, Workspaces: toErasureWorkspaces(workspaces),
+		Scope: erasure.ScopeAccount, Services: services, Organizations: organizations, Workspaces: toErasureWorkspaces(workspaces),
 		Attempt: 1, IssuedAt: at,
 	})
 }
