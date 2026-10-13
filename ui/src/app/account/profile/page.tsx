@@ -14,6 +14,7 @@ import { fetchProfile } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 import { QueryError } from '@/components/query-error'
+import { DeleteAccountCard } from '@/components/delete-account-card'
 
 function ProfileForm() {
   const { t } = useTranslation()
@@ -145,6 +146,10 @@ export default function ProfilePage() {
           <PasswordForm />
         </CardContent>
       </Card>
+
+      <Separator />
+
+      <DeleteAccountCard />
     </div>
   )
 }
