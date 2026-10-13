@@ -433,6 +433,11 @@ func (p *SNS) Publish(ctx context.Context, m erasure.Message) error {
 
 ### Task 3: Participant eligibility
 
+> **Amendment 2026-10-13:** the eligibility request appends `?workspaces=id1,id2` with the workspaces where the person is the only
+> member (the same set that becomes `workspaces[]` on `user.erase`), omitted when empty. `erasurepub.Eligibility.Check` takes the ids
+> and URL-encodes the list; `CompositeOwnership` passes the assessment's sole-member workspaces. Test: the request path is
+> `/internal/erasure/eligibility/u1?workspaces=org_a,org_b`. See the saga protocol § 4.1.
+
 **Files:** Create `api/internal/erasurepub/eligibility.go`, `api/internal/erasurepub/eligibility_test.go`, `api/internal/domain/deletion/composite.go`, `api/internal/domain/deletion/composite_test.go`.
 
 **Interfaces:**
