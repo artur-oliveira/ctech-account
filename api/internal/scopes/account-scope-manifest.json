@@ -166,6 +166,24 @@
       "status": "active"
     },
     {
+      "name": "internal:account:erasure-ack",
+      "descriptions": {
+        "en": "Report the result of an account-deletion step.",
+        "pt-BR": "Informar o resultado de uma etapa de exclusão de conta."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
+      "name": "internal:account:erasure-subject",
+      "descriptions": {
+        "en": "Read the CPF of an account being deleted.",
+        "pt-BR": "Consultar o CPF de uma conta em exclusão."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
       "name": "internal:account:scope-registry:write",
       "descriptions": {
         "en": "Publish a Resource Server scope manifest.",

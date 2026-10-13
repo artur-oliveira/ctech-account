@@ -16,10 +16,13 @@ type memRepo struct {
 	mu         sync.Mutex
 	reqs       map[string]Request
 	markers    map[string]string // userID -> open request id
-	beforeSave func()            // runs once, before the next Save's condition check
+	services   map[string]ServiceStatus
+	beforeSave func() // runs once, before the next Save's condition check
 }
 
-func newMemRepo() *memRepo { return &memRepo{reqs: map[string]Request{}, markers: map[string]string{}} }
+func newMemRepo() *memRepo {
+	return &memRepo{reqs: map[string]Request{}, markers: map[string]string{}, services: map[string]ServiceStatus{}}
+}
 
 func clone(r Request) Request {
 	r.CancelTokenHashes = append([]string(nil), r.CancelTokenHashes...)
@@ -94,6 +97,7 @@ func (f fakeUsers) GetByID(context.Context, string) (*user.User, error) { return
 
 type fakeLocker struct {
 	locks, unlocks, erases int
+	lastErase              []string
 	lockErr, unlockErr     error
 	onLock                 func()
 }
@@ -107,7 +111,11 @@ func (f *fakeLocker) Lock(context.Context, *Request) error {
 	return f.lockErr
 }
 func (f *fakeLocker) Unlock(context.Context, *Request) error { f.unlocks++; return f.unlockErr }
-func (f *fakeLocker) Erase(context.Context, *Request) error  { f.erases++; return nil }
+func (f *fakeLocker) Erase(_ context.Context, _ *Request, services []string) error {
+	f.erases++
+	f.lastErase = services
+	return nil
+}
 
 type fakeMailer struct {
 	blocked                             int
@@ -474,7 +482,10 @@ func (f *fakePurger) Purge(context.Context, *Request) error {
 
 func (f *fixture) withPurge(t *testing.T, own *fakeOwnership, p *fakePurger, await bool) {
 	t.Helper()
-	f.svc = f.svc.WithOwnership(own).WithPurger(p, await)
+	f.svc = f.svc.WithOwnership(own).WithPurger(p)
+	if await {
+		f.svc = f.svc.WithParticipants([]string{"wallet"})
+	}
 }
 
 func TestRequest_RefusedWithBlockers(t *testing.T) {
@@ -533,7 +544,7 @@ func TestPurging_AwaitsParticipants(t *testing.T) {
 	r := f.confirm(t)
 	f.now = f.now.Add(GracePeriod)
 	f.svc.ProcessDue(ctx)
-	if s := f.stored(t, r.ID); s.State != StatePurging || s.DueState != "" || p.calls != 0 {
+	if s := f.stored(t, r.ID); s.State != StatePurging || s.DueState != string(StatePurging) || p.calls != 0 {
 		t.Fatalf("with participants the account purge waits for acks: %+v calls=%d", s, p.calls)
 	}
 }
@@ -552,5 +563,181 @@ func TestPurging_FailureRetried(t *testing.T) {
 	f.svc.ProcessDue(ctx)
 	if f.stored(t, r.ID).State != StatePurged || p.calls != 2 {
 		t.Fatalf("purge must be retried: calls=%d", p.calls)
+	}
+}
+
+func (m *memRepo) PutServices(_ context.Context, sts []*ServiceStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, st := range sts {
+		k := st.RequestID + "|" + st.Service
+		if _, ok := m.services[k]; !ok {
+			m.services[k] = *st
+		}
+	}
+	return nil
+}
+
+func (m *memRepo) ListServices(_ context.Context, requestID string) ([]*ServiceStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*ServiceStatus
+	for _, st := range m.services {
+		if st.RequestID == requestID {
+			c := st
+			out = append(out, &c)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRepo) SaveService(_ context.Context, st *ServiceStatus, from string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := st.RequestID + "|" + st.Service
+	cur, ok := m.services[k]
+	if !ok {
+		return ErrNotFound
+	}
+	if cur.Status != from {
+		return ErrStateChanged
+	}
+	m.services[k] = *st
+	return nil
+}
+
+func participantFixture(t *testing.T, services ...string) (*fixture, *fakePurger) {
+	t.Helper()
+	f := newFixture(t)
+	p := &fakePurger{}
+	f.svc = f.svc.WithOwnership(&fakeOwnership{}).WithPurger(p).WithParticipants(services)
+	return f, p
+}
+
+func (f *fixture) toPurging(t *testing.T) *Request {
+	t.Helper()
+	r := f.confirm(t)
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	if s := f.stored(t, r.ID); s.State != StatePurging {
+		t.Fatalf("state %s, want purging", s.State)
+	}
+	return r
+}
+
+func TestPurging_PurgesOnlyAfterEveryAck(t *testing.T) {
+	f, p := participantFixture(t, "wallet", "dfe")
+	r := f.toPurging(t)
+	if err := f.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone}); err != nil {
+		t.Fatalf("Ack wallet: %v", err)
+	}
+	f.svc.ProcessDue(ctx)
+	if p.calls != 0 {
+		t.Fatal("must not purge before every participant acked")
+	}
+	if err := f.svc.Ack(ctx, "dfe", erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone}); err != nil {
+		t.Fatalf("Ack dfe: %v", err)
+	}
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePurged || p.calls != 1 {
+		t.Fatalf("state %s calls %d", f.stored(t, r.ID).State, p.calls)
+	}
+}
+
+func TestPurging_RepublishesOnlyToSilentParticipantsWithBackoff(t *testing.T) {
+	f, _ := participantFixture(t, "wallet", "dfe")
+	r := f.toPurging(t)
+	_ = f.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone})
+	base := f.locker.erases // the initial broadcast
+	f.now = f.now.Add(10 * time.Minute)
+	f.svc.ProcessDue(ctx)
+	if f.locker.erases != base {
+		t.Fatal("no re-publish before the first backoff (15 min)")
+	}
+	f.now = f.now.Add(6 * time.Minute)
+	f.svc.ProcessDue(ctx)
+	if f.locker.erases != base+1 || len(f.locker.lastErase) != 1 || f.locker.lastErase[0] != "dfe" {
+		t.Fatalf("re-publish to dfe only: erases=%d last=%v", f.locker.erases, f.locker.lastErase)
+	}
+}
+
+func TestPurging_BlockedAckStalls(t *testing.T) {
+	f, p := participantFixture(t, "wallet")
+	r := f.toPurging(t)
+	if err := f.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r.ID, Result: erasure.ResultBlocked,
+		Blockers: []erasure.Blocker{{Code: "wallet.balance_nonzero"}}}); err != nil {
+		t.Fatalf("Ack: %v", err)
+	}
+	f.svc.ProcessDue(ctx)
+	if s := f.stored(t, r.ID); s.State != StateStalled || s.DueState != "" || p.calls != 0 {
+		t.Fatalf("stalled request %+v purge calls %d", s, p.calls)
+	}
+	if _, err := f.svc.Cancel(ctx, r.ID, f.mail.cancelToken); !errors.Is(err, ErrNotCancellable) {
+		t.Fatal("a stalled request is past the point of no return")
+	}
+}
+
+func TestAck_DuplicateAndPremature(t *testing.T) {
+	f, _ := participantFixture(t, "wallet")
+	if err := f.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: "nope", Result: erasure.ResultDone}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ack for an unknown request: %v", err)
+	}
+	r := f.toPurging(t)
+	ack := erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone}
+	if err := f.svc.Ack(ctx, "wallet", ack); err != nil {
+		t.Fatalf("Ack: %v", err)
+	}
+	if err := f.svc.Ack(ctx, "wallet", ack); err != nil {
+		t.Fatalf("duplicate ack must be a no-op, got %v", err)
+	}
+}
+
+func TestLegalHold_PausesAndNeedsSecondAdmin(t *testing.T) {
+	f, p := participantFixture(t)
+	r := f.confirm(t)
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-a", true); err != nil {
+		t.Fatalf("hold: %v", err)
+	}
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePending || p.calls != 0 {
+		t.Fatal("a held request must not lock")
+	}
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-a", false); !errors.Is(err, ErrHoldNeedsSecondAdmin) {
+		t.Fatalf("same admin lifting the hold: %v", err)
+	}
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-b", false); err != nil {
+		t.Fatalf("second admin: %v", err)
+	}
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePurged {
+		t.Fatalf("after the hold is lifted the request proceeds, got %s", f.stored(t, r.ID).State)
+	}
+}
+
+func TestSupportCancel_AndRedrive(t *testing.T) {
+	f, _ := participantFixture(t, "wallet")
+	r := f.confirm(t)
+	if _, err := f.svc.SupportCancel(ctx, r.ID, "admin-a"); err != nil {
+		t.Fatalf("SupportCancel: %v", err)
+	}
+	if f.stored(t, r.ID).State != StateCancelled {
+		t.Fatal("support cancel must cancel a pending request")
+	}
+
+	f2, p2 := participantFixture(t, "wallet")
+	r2 := f2.toPurging(t)
+	_ = f2.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r2.ID, Result: erasure.ResultBlocked})
+	f2.svc.ProcessDue(ctx)
+	if f2.stored(t, r2.ID).State != StateStalled {
+		t.Fatal("blocked ack must stall")
+	}
+	if err := f2.svc.Redrive(ctx, r2.ID, "wallet", "admin-a"); err != nil {
+		t.Fatalf("Redrive: %v", err)
+	}
+	_ = f2.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r2.ID, Result: erasure.ResultDone})
+	f2.svc.ProcessDue(ctx)
+	if f2.stored(t, r2.ID).State != StatePurged || p2.calls != 1 {
+		t.Fatalf("after redrive and ack: state %s calls %d", f2.stored(t, r2.ID).State, p2.calls)
 	}
 }

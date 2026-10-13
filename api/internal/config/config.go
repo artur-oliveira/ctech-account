@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -95,11 +96,11 @@ type Config struct {
 	AccessTokenTTL time.Duration
 
 	// Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md).
-	// Disabled unless ACCOUNT_DELETION_ENABLED=true; ERASURE_SERVICES lists the
+	// Disabled unless ACCOUNT_DELETION_ENABLED=true; ERASURE_PARTICIPANTS (JSON) lists the
 	// participants that must ack (empty until Phase 3).
 	AccountDeletionEnabled bool
 	ErasureTopicARN        string
-	ErasureServices        []string
+	ErasureParticipants    []ErasureParticipant
 	// BillingAPIURL is ctech-billing's API (plan limits on personal spaces,
 	// docs/specs/2026-10-10-space-plan-limits.md). Empty disables plan limits
 	// and level reports entirely — today's behaviour.
@@ -184,13 +185,9 @@ func Load() (*Config, error) {
 		log.Printf("config: WEBAUTHN_RPID %q does not match any RPOrigins entry %v — WebAuthn ceremonies will fail with a SecurityError", rpid, rpOrigins)
 	}
 
-	var erasureServices []string
-	if raw := os.Getenv("ERASURE_SERVICES"); raw != "" {
-		for _, s := range strings.Split(raw, ",") {
-			if trimmed := strings.TrimSpace(s); trimmed != "" {
-				erasureServices = append(erasureServices, trimmed)
-			}
-		}
+	erasureParticipants, err := parseErasureParticipants()
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
@@ -226,7 +223,7 @@ func Load() (*Config, error) {
 		AccessTokenTTL:         accessTokenTTL,
 		AccountDeletionEnabled: os.Getenv("ACCOUNT_DELETION_ENABLED") == "true",
 		ErasureTopicARN:        os.Getenv("ACCOUNT_ERASURE_TOPIC_ARN"),
-		ErasureServices:        erasureServices,
+		ErasureParticipants:    erasureParticipants,
 		BillingAPIURL:          strings.TrimSuffix(os.Getenv("BILLING_API_URL"), "/"),
 		// Account lockout settings
 		AccountLockoutThreshold:       positiveIntEnv("ACCOUNT_LOCKOUT_THRESHOLD", 5),
@@ -367,4 +364,47 @@ func isRegistrableMatch(rpid string, origins []string) bool {
 		return true
 	}
 	return false
+}
+
+// ErasureParticipant is one service of the account-deletion saga
+// (docs/specs/2026-10-06-account-deletion-saga-protocol.md).
+type ErasureParticipant struct {
+	Service  string `json:"service"`   // name used in erasure messages and SNS filters
+	URL      string `json:"url"`       // base URL of the service's API
+	Audience string `json:"audience"`  // aud of the token account mints for it
+	ClientID string `json:"client_id"` // its confidential client; acks are matched on azp
+}
+
+func parseErasureParticipants() ([]ErasureParticipant, error) {
+	raw := os.Getenv("ERASURE_PARTICIPANTS")
+	if raw == "" {
+		return nil, nil
+	}
+	var ps []ErasureParticipant
+	if err := json.Unmarshal([]byte(raw), &ps); err != nil {
+		return nil, fmt.Errorf("ERASURE_PARTICIPANTS: %w", err)
+	}
+	for _, p := range ps {
+		if p.Service == "" || p.URL == "" || p.Audience == "" || p.ClientID == "" {
+			return nil, fmt.Errorf("ERASURE_PARTICIPANTS: %q needs service, url, audience and client_id", p.Service)
+		}
+	}
+	return ps, nil
+}
+
+func (c *Config) ErasureServiceNames() []string {
+	names := make([]string, 0, len(c.ErasureParticipants))
+	for _, p := range c.ErasureParticipants {
+		names = append(names, p.Service)
+	}
+	return names
+}
+
+func (c *Config) ErasureServiceForClient(clientID string) (string, bool) {
+	for _, p := range c.ErasureParticipants {
+		if p.ClientID == clientID {
+			return p.Service, true
+		}
+	}
+	return "", false
 }

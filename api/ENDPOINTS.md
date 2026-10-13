@@ -369,12 +369,14 @@ Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
   `blockers: [{code, detail}]` when the account owns something that must be resolved first
   (nothing is stored): `account.organization_shared_owner` (`detail.organization_id`:
   transfer the ownership of a workspace that has other members) and
-  `account.oauth_client_owned` (`detail.client_id`: delete the OAuth app).
+  `account.oauth_client_owned` (`detail.client_id`: delete the OAuth app), plus the blockers
+  each participant reports (e.g. `wallet.balance_nonzero`). If a participant cannot be asked
+  the answer is `503 service-unavailable` (never "eligible"); retry later.
   The same check runs again at the end of grace; a blocker found then moves the request to
   `blocked` and sends the "exclusão pendente" e-mail with a cancel link (cancel, resolve,
   request again).
 - `GET /v1.0/account/deletion` *(`account:profile:read`)* → `{ request_id, state, requested_at,
-  confirm_by, grace_until }` or `404`.
+  confirm_by, grace_until, legal_hold }` or `404`.
 - `POST /v1.0/auth/deletion/confirm` *(no auth; link token; IP rate-limited)* →
   `{ request_id, token }` from the e-mail link (valid 24 h). Locks the account at once
   (sign-in refused, sessions and API keys revoked, live access tokens revoked) and starts
@@ -386,6 +388,25 @@ Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
 - While a deletion is pending, `POST /v1.0/auth/login`, the MFA challenge and passkey
   sign-in answer `403 account-pending-deletion`; Google sign-in redirects to
   `/login?error=account_pending_deletion`.
+
+### Deletion saga: participant routes *(M2M; `RequireAuth` + `RequireInternalScope`, empty `sid`)*
+- `POST /v1.0/internal/erasure/ack` *(`internal:account:erasure-ack`; the caller's `azp` must be a
+  configured participant)* → `erasure.Ack { request_id, service?, result: done|blocked, counts?,
+  blockers? }`. `204`; `404` for an unknown request or a request whose status rows do not exist
+  yet (the participant's message is redelivered); `403` for another participant's `service`.
+  A duplicate is a no-op. `blocked` moves the request to `stalled`.
+- `GET /v1.0/internal/erasure/:request_id/subject` *(`internal:account:erasure-subject`; dfe only)*
+  → `{ cpf }`. `404` unless the request is `purging`. Audited as `account.deletion.subject_read`.
+- Outbound: account calls `GET {participant}/internal/erasure/eligibility/{sub}[?workspaces=id1,id2]`
+  with a token it mints itself (scope `internal:{service}:erasure-eligibility`, 5 s timeout).
+
+### Deletion saga: admin routes *(`RequireAuth` + `RequireClientID(SELF_CLIENT_ID)` + support role `admin`)*
+- `POST /v1.0/admin/deletion/:request_id/legal-hold` `{ on }` → `204`. A held request does not lock or
+  purge; it is re-checked hourly. The admin who placed the hold cannot lift it (`409`).
+- `POST /v1.0/admin/deletion/:request_id/cancel` → `204`. Support cancel of a `pending_deletion` or
+  `blocked` request (`409` otherwise).
+- `POST /v1.0/admin/deletion/:request_id/redrive` `{ service }` → `204`. Re-dispatches a participant
+  that acked `blocked` and returns a `stalled` request to `purging`.
 
 ## Passkey auth — `POST /v1.0/auth/passkeys/*` (no `RequireAuth`)
 - `POST /v1.0/auth/passkeys/authenticate/begin` *(20 req/min/IP)* →
@@ -406,7 +427,9 @@ Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
 Service-to-service read used by **ctech-wallet** (`kyc.go:38`). Requires a
 machine token (empty `sid`) carrying `internal:account:kyc`. Returns the **full,
 unmasked** identity record `{ level, method, doc_status, cpf, legal_name,
-birth_date, address }` (`kyc.go:158`). No human-facing scope governs this.
+birth_date, address }` (`kyc.go:158`), plus `cpf_hmac` (the keyed hash `Sealer.MAC("cpf-hmac", cpf)`
+kept on the deletion tombstone; present only when the user has a CPF) so ctech-wallet can carry a
+self-exclusion across account deletion without ever holding the key. No human-facing scope governs this.
 
 ## Internal — `GET /v1.0/internal/oauth-clients/:client_id`  *(M2M; `RequireAuth` + `RequireInternalScope(internal:account:oauth-client-read)`)*
 Service-to-service read used by **ctech-billing** to verify who owns an OAuth

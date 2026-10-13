@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/erasure"
 )
 
 type DeletionHandler struct {
@@ -73,6 +75,9 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	if errors.Is(err, deletion.ErrOpenRequest) {
 		return apierror.Conflict("A deletion request is already in progress for this account.", c.Path())
 	}
+	if errors.Is(err, deletion.ErrEligibilityUnavailable) {
+		return apierror.ServiceUnavailable("Could not check every CTech product right now. Try again in a few minutes.", c.Path()).WithCause(err)
+	}
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}
@@ -115,7 +120,7 @@ func (h *DeletionHandler) status(c fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{
 		"request_id": r.ID, "state": r.State, "requested_at": r.RequestedAt,
-		"confirm_by": r.ConfirmBy, "grace_until": r.GraceUntil,
+		"confirm_by": r.ConfirmBy, "grace_until": r.GraceUntil, "legal_hold": r.LegalHold,
 	})
 }
 
@@ -151,4 +156,122 @@ func (h *DeletionHandler) cancel(c fiber.Ctx) error {
 	}
 	recordAudit(c, h.audit, r.UserID, audit.EventDeletionCancelled, map[string]string{"request_id": r.ID})
 	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State})
+}
+
+// RegisterInternal mounts the saga endpoints for participants (service tokens
+// only). serviceForClient maps the caller's azp to its participant name;
+// subjectServices may read the CPF of a purging user.
+func (h *DeletionHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.Handler,
+	serviceForClient func(string) (string, bool), subjectServices []string) {
+	v1.Post("/internal/erasure/ack", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountErasureAck),
+		func(c fiber.Ctx) error { return h.ack(c, serviceForClient) })
+	v1.Get("/internal/erasure/:request_id/subject", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountErasureSubject),
+		func(c fiber.Ctx) error { return h.subject(c, serviceForClient, subjectServices) })
+}
+
+func (h *DeletionHandler) ack(c fiber.Ctx, serviceForClient func(string) (string, bool)) error {
+	service, ok := serviceForClient(middleware.GetClientID(c))
+	if !ok {
+		return apierror.Forbidden("This client is not an erasure participant.", c.Path())
+	}
+	var ack erasure.Ack
+	if err := c.Bind().JSON(&ack); err != nil || ack.RequestID == "" {
+		return apierror.InvalidRequest("Body must be an erasure ack with request_id.", c.Path())
+	}
+	if ack.Service != "" && ack.Service != service {
+		return apierror.Forbidden("A participant may only ack for itself.", c.Path())
+	}
+	switch err := h.svc.Ack(c.Context(), service, ack); {
+	case errors.Is(err, deletion.ErrNotFound):
+		return apierror.NotFound("deletion request", c.Path())
+	case err != nil:
+		return apierror.ServerError(c.Path()).WithCause(err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *DeletionHandler) subject(c fiber.Ctx, serviceForClient func(string) (string, bool), allowed []string) error {
+	service, ok := serviceForClient(middleware.GetClientID(c))
+	if !ok || !slices.Contains(allowed, service) {
+		return apierror.Forbidden("This participant may not read deletion subjects.", c.Path())
+	}
+	requestID := c.Params("request_id")
+	cpf, err := h.svc.Subject(c.Context(), requestID)
+	if errors.Is(err, deletion.ErrNotFound) {
+		return apierror.NotFound("deletion request", c.Path())
+	}
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err)
+	}
+	recordAuditAnon(c, h.audit, audit.EventDeletionSubjectRead, map[string]string{"request_id": requestID, "service": service})
+	return c.JSON(fiber.Map{"cpf": cpf})
+}
+
+// RegisterAdmin mounts the support-admin operations on a request.
+func (h *DeletionHandler) RegisterAdmin(admin fiber.Router) {
+	admin.Post("/:request_id/legal-hold", h.adminLegalHold)
+	admin.Post("/:request_id/cancel", h.adminCancel)
+	admin.Post("/:request_id/redrive", h.adminRedrive)
+}
+
+type legalHoldBody struct {
+	On *bool `json:"on" validate:"required"`
+}
+
+type redriveBody struct {
+	Service string `json:"service" validate:"required"`
+}
+
+// adminError maps the service errors shared by the admin operations.
+func adminError(c fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, deletion.ErrNotFound):
+		return apierror.NotFound("deletion request", c.Path())
+	case errors.Is(err, deletion.ErrNotCancellable):
+		return apierror.Conflict("This deletion can no longer be cancelled.", c.Path())
+	case errors.Is(err, deletion.ErrHoldNeedsSecondAdmin):
+		return apierror.Conflict("A different admin must lift this hold.", c.Path())
+	case errors.Is(err, deletion.ErrStateChanged):
+		return apierror.Conflict("The request changed concurrently; retry.", c.Path())
+	}
+	return apierror.ServerError(c.Path()).WithCause(err)
+}
+
+func (h *DeletionHandler) adminLegalHold(c fiber.Ctx) error {
+	var req legalHoldBody
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+	admin, id := middleware.GetUserID(c), c.Params("request_id")
+	if err := h.svc.SetLegalHold(c.Context(), id, admin, *req.On); err != nil {
+		return adminError(c, err)
+	}
+	event := audit.EventDeletionLegalHoldOff
+	if *req.On {
+		event = audit.EventDeletionLegalHoldOn
+	}
+	recordAudit(c, h.audit, admin, event, map[string]string{"request_id": id})
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *DeletionHandler) adminCancel(c fiber.Ctx) error {
+	admin, id := middleware.GetUserID(c), c.Params("request_id")
+	if _, err := h.svc.SupportCancel(c.Context(), id, admin); err != nil {
+		return adminError(c, err)
+	}
+	recordAudit(c, h.audit, admin, audit.EventDeletionSupportCancelled, map[string]string{"request_id": id})
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *DeletionHandler) adminRedrive(c fiber.Ctx) error {
+	var req redriveBody
+	if err := parseBody(c, &req); err != nil {
+		return err
+	}
+	admin, id := middleware.GetUserID(c), c.Params("request_id")
+	if err := h.svc.Redrive(c.Context(), id, req.Service, admin); err != nil {
+		return adminError(c, err)
+	}
+	recordAudit(c, h.audit, admin, audit.EventDeletionRedriven, map[string]string{"request_id": id, "service": req.Service})
+	return c.SendStatus(fiber.StatusNoContent)
 }

@@ -57,6 +57,13 @@ const InternalServicePrefix = "internal"
 // InternalAccountKYC lets a service check the KYC of a user
 const InternalAccountKYC = "internal:account:kyc"
 
+// InternalAccountErasureAck lets a deletion-saga participant report its result.
+const InternalAccountErasureAck = "internal:account:erasure-ack"
+
+// InternalAccountErasureSubject lets a participant read the CPF of a user being
+// purged, to match records keyed by CPF (dfe e-CPF certificates). Purging only.
+const InternalAccountErasureSubject = "internal:account:erasure-subject"
+
 // InternalAccountCompanyActor lets a product ask whether a person may act for a
 // company — the reach half of ctech-billing ADR 0023, where the platform owns
 // who may reach a company and the product owns what they may do there.

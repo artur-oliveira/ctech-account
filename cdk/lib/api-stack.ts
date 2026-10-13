@@ -153,6 +153,8 @@ export class ApiStack extends cdk.Stack {
       `TURNSTILE_SECRET_KEY=/ctech-account/${environment}/turnstile-secret-key`,
       `MAXMIND_ACCOUNT_ID=/ctech-account/${environment}/maxmind-account-id`,
       `MAXMIND_LICENSE_KEY=/ctech-account/${environment}/maxmind-license-key`,
+      // JSON list of deletion-saga participants; the operator creates it once they are live.
+      `ERASURE_PARTICIPANTS=/ctech-account/${environment}/erasure-participants`,
       ...(valkeyUrlSsmPath ? [`VALKEY_URL=${valkeyUrlSsmPath}`] : []),
     ];
 

@@ -562,3 +562,22 @@ func TestAccessTokenCarriesKYCLevelAfterRefresh(t *testing.T) {
 		t.Fatalf("kyc_level = %v", claims["kyc_level"])
 	}
 }
+
+func TestInternalKYCReturnsCPFHMAC(t *testing.T) {
+	ta := newTestApp(t)
+	withCPF := ta.registerUser(t, "kyc-hmac@example.com", "Password!123", "Fulano")
+	ta.userRepo.byID[withCPF.ID()].CPF = "12345678909"
+	noCPF := ta.registerUser(t, "kyc-nocpf@example.com", "Password!123", "Ciclano")
+	m2m := ta.issueMachineToken(t, "wallet", []string{scopes.InternalWalletConfirmDeposit})
+
+	var body map[string]any
+	readJSON(t, ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+withCPF.ID(), nil, m2m), &body)
+	if body["cpf_hmac"] != "mac:12345678909" {
+		t.Fatalf("cpf_hmac = %v, want the keyed hash of the CPF", body["cpf_hmac"])
+	}
+	body = nil
+	readJSON(t, ta.doWithToken(http.MethodGet, "/v1.0/internal/kyc/"+noCPF.ID(), nil, m2m), &body)
+	if _, ok := body["cpf_hmac"]; ok {
+		t.Fatal("a user without CPF must not get a cpf_hmac")
+	}
+}

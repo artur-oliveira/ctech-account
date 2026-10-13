@@ -24,7 +24,7 @@ type Users interface {
 type Locker interface {
 	Lock(ctx context.Context, r *Request) error
 	Unlock(ctx context.Context, r *Request) error
-	Erase(ctx context.Context, r *Request) error
+	Erase(ctx context.Context, r *Request, services []string) error
 }
 
 type Mailer interface {
@@ -60,6 +60,9 @@ func (noOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Block
 
 const dueBatch = 25
 
+// legalHoldRecheck is how often a held request is looked at again.
+const legalHoldRecheck = time.Hour
+
 type Service struct {
 	repo     Repository
 	users    Users
@@ -69,9 +72,9 @@ type Service struct {
 	newID    func() string
 	newToken func() (raw, hash string, err error)
 
-	ownership         Ownership
-	purger            Purger
-	awaitParticipants bool
+	ownership    Ownership
+	purger       Purger
+	participants []string
 }
 
 func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Service {
@@ -87,11 +90,16 @@ func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Servi
 // WithOwnership enables blocker checks and organization freezing.
 func (s *Service) WithOwnership(o Ownership) *Service { s.ownership = o; return s }
 
-// WithPurger enables the account purge after the erase is published. With
-// awaitParticipants the request waits in purging for the participants' acks
-// (Phase 3) instead of purging right away.
-func (s *Service) WithPurger(p Purger, awaitParticipants bool) *Service {
-	s.purger, s.awaitParticipants = p, awaitParticipants
+// WithPurger enables the account purge after the erase is published.
+func (s *Service) WithPurger(p Purger) *Service {
+	s.purger = p
+	return s
+}
+
+// WithParticipants makes purging wait for an ack from each of these services
+// (saga protocol §7). Empty means no participants: purge right away.
+func (s *Service) WithParticipants(services []string) *Service {
+	s.participants = services
 	return s
 }
 
@@ -103,7 +111,7 @@ func (s *Service) Request(ctx context.Context, userID string) (*Request, error) 
 		return nil, err
 	}
 	if _, blockers, err := s.ownership.Assess(ctx, userID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrEligibilityUnavailable, err)
 	} else if len(blockers) > 0 {
 		return nil, &BlockedError{Blockers: blockers}
 	}
@@ -304,6 +312,12 @@ func (s *Service) Cancel(ctx context.Context, id, token string) (*Request, error
 	if !anyTokenMatches(token, r.CancelTokenHashes) {
 		return nil, ErrInvalidToken
 	}
+	return s.cancel(ctx, r)
+}
+
+// cancel moves a pending or blocked request to cancelled and unlocks the
+// account; shared by the link cancel and the support cancel.
+func (s *Service) cancel(ctx context.Context, r *Request) (*Request, error) {
 	if r.State != StatePending && r.State != StateBlocked {
 		return nil, ErrNotCancellable
 	}
@@ -383,6 +397,10 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		case !r.Reminded && now.Before(parseTime(r.GraceUntil)):
 			return s.sendCancelLink(ctx, r, linkReminder)
 		case !now.Before(parseTime(r.GraceUntil)):
+			if r.LegalHold {
+				r.setDue(now.Add(legalHoldRecheck))
+				return s.repo.Save(ctx, r, StatePending)
+			}
 			sole, blockers, err := s.ownership.Assess(ctx, r.UserID)
 			if err != nil {
 				return err
@@ -412,17 +430,41 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		if err := s.locker.Lock(ctx, r); err != nil {
 			return err
 		}
-		if err := s.locker.Erase(ctx, r); err != nil {
+		if err := s.locker.Erase(ctx, r, nil); err != nil {
 			return err
 		}
+		if len(s.participants) > 0 {
+			rows := make([]*ServiceStatus, 0, len(s.participants))
+			for _, svc := range s.participants {
+				rows = append(rows, &ServiceStatus{PK: BuildPK(r.ID), SK: serviceSK(svc), RequestID: r.ID, Service: svc,
+					Status: ServiceDispatched, Attempts: 1, FirstDispatchAt: ts(now), LastDispatchAt: ts(now)})
+			}
+			if err := s.repo.PutServices(ctx, rows); err != nil {
+				return err
+			}
+		}
 		r.State, r.UpdatedAt = StatePurging, ts(now)
-		if s.purger != nil && !s.awaitParticipants {
+		if s.purger != nil || len(s.participants) > 0 {
 			r.setDue(now)
 		} else {
-			r.clearDue() // no purger yet, or waiting for participant acks (Phase 3)
+			r.clearDue() // nothing to wait for and nothing to purge yet
 		}
 		return s.repo.Save(ctx, r, StateLocked)
 	case StatePurging:
+		if r.LegalHold {
+			r.setDue(now.Add(legalHoldRecheck))
+			return s.repo.Save(ctx, r, StatePurging)
+		}
+		if len(s.participants) > 0 {
+			done, err := s.reconcile(ctx, r, now)
+			if err != nil || !done {
+				return err
+			}
+		}
+		if s.purger == nil {
+			r.clearDue()
+			return s.repo.Save(ctx, r, StatePurging)
+		}
 		if err := s.purger.Purge(ctx, r); err != nil {
 			return err
 		}
@@ -431,6 +473,188 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		return s.repo.Save(ctx, r, StatePurging)
 	}
 	return nil
+}
+
+// Ack records a participant's result for a request. A duplicate is a no-op;
+// an ack before the status row exists fails with ErrNotFound, so the
+// participant's message is redelivered.
+func (s *Service) Ack(ctx context.Context, service string, ack erasure.Ack) error {
+	sts, err := s.repo.ListServices(ctx, ack.RequestID)
+	if err != nil {
+		return err
+	}
+	for _, st := range sts {
+		if st.Service != service {
+			continue
+		}
+		if st.Status != ServiceDispatched {
+			return nil // already recorded
+		}
+		st.AckedAt, st.Counts = ts(s.now()), ack.Counts
+		st.Status = ServiceAcked
+		if ack.Result == erasure.ResultBlocked {
+			st.Status = ServiceBlocked
+			for _, b := range ack.Blockers {
+				st.Blockers = append(st.Blockers, b.Code)
+			}
+		}
+		if err := s.repo.SaveService(ctx, st, ServiceDispatched); err != nil && !errors.Is(err, ErrStateChanged) {
+			return err
+		}
+		if r, err := s.repo.Get(ctx, ack.RequestID); err == nil && r.State == StatePurging {
+			r.setDue(s.now()) // let the worker act on it now
+			r.UpdatedAt = ts(s.now())
+			_ = s.repo.Save(ctx, r, StatePurging) // a lost race only delays to the next due time
+		}
+		return nil
+	}
+	return ErrNotFound
+}
+
+// Subject returns the CPF of the user of a purging request (saga protocol
+// §4.4). ErrNotFound for any other state, so it cannot be used as a lookup.
+func (s *Service) Subject(ctx context.Context, requestID string) (string, error) {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return "", err
+	}
+	if r.State != StatePurging {
+		return "", ErrNotFound
+	}
+	u, err := s.users.GetByID(ctx, r.UserID)
+	if err != nil {
+		return "", err
+	}
+	return u.CPF, nil
+}
+
+var ErrHoldNeedsSecondAdmin = errors.New("deletion: a legal hold is lifted by a different admin")
+
+// SetLegalHold pauses (or resumes) a request before it locks or purges.
+func (s *Service) SetLegalHold(ctx context.Context, requestID, adminID string, on bool) error {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	if !on && r.LegalHold && r.LegalHoldBy == adminID {
+		return ErrHoldNeedsSecondAdmin
+	}
+	from := r.State
+	r.LegalHold, r.UpdatedAt = on, ts(s.now())
+	r.LegalHoldBy = ""
+	if on {
+		r.LegalHoldBy = adminID
+	}
+	if !on && (r.State == StatePending || r.State == StatePurging) {
+		r.setDue(s.now()) // resume promptly
+	}
+	return s.repo.Save(ctx, r, from)
+}
+
+// SupportCancel cancels on the user's behalf (R1: support is the fallback
+// when the user lost every e-mail). Same rules as a link cancel.
+func (s *Service) SupportCancel(ctx context.Context, requestID, _ string) (*Request, error) {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+	return s.cancel(ctx, r)
+}
+
+// Redrive puts a stalled request back to purging after support resolved the
+// participant's blocker: that participant is dispatched again.
+func (s *Service) Redrive(ctx context.Context, requestID, service, _ string) error {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	sts, err := s.repo.ListServices(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	for _, st := range sts {
+		if st.Service == service && st.Status == ServiceBlocked {
+			st.Status, st.Blockers, st.AckedAt = ServiceDispatched, nil, ""
+			st.Attempts, st.FirstDispatchAt, st.LastDispatchAt = 0, ts(now), ""
+			if err := s.repo.SaveService(ctx, st, ServiceBlocked); err != nil {
+				return err
+			}
+		}
+	}
+	if r.State == StateStalled {
+		r.State, r.UpdatedAt = StatePurging, ts(now)
+		r.setDue(now)
+		return s.repo.Save(ctx, r, StateStalled)
+	}
+	return nil
+}
+
+var ackBackoff = []time.Duration{15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
+
+const ackOverdueAfter = 48 * time.Hour
+
+func nextDispatch(st *ServiceStatus) time.Time {
+	if st.Attempts == 0 {
+		return time.Time{} // redriven: due immediately
+	}
+	i := min(st.Attempts-1, len(ackBackoff)-1)
+	return parseTime(st.LastDispatchAt).Add(ackBackoff[i])
+}
+
+// reconcile re-publishes to silent participants on their backoff and reports
+// whether every participant acked. A blocked ack stalls the request.
+func (s *Service) reconcile(ctx context.Context, r *Request, now time.Time) (bool, error) {
+	sts, err := s.repo.ListServices(ctx, r.ID)
+	if err != nil {
+		return false, err
+	}
+	var silent []*ServiceStatus
+	next := time.Time{}
+	for _, st := range sts {
+		switch st.Status {
+		case ServiceAcked:
+		case ServiceBlocked:
+			r.State, r.UpdatedAt = StateStalled, ts(now)
+			r.clearDue()
+			return false, s.repo.Save(ctx, r, StatePurging)
+		default:
+			if now.Sub(parseTime(st.FirstDispatchAt)) > ackOverdueAfter {
+				observability.Error(ctx, "deletion: participant ack overdue", errors.New("no ack after 48h"),
+					"request_id", r.ID, "service", st.Service)
+			}
+			if n := nextDispatch(st); !now.Before(n) {
+				silent = append(silent, st)
+			} else if next.IsZero() || n.Before(next) {
+				next = n
+			}
+		}
+	}
+	if len(silent) == 0 && next.IsZero() {
+		return true, nil
+	}
+	if len(silent) > 0 {
+		names := make([]string, 0, len(silent))
+		for _, st := range silent {
+			names = append(names, st.Service)
+		}
+		if err := s.locker.Erase(ctx, r, names); err != nil {
+			return false, err
+		}
+		for _, st := range silent {
+			st.Attempts++
+			st.LastDispatchAt = ts(now)
+			if err := s.repo.SaveService(ctx, st, ServiceDispatched); err != nil && !errors.Is(err, ErrStateChanged) {
+				return false, err
+			}
+			if n := nextDispatch(st); next.IsZero() || n.Before(next) {
+				next = n
+			}
+		}
+	}
+	r.UpdatedAt = ts(now)
+	r.setDue(next)
+	return false, s.repo.Save(ctx, r, StatePurging)
 }
 
 func tokenMatches(raw, hash string) bool {

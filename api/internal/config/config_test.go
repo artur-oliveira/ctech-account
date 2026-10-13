@@ -170,3 +170,25 @@ func TestLoadReadsTheBillingAPIURL(t *testing.T) {
 		t.Fatalf("BillingAPIURL = %q", cfg.BillingAPIURL)
 	}
 }
+
+func TestErasureParticipants(t *testing.T) {
+	t.Setenv("ERASURE_PARTICIPANTS", `[{"service":"wallet","url":"https://w","audience":"https://wallet.aoctech.app","client_id":"wallet-svc"},{"service":"dfe","url":"https://d","audience":"https://dfe.aoctech.app","client_id":"dfe"}]`)
+	ps, err := parseErasureParticipants()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	c := &Config{ErasureParticipants: ps}
+	if names := c.ErasureServiceNames(); len(names) != 2 || names[0] != "wallet" || names[1] != "dfe" {
+		t.Fatalf("names %v", names)
+	}
+	if svc, ok := c.ErasureServiceForClient("dfe"); !ok || svc != "dfe" {
+		t.Fatalf("client lookup: %q %v", svc, ok)
+	}
+	if _, ok := c.ErasureServiceForClient("stranger"); ok {
+		t.Fatal("unknown client must not map to a service")
+	}
+	t.Setenv("ERASURE_PARTICIPANTS", `[{"service":"x"}]`)
+	if _, err := parseErasureParticipants(); err == nil {
+		t.Fatal("a participant without url/audience/client_id must be rejected")
+	}
+}

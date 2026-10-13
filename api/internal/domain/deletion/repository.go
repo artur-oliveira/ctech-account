@@ -24,6 +24,12 @@ const (
 // Repository persists requests. Save is the only way to change a request and
 // is conditional on the state it was read in.
 type Repository interface {
+	// PutServices creates the status rows that do not exist yet.
+	PutServices(ctx context.Context, statuses []*ServiceStatus) error
+	ListServices(ctx context.Context, requestID string) ([]*ServiceStatus, error)
+	// SaveService writes st if its stored status is still fromStatus.
+	SaveService(ctx context.Context, st *ServiceStatus, fromStatus string) error
+
 	// Create stores r and the user's open marker; ErrOpenRequest if one exists.
 	Create(ctx context.Context, r *Request) error
 	Get(ctx context.Context, id string) (*Request, error)
@@ -169,4 +175,60 @@ func (r *dynamoRepository) ListDue(ctx context.Context, state State, now time.Ti
 		}
 	}
 	return ids, nil
+}
+
+func (r *dynamoRepository) PutServices(ctx context.Context, statuses []*ServiceStatus) error {
+	for _, st := range statuses {
+		item, err := attributevalue.MarshalMap(st)
+		if err != nil {
+			return err
+		}
+		_, err = r.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName: aws.String(r.table), Item: item,
+			ConditionExpression: aws.String("attribute_not_exists(pk)"),
+		})
+		if err != nil && !dynamo.IsConditionFailed(err) {
+			return fmt.Errorf("deletion: put service %s: %w", st.Service, err)
+		}
+	}
+	return nil
+}
+
+func (r *dynamoRepository) ListServices(ctx context.Context, requestID string) ([]*ServiceStatus, error) {
+	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.table),
+		KeyConditionExpression: aws.String("pk = :pk AND begins_with(sk, :svc)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": str(BuildPK(requestID)), ":svc": str("SVC#"),
+		},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("deletion: list services: %w", err)
+	}
+	sts := make([]*ServiceStatus, 0, len(out.Items))
+	for _, it := range out.Items {
+		var st ServiceStatus
+		if err := attributevalue.UnmarshalMap(it, &st); err != nil {
+			return nil, err
+		}
+		sts = append(sts, &st)
+	}
+	return sts, nil
+}
+
+func (r *dynamoRepository) SaveService(ctx context.Context, st *ServiceStatus, fromStatus string) error {
+	item, err := attributevalue.MarshalMap(st)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.table), Item: item,
+		ConditionExpression:       aws.String("service_status = :from"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":from": str(fromStatus)},
+	})
+	if dynamo.IsConditionFailed(err) {
+		return ErrStateChanged
+	}
+	return err
 }
