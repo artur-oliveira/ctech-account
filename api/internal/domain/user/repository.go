@@ -9,10 +9,10 @@ import (
 
 	"uuid"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/database"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -22,6 +22,11 @@ var ErrEmailConflict = errors.New("email already registered")
 
 // Repository is the data-access interface for users.
 type Repository interface {
+	// Purge replaces the user item with tomb (only while it still belongs to
+	// tomb.DeletionRequestID), writes the KYC retention item and deletes the
+	// uniqueness markers, in one transaction.
+	Purge(ctx context.Context, tomb *Tombstone, kyc *KYCRetention, markerPKs []string) error
+
 	GetByID(ctx context.Context, userID string) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Create(ctx context.Context, u *User) error
@@ -95,7 +100,7 @@ func (r *dynamoRepository) Create(ctx context.Context, u *User) error {
 	// check-then-create gap. The marker deliberately omits the `email`
 	// attribute so it is NOT projected into the email-index GSI and cannot be
 	// returned by GetByEmail in place of the real user.
-	markerPK := "EMAIL#" + crypto.HashToken(u.Email)
+	markerPK := EmailMarkerPK(u.Email)
 	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, markerPK, nil,
 		map[string]any{"kind": "email-lock", "created_at": now},
 		"attribute_not_exists(pk)", nil, nil)
@@ -141,4 +146,37 @@ func (r *dynamoRepository) ClearDeletionIfRequest(ctx context.Context, userID, r
 		map[string]types.AttributeValue{":rid": &types.AttributeValueMemberS{Value: requestID}},
 	)
 	return err // a failed condition means a newer request owns the block: nothing to do
+}
+
+var ErrPurgeConflict = errors.New("user: purge refused, the deletion block belongs to another request")
+
+func (r *dynamoRepository) Purge(ctx context.Context, tomb *Tombstone, kyc *KYCRetention, markerPKs []string) error {
+	tombItem, err := attributevalue.MarshalMap(tomb)
+	if err != nil {
+		return err
+	}
+	items := []types.TransactWriteItem{{Put: &types.Put{
+		TableName:                 aws.String(r.tableName),
+		Item:                      tombItem,
+		ConditionExpression:       aws.String("deletion_request_id = :rid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":rid": &types.AttributeValueMemberS{Value: tomb.DeletionRequestID}},
+	}}}
+	if kyc != nil {
+		kycItem, err := attributevalue.MarshalMap(kyc)
+		if err != nil {
+			return err
+		}
+		items = append(items, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: kycItem}})
+	}
+	for _, pk := range markerPKs {
+		items = append(items, types.TransactWriteItem{Delete: &types.Delete{
+			TableName: aws.String(r.tableName),
+			Key:       map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: pk}},
+		}})
+	}
+	_, err = r.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	if database.IsConditionFailed(err) {
+		return ErrPurgeConflict
+	}
+	return err
 }

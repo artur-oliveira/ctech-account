@@ -109,7 +109,7 @@ const TimeLayout = time.RFC3339
 
 // BuildCPFPK keys the uniqueness item enforcing one CPF per account.
 func BuildCPFPK(cpf string) string {
-	return "CPF_" + cpf
+	return user.CPFMarkerPK(cpf)
 }
 
 // BuildDocumentKey is the S3 object key for an uploaded document. Keys are

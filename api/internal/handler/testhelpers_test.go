@@ -668,6 +668,17 @@ func (m *memUserRepo) ClearDeletionIfRequest(_ context.Context, userID, requestI
 	return nil
 }
 
+func (m *memUserRepo) Purge(_ context.Context, tomb *userDomain.Tombstone, _ *userDomain.KYCRetention, _ []string) error {
+	id := strings.TrimPrefix(tomb.PK, "USER_")
+	cur, ok := m.byID[id]
+	if !ok || cur.DeletionRequestID != tomb.DeletionRequestID {
+		return userDomain.ErrPurgeConflict
+	}
+	delete(m.byEmail, cur.Email)
+	m.byID[id] = &userDomain.User{PK: tomb.PK, DeletionState: tomb.DeletionState, DeletionRequestID: tomb.DeletionRequestID, PurgedAt: tomb.PurgedAt}
+	return nil
+}
+
 func (m *memUserRepo) Update(_ context.Context, userID string, updates map[string]any) error {
 	u, ok := m.byID[userID]
 	if !ok {
