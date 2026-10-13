@@ -35,6 +35,8 @@ type Problem struct {
 	// RequiredScope identifies the exact permission needed by a protected
 	// resource endpoint (see InsufficientScope).
 	RequiredScope string `json:"required_scope,omitempty"`
+	// Blockers lists what stops an account deletion (deletion-blocked).
+	Blockers any `json:"blockers,omitempty"`
 	// Code is a stable machine-readable reason for problems a client branches
 	// on (the UI tells a plan limit from an unreachable plan by it).
 	Code string `json:"code,omitempty"`
@@ -352,5 +354,14 @@ func PlanUnavailable(instance string) *Problem {
 	p := newProblem("plan-unavailable", "Plan Unavailable", http.StatusServiceUnavailable,
 		"The plan could not be checked right now. Try again shortly.", instance)
 	p.Code = CodePlanUnavailable
+	return p
+}
+
+// DeletionBlocked answers a deletion request the user must unblock first
+// (transfer an organization, delete their OAuth apps, ...).
+func DeletionBlocked(blockers any, instance string) *Problem {
+	p := newProblem("deletion-blocked", "Deletion Blocked", http.StatusConflict,
+		"Resolve the listed items before deleting this account.", instance)
+	p.Blockers = blockers
 	return p
 }

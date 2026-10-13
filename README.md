@@ -568,8 +568,16 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Behind `ACCOUNT_DELETION_E
    (`jwtverify.Revoke`, Valkey DB 0, honoured by this API too), `user.locked` published to the
    participants. A 7-day grace starts; the e-mail carries a cancel link, and a reminder with a
    fresh cancel link goes out 24 h before the end.
-3. At the end of grace the request becomes `locked` (irreversible) and `user.erase` is
-   published; the account's own purge is Phase 2.
+3. At the end of grace the blockers are checked again (a workspace with other members, an OAuth
+   client the user registered). A blocker moves the request to `blocked`: the user gets an e-mail with
+   a cancel link, cancels, resolves it and asks again.
+4. Otherwise the request becomes `locked` (irreversible) with the single-member workspaces frozen into
+   it (`organizations[]` and `workspaces[{id,kind}]`, either kind), and `user.erase` is published. Then
+   the account's own purge runs: memberships, company edges, consents, sessions, API keys, TOTP and
+   passkeys go, and the user item becomes a tombstone (`purged`): only the ids, the CPF keyed hash
+   (`HMAC` via `Sealer.MAC("cpf-hmac", ...)`) and the ToS/privacy acceptance stay. The KYC record
+   moves to `KYCRET#{sub}`, kept 5 years. The e-mail can register again at once. With
+   `ERASURE_SERVICES` set, the account purge waits for the participants' acks (Phase 3).
 
 Every state change is a conditional write to `{env}_account_deletion_requests` made before
 its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)

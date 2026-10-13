@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/api-commons/erasure"
 )
 
 // memRepo mirrors dynamoRepository's conditional semantics.
@@ -109,6 +110,7 @@ func (f *fakeLocker) Unlock(context.Context, *Request) error { f.unlocks++; retu
 func (f *fakeLocker) Erase(context.Context, *Request) error  { f.erases++; return nil }
 
 type fakeMailer struct {
+	blocked                             int
 	confirmToken, cancelToken           string
 	reminders, cancelled                int
 	confirmErr, scheduledErr, remindErr error
@@ -442,5 +444,113 @@ func TestApplyLock_CompensationFailureRetried(t *testing.T) {
 	f.svc.ProcessDue(ctx)
 	if f.stored(t, r.ID).DueState != "" {
 		t.Fatal("worker must finish the unlock")
+	}
+}
+
+func (f *fakeMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string) error {
+	f.blocked++
+	f.cancelToken = token
+	return nil
+}
+
+type fakeOwnership struct {
+	sole     []Workspace
+	blockers []erasure.Blocker
+}
+
+func (f *fakeOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Blocker, error) {
+	return f.sole, f.blockers, nil
+}
+
+type fakePurger struct {
+	calls int
+	err   error
+}
+
+func (f *fakePurger) Purge(context.Context, *Request) error {
+	f.calls++
+	return f.err
+}
+
+func (f *fixture) withPurge(t *testing.T, own *fakeOwnership, p *fakePurger, await bool) {
+	t.Helper()
+	f.svc = f.svc.WithOwnership(own).WithPurger(p, await)
+}
+
+func TestRequest_RefusedWithBlockers(t *testing.T) {
+	f := newFixture(t)
+	f.withPurge(t, &fakeOwnership{blockers: []erasure.Blocker{{Code: "account.oauth_client_owned"}}}, &fakePurger{}, false)
+	_, err := f.svc.Request(ctx, "u1")
+	var blocked *BlockedError
+	if !errors.As(err, &blocked) || len(blocked.Blockers) != 1 {
+		t.Fatalf("err = %v, want BlockedError with 1 blocker", err)
+	}
+	if _, err := f.svc.Status(ctx, "u1"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("a refused request must not be stored")
+	}
+}
+
+func TestGraceEnd_BlockedNotifiesAndCanCancel(t *testing.T) {
+	f := newFixture(t)
+	own := &fakeOwnership{}
+	f.withPurge(t, own, &fakePurger{}, false)
+	r := f.confirm(t)
+	own.blockers = []erasure.Blocker{{Code: "account.organization_shared_owner"}}
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	s := f.stored(t, r.ID)
+	if s.State != StateBlocked || !s.BlockedNotified || s.DueState != "" || len(s.Blockers) != 1 || f.mail.blocked != 1 {
+		t.Fatalf("blocked request %+v, blocked mails %d", s, f.mail.blocked)
+	}
+	if _, err := f.svc.Cancel(ctx, r.ID, f.mail.cancelToken); err != nil {
+		t.Fatalf("cancel from blocked: %v", err)
+	}
+	if f.locker.unlocks != 1 {
+		t.Fatalf("unlocks = %d", f.locker.unlocks)
+	}
+}
+
+func TestGraceEnd_FreezesSoleOrganizationsAndPurges(t *testing.T) {
+	f := newFixture(t)
+	p := &fakePurger{}
+	f.withPurge(t, &fakeOwnership{sole: []Workspace{{ID: "org-1", Kind: "personal"}}}, p, false)
+	r := f.confirm(t)
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx) // pending -> locked -> purging -> purged in one tick
+	s := f.stored(t, r.ID)
+	if s.State != StatePurged || s.PurgedAt == "" || len(s.Organizations) != 1 || s.Organizations[0] != "org-1" || len(s.Workspaces) != 1 || s.Workspaces[0].Kind != "personal" || p.calls != 1 {
+		t.Fatalf("purged request %+v, purge calls %d", s, p.calls)
+	}
+	if _, err := f.svc.Status(ctx, "u1"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("a purged request must release the open marker")
+	}
+}
+
+func TestPurging_AwaitsParticipants(t *testing.T) {
+	f := newFixture(t)
+	p := &fakePurger{}
+	f.withPurge(t, &fakeOwnership{}, p, true)
+	r := f.confirm(t)
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	if s := f.stored(t, r.ID); s.State != StatePurging || s.DueState != "" || p.calls != 0 {
+		t.Fatalf("with participants the account purge waits for acks: %+v calls=%d", s, p.calls)
+	}
+}
+
+func TestPurging_FailureRetried(t *testing.T) {
+	f := newFixture(t)
+	p := &fakePurger{err: errors.New("throttled")}
+	f.withPurge(t, &fakeOwnership{}, p, false)
+	r := f.confirm(t)
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	if s := f.stored(t, r.ID); s.State != StatePurging || s.DueState != string(StatePurging) {
+		t.Fatalf("a failed purge must stay due: %+v", s)
+	}
+	p.err = nil
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePurged || p.calls != 2 {
+		t.Fatalf("purge must be retried: calls=%d", p.calls)
 	}
 }

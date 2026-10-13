@@ -53,3 +53,18 @@ func TestSealUsesEnvKey(t *testing.T) {
 		t.Fatalf("env-key round-trip mismatch: got %q", pt)
 	}
 }
+
+func TestSealerMAC(t *testing.T) {
+	a := &Sealer{key: []byte("0123456789abcdef0123456789abcdef")}
+	b := &Sealer{key: []byte("fedcba9876543210fedcba9876543210")}
+	m := a.MAC("cpf-hmac", "12345678909")
+	if len(m) != 64 || m != a.MAC("cpf-hmac", "12345678909") {
+		t.Fatalf("MAC must be deterministic hex-sha256, got %q", m)
+	}
+	if m == a.MAC("other-label", "12345678909") {
+		t.Fatal("labels must separate keys")
+	}
+	if m == b.MAC("cpf-hmac", "12345678909") {
+		t.Fatal("different sealing keys must give different MACs")
+	}
+}

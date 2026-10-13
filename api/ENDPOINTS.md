@@ -365,7 +365,14 @@ Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
   accounts rely on the e-mail confirmation. Replaces an earlier unconfirmed request.
   `202 { request_id, state: "awaiting_confirmation", confirm_by }`. Problems:
   `invalid-request` (phrase), `step-up-required`, `invalid-credentials`, `conflict`
-  (a confirmed request is already open).
+  (a confirmed request is already open), and `409 deletion-blocked` with
+  `blockers: [{code, detail}]` when the account owns something that must be resolved first
+  (nothing is stored): `account.organization_shared_owner` (`detail.organization_id`:
+  transfer the ownership of a workspace that has other members) and
+  `account.oauth_client_owned` (`detail.client_id`: delete the OAuth app).
+  The same check runs again at the end of grace; a blocker found then moves the request to
+  `blocked` and sends the "exclusão pendente" e-mail with a cancel link (cancel, resolve,
+  request again).
 - `GET /v1.0/account/deletion` *(`account:profile:read`)* → `{ request_id, state, requested_at,
   confirm_by, grace_until }` or `404`.
 - `POST /v1.0/auth/deletion/confirm` *(no auth; link token; IP rate-limited)* →

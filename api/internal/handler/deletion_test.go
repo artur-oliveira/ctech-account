@@ -1,11 +1,13 @@
 package handler_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	oauthclientDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 )
 
@@ -115,5 +117,21 @@ func TestDeletion_PasswordGuessingIsLimited(t *testing.T) {
 	}
 	if resp := ta.doWithToken("POST", "/v1.0/account/deletion", body, stale); resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("6th wrong password: %d, want 429", resp.StatusCode)
+	}
+}
+
+func TestDeletion_RequestBlockedByOwnedOAuthClient(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "dev@example.com", "Sup3rSecret!", "Ana")
+	if err := ta.clientRepo.Create(context.Background(), &oauthclientDomain.OAuthClient{
+		PK: oauthclientDomain.BuildPK("dev-app"), ClientType: "public", OwnerUserID: u.ID(),
+		RedirectURIs: []string{"https://dev.example/cb"}, AllowedScopes: []string{"openid"},
+	}); err != nil {
+		t.Fatalf("seeding client: %v", err)
+	}
+	resp := ta.doWithToken("POST", "/v1.0/account/deletion", map[string]string{"confirmation_phrase": deletionPhrase}, ta.issueToken(t, u.ID()))
+	body := bodyString(resp)
+	if resp.StatusCode != http.StatusConflict || !strings.Contains(body, "deletion-blocked") || !strings.Contains(body, "account.oauth_client_owned") {
+		t.Fatalf("status %d body %s, want 409 deletion-blocked with the blocker", resp.StatusCode, body)
 	}
 }

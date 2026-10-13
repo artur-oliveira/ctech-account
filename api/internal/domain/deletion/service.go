@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.aoctech.app/api-commons/erasure"
 
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
@@ -31,6 +32,30 @@ type Mailer interface {
 	SendDeletionScheduledEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error
 	SendDeletionReminderEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error
 	SendDeletionCancelledEmail(ctx context.Context, to, firstName string) error
+	SendDeletionBlockedEmail(ctx context.Context, to, firstName, requestID, cancelToken string, blockers []string) error
+}
+
+// Ownership finds what stops a user's deletion and which organizations go
+// with them (they own it and are its only member).
+type Ownership interface {
+	Assess(ctx context.Context, userID string) (sole []Workspace, blockers []erasure.Blocker, err error)
+}
+
+// Purger erases ctech-account's own data for a request. Idempotent and
+// resumable: every step tolerates already-removed data.
+type Purger interface {
+	Purge(ctx context.Context, r *Request) error
+}
+
+// BlockedError lists what the user must resolve before deletion can start.
+type BlockedError struct{ Blockers []erasure.Blocker }
+
+func (e *BlockedError) Error() string { return fmt.Sprintf("deletion: %d blocker(s)", len(e.Blockers)) }
+
+type noOwnership struct{}
+
+func (noOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Blocker, error) {
+	return nil, nil, nil
 }
 
 const dueBatch = 25
@@ -43,15 +68,31 @@ type Service struct {
 	now      func() time.Time
 	newID    func() string
 	newToken func() (raw, hash string, err error)
+
+	ownership         Ownership
+	purger            Purger
+	awaitParticipants bool
 }
 
 func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Service {
 	return &Service{
 		repo: repo, users: users, locker: locker, mail: mail,
-		now:      time.Now,
-		newID:    func() string { return uuid.New().String() },
-		newToken: crypto.GenerateMFAToken,
+		now:       time.Now,
+		ownership: noOwnership{},
+		newID:     func() string { return uuid.New().String() },
+		newToken:  crypto.GenerateMFAToken,
 	}
+}
+
+// WithOwnership enables blocker checks and organization freezing.
+func (s *Service) WithOwnership(o Ownership) *Service { s.ownership = o; return s }
+
+// WithPurger enables the account purge after the erase is published. With
+// awaitParticipants the request waits in purging for the participants' acks
+// (Phase 3) instead of purging right away.
+func (s *Service) WithPurger(p Purger, awaitParticipants bool) *Service {
+	s.purger, s.awaitParticipants = p, awaitParticipants
+	return s
 }
 
 // Request opens a deletion request awaiting e-mail confirmation. An earlier
@@ -60,6 +101,11 @@ func (s *Service) Request(ctx context.Context, userID string) (*Request, error) 
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	if _, blockers, err := s.ownership.Assess(ctx, userID); err != nil {
+		return nil, err
+	} else if len(blockers) > 0 {
+		return nil, &BlockedError{Blockers: blockers}
 	}
 	raw, hash, err := s.newToken()
 	if err != nil {
@@ -138,7 +184,7 @@ func (s *Service) Confirm(ctx context.Context, id, token string) (*Request, erro
 	if err := s.applyLock(ctx, r); err != nil {
 		observability.Error(ctx, "deletion: lock failed, worker will retry", err, "request_id", r.ID)
 	}
-	if err := s.sendCancelLink(ctx, r, false); err != nil {
+	if err := s.sendCancelLink(ctx, r, linkScheduled); err != nil {
 		observability.Error(ctx, "deletion: cancel-link e-mail failed, worker will retry", err, "request_id", r.ID)
 	}
 	return r, nil
@@ -158,11 +204,19 @@ func (s *Service) nextDue(r *Request) time.Time {
 	}
 }
 
-// sendCancelLink e-mails a fresh cancel link (the scheduled notice, or the
-// reminder) and records it. Under ruling R1 the e-mail is the only way to
-// cancel, so the token hash is stored before sending and the "sent" flag only
-// after: a failed send stays due and is retried, at worst as a duplicate.
-func (s *Service) sendCancelLink(ctx context.Context, r *Request, reminder bool) error {
+type linkKind int
+
+const (
+	linkScheduled linkKind = iota
+	linkReminder
+	linkBlocked
+)
+
+// sendCancelLink e-mails a fresh cancel link (scheduled notice, reminder, or
+// blocked notice) and records it. Under ruling R1 the e-mail is the only way
+// to cancel, so the token hash is stored before sending and the "sent" flag
+// only after: a failed send stays due and is retried, at worst as a duplicate.
+func (s *Service) sendCancelLink(ctx context.Context, r *Request, kind linkKind) error {
 	u, err := s.users.GetByID(ctx, r.UserID)
 	if err != nil {
 		return err
@@ -171,26 +225,47 @@ func (s *Service) sendCancelLink(ctx context.Context, r *Request, reminder bool)
 	if err != nil {
 		return err
 	}
+	from := r.State
 	r.CancelTokenHashes = append(r.CancelTokenHashes, hash)
 	r.UpdatedAt = ts(s.now())
-	if err := s.repo.Save(ctx, r, StatePending); err != nil {
+	if err := s.repo.Save(ctx, r, from); err != nil {
 		return err
 	}
-	send := s.mail.SendDeletionScheduledEmail
-	if reminder {
-		send = s.mail.SendDeletionReminderEmail
+	switch kind {
+	case linkScheduled:
+		err = s.mail.SendDeletionScheduledEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil))
+	case linkReminder:
+		err = s.mail.SendDeletionReminderEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil))
+	case linkBlocked:
+		err = s.mail.SendDeletionBlockedEmail(ctx, u.Email, u.FirstName, r.ID, raw, r.Blockers)
 	}
-	if err := send(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil)); err != nil {
+	if err != nil {
 		return err
 	}
-	if reminder {
-		r.Reminded = true
-	} else {
+	switch kind {
+	case linkScheduled:
 		r.ScheduledSent = true
+	case linkReminder:
+		r.Reminded = true
+	case linkBlocked:
+		r.BlockedNotified = true
 	}
 	r.UpdatedAt = ts(s.now())
+	s.scheduleNext(r)
+	return s.repo.Save(ctx, r, from)
+}
+
+// scheduleNext sets (or clears) the due marker for a pending or blocked request.
+func (s *Service) scheduleNext(r *Request) {
+	if r.State == StateBlocked {
+		if r.BlockedNotified {
+			r.clearDue() // nothing to do until the user cancels
+		} else {
+			r.setDue(s.now())
+		}
+		return
+	}
 	r.setDue(s.nextDue(r))
-	return s.repo.Save(ctx, r, StatePending)
 }
 
 // applyLock runs the lock, records it and schedules the reminder. If a cancel
@@ -200,7 +275,7 @@ func (s *Service) applyLock(ctx context.Context, r *Request) error {
 		return err
 	}
 	r.LockApplied, r.UpdatedAt = true, ts(s.now())
-	r.setDue(s.nextDue(r))
+	s.scheduleNext(r)
 	err := s.repo.Save(ctx, r, StatePending)
 	if errors.Is(err, ErrStateChanged) {
 		if cur, getErr := s.repo.Get(ctx, r.ID); getErr == nil && cur.State == StateCancelled {
@@ -229,13 +304,14 @@ func (s *Service) Cancel(ctx context.Context, id, token string) (*Request, error
 	if !anyTokenMatches(token, r.CancelTokenHashes) {
 		return nil, ErrInvalidToken
 	}
-	if r.State != StatePending {
+	if r.State != StatePending && r.State != StateBlocked {
 		return nil, ErrNotCancellable
 	}
+	from := r.State
 	now := s.now()
 	r.State, r.CancelledAt, r.UpdatedAt = StateCancelled, ts(now), ts(now)
 	r.setDue(now) // unlock not applied yet
-	if err := s.repo.Save(ctx, r, StatePending); err != nil {
+	if err := s.repo.Save(ctx, r, from); err != nil {
 		if errors.Is(err, ErrStateChanged) {
 			return nil, ErrNotCancellable
 		}
@@ -273,7 +349,7 @@ func (s *Service) Status(ctx context.Context, userID string) (*Request, error) {
 // request never blocks the others; it stays due and is retried next tick.
 func (s *Service) ProcessDue(ctx context.Context) {
 	now := s.now()
-	for _, st := range []State{StateAwaitingConfirmation, StatePending, StateCancelled, StateLocked} {
+	for _, st := range []State{StateAwaitingConfirmation, StatePending, StateBlocked, StateCancelled, StateLocked, StatePurging} {
 		ids, err := s.repo.ListDue(ctx, st, now, dueBatch)
 		if err != nil {
 			observability.Error(ctx, "deletion: listing due requests", err, "state", string(st))
@@ -303,14 +379,34 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		case !r.LockApplied:
 			return s.applyLock(ctx, r)
 		case !r.ScheduledSent:
-			return s.sendCancelLink(ctx, r, false)
+			return s.sendCancelLink(ctx, r, linkScheduled)
 		case !r.Reminded && now.Before(parseTime(r.GraceUntil)):
-			return s.sendCancelLink(ctx, r, true)
+			return s.sendCancelLink(ctx, r, linkReminder)
 		case !now.Before(parseTime(r.GraceUntil)):
+			sole, blockers, err := s.ownership.Assess(ctx, r.UserID)
+			if err != nil {
+				return err
+			}
+			if len(blockers) > 0 {
+				r.State, r.UpdatedAt = StateBlocked, ts(now)
+				r.Blockers = make([]string, 0, len(blockers))
+				for _, b := range blockers {
+					r.Blockers = append(r.Blockers, b.Code)
+				}
+				r.setDue(now) // the blocked notice is owed
+				return s.repo.Save(ctx, r, StatePending)
+			}
 			r.State, r.LockedAt, r.UpdatedAt = StateLocked, ts(now), ts(now)
+			r.Workspaces = sole
+			r.Organizations = nil
+			for _, w := range sole {
+				r.Organizations = append(r.Organizations, w.ID)
+			}
 			r.setDue(now)
 			return s.repo.Save(ctx, r, StatePending)
 		}
+	case StateBlocked:
+		return s.sendCancelLink(ctx, r, linkBlocked)
 	case StateLocked:
 		// Re-assert the lock: a cancel may have raced the end of grace.
 		if err := s.locker.Lock(ctx, r); err != nil {
@@ -320,8 +416,19 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 			return err
 		}
 		r.State, r.UpdatedAt = StatePurging, ts(now)
-		r.clearDue() // Phase 2 adds the account's own purge from here
+		if s.purger != nil && !s.awaitParticipants {
+			r.setDue(now)
+		} else {
+			r.clearDue() // no purger yet, or waiting for participant acks (Phase 3)
+		}
 		return s.repo.Save(ctx, r, StateLocked)
+	case StatePurging:
+		if err := s.purger.Purge(ctx, r); err != nil {
+			return err
+		}
+		r.State, r.PurgedAt, r.UpdatedAt = StatePurged, ts(now), ts(now)
+		r.clearDue()
+		return s.repo.Save(ctx, r, StatePurging)
 	}
 	return nil
 }

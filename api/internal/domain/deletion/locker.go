@@ -70,7 +70,7 @@ func (l *AccountLocker) Lock(ctx context.Context, r *Request) error {
 	if err := l.tokens.Revoke(ctx, r.UserID, time.Now()); err != nil {
 		return fmt.Errorf("revoking access tokens: %w", err)
 	}
-	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt))
+	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil)
 }
 
 // Unlock re-enables sign-in. Revoked sessions, API keys and the token
@@ -80,22 +80,23 @@ func (l *AccountLocker) Unlock(ctx context.Context, r *Request) error {
 	if err := l.users.ClearPendingDeletion(ctx, r.UserID, r.ID); err != nil {
 		return fmt.Errorf("unblocking sign-in: %w", err)
 	}
-	return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt))
+	return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt), nil, nil)
 }
 
 func (l *AccountLocker) Erase(ctx context.Context, r *Request) error {
-	return l.publish(ctx, r, erasure.TypeErase, parseTime(r.LockedAt))
+	return l.publish(ctx, r, erasure.TypeErase, parseTime(r.LockedAt), r.Organizations, r.Workspaces)
 }
 
 // publish uses the request's own timestamps as issued_at, so a retried
 // publish is a duplicate the participants ignore, never a newer event.
-func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Type, at time.Time) error {
+func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Type, at time.Time, organizations []string, workspaces []Workspace) error {
 	if len(l.services) == 0 {
 		return nil // no participant subscribed yet (Phase 1)
 	}
 	return l.pub.Publish(ctx, erasure.Message{
 		Version: erasure.Version, Type: typ, RequestID: r.ID, Sub: r.UserID,
-		Scope: erasure.ScopeAccount, Services: l.services, Attempt: 1, IssuedAt: at,
+		Scope: erasure.ScopeAccount, Services: l.services, Organizations: organizations, Workspaces: toErasureWorkspaces(workspaces),
+		Attempt: 1, IssuedAt: at,
 	})
 }
 
@@ -106,4 +107,15 @@ func NewJWTRevoker(c commoncache.Backend) *JWTRevoker { return &JWTRevoker{c: c}
 
 func (r *JWTRevoker) Revoke(ctx context.Context, sub string, cutoff time.Time) error {
 	return jwtverify.Revoke(ctx, r.c, sub, cutoff, jwtverify.RevocationTTL)
+}
+
+func toErasureWorkspaces(ws []Workspace) []erasure.Workspace {
+	if len(ws) == 0 {
+		return nil
+	}
+	out := make([]erasure.Workspace, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, erasure.Workspace{ID: w.ID, Kind: erasure.WorkspaceKind(w.Kind)})
+	}
+	return out
 }

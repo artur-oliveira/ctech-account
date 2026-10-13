@@ -3,7 +3,9 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -111,4 +113,16 @@ func (s Sealer) Unseal(ciphertext string) (string, error) {
 		return "", fmt.Errorf("decrypting: %w", err)
 	}
 	return string(pt), nil
+}
+
+// MAC returns hex(HMAC-SHA256(k_label, value)), where k_label is derived from
+// the sealing key and label. Purpose-specific keyed hashes (e.g. the CPF kept
+// on a deleted account's tombstone) therefore need no extra secret, and a
+// leak of one label's hashes reveals nothing about another's.
+func (s *Sealer) MAC(label, value string) string {
+	k := hmac.New(sha256.New, s.key)
+	k.Write([]byte(label))
+	m := hmac.New(sha256.New, k.Sum(nil))
+	m.Write([]byte(value))
+	return hex.EncodeToString(m.Sum(nil))
 }

@@ -3,8 +3,10 @@ package user_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
@@ -12,10 +14,12 @@ import (
 
 // mockRepo is an in-memory Repository implementation for unit tests.
 type mockRepo struct {
-	mu      sync.Mutex
-	byID    map[string]*user.User
-	byEmail map[string]*user.User
-	nextID  int
+	kycRet         []*user.KYCRetention
+	markersDeleted []string
+	mu             sync.Mutex
+	byID           map[string]*user.User
+	byEmail        map[string]*user.User
+	nextID         int
 }
 
 func newMockRepo() *mockRepo {
@@ -124,7 +128,29 @@ func (m *mockRepo) ClearDeletionIfRequest(_ context.Context, userID, requestID s
 	return nil
 }
 
+func (m *mockRepo) Purge(_ context.Context, tomb *user.Tombstone, kyc *user.KYCRetention, markers []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := strings.TrimPrefix(tomb.PK, "USER_")
+	cur, ok := m.byID[id]
+	if !ok || cur.DeletionRequestID != tomb.DeletionRequestID {
+		return user.ErrPurgeConflict
+	}
+	delete(m.byEmail, cur.Email)
+	m.byID[id] = &user.User{PK: tomb.PK, DeletionState: tomb.DeletionState, DeletionRequestID: tomb.DeletionRequestID,
+		PurgedAt: tomb.PurgedAt, CPFHMAC: tomb.CPFHMAC, TOSVersion: tomb.TOSVersion, PrivacyVersion: tomb.PrivacyVersion}
+	if kyc != nil {
+		m.kycRet = append(m.kycRet, kyc)
+	}
+	m.markersDeleted = append(m.markersDeleted, markers...)
+	return nil
+}
+
 type errRepo struct{}
+
+func (e *errRepo) Purge(_ context.Context, _ *user.Tombstone, _ *user.KYCRetention, _ []string) error {
+	return errors.New("db error")
+}
 
 func (e *errRepo) GetByID(_ context.Context, _ string) (*user.User, error) {
 	return nil, errors.New("db error")
@@ -758,5 +784,68 @@ func TestIsActive(t *testing.T) {
 	// Unknown is an answer, not an outage: the caller read the id from another row.
 	if ok, err := svc.IsActive(ctx, "no-such-user"); err != nil || ok {
 		t.Fatalf("an unknown account: IsActive = %v, %v; want false, nil", ok, err)
+	}
+}
+
+func purgedFixture(t *testing.T) (*user.Service, *mockRepo, *user.User) {
+	t.Helper()
+	ctx := context.Background()
+	repo := newMockRepo()
+	svc := user.NewService(repo)
+	u, err := svc.Register(ctx, "gone@example.com", "Sup3rSecret!", "Ana", "Silva")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	repo.byID[u.ID()].CPF = "12345678909"
+	repo.byID[u.ID()].KYCLevel = "basic"
+	repo.byID[u.ID()].LegalName = "Ana Silva"
+	if err := svc.MarkPendingDeletion(ctx, u.ID(), "req-1"); err != nil {
+		t.Fatalf("MarkPendingDeletion: %v", err)
+	}
+	return svc, repo, u
+}
+
+func fakeMAC(cpf string) string { return "mac(" + cpf + ")" }
+
+func TestPurge_TombstoneIsIdempotentAndScoped(t *testing.T) {
+	ctx := context.Background()
+	at := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	svc, repo, u := purgedFixture(t)
+
+	if err := svc.Purge(ctx, u.ID(), "req-OTHER", fakeMAC, at); err == nil {
+		t.Fatal("a purge for another request id must be refused")
+	}
+	if err := svc.Purge(ctx, u.ID(), "req-1", fakeMAC, at); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	got := repo.byID[u.ID()]
+	if got.DeletionState != user.DeletionStatePurged || got.Email != "" || got.CPF != "" || got.CPFHMAC != "mac(12345678909)" {
+		t.Fatalf("tombstone %+v", got)
+	}
+	if len(repo.kycRet) != 1 || repo.kycRet[0].Record.CPF != "12345678909" || repo.kycRet[0].RetainUntil != "2031-10-14T12:00:00Z" {
+		t.Fatalf("KYC retention item %+v", repo.kycRet)
+	}
+	if len(repo.markersDeleted) != 2 {
+		t.Fatalf("e-mail and CPF markers must be released, got %v", repo.markersDeleted)
+	}
+	if err := svc.Purge(ctx, u.ID(), "req-1", fakeMAC, at); err != nil {
+		t.Fatalf("second Purge must be a no-op: %v", err)
+	}
+	if len(repo.kycRet) != 1 {
+		t.Fatal("a re-run must not write a second retention item")
+	}
+}
+
+func TestPurge_FreesEmailForReRegistration(t *testing.T) {
+	ctx := context.Background()
+	svc, _, u := purgedFixture(t)
+	if err := svc.Purge(ctx, u.ID(), "req-1", fakeMAC, time.Now()); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if _, err := svc.GetByEmail(ctx, "gone@example.com"); !errors.Is(err, user.ErrNotFound) {
+		t.Fatalf("GetByEmail after purge: %v, want ErrNotFound", err)
+	}
+	if _, err := svc.Register(ctx, "gone@example.com", "N3wSecret!!", "Ana", "Nova"); err != nil {
+		t.Fatalf("re-registering the e-mail of a purged account: %v", err)
 	}
 }

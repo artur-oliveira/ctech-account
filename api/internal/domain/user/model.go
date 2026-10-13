@@ -1,6 +1,10 @@
 package user
 
-import "strings"
+import (
+	"strings"
+
+	"gopkg.aoctech.app/account/api/internal/crypto"
+)
 
 const (
 	SupportRoleAgent   = "agent"
@@ -10,6 +14,9 @@ const (
 
 // DeletionStatePending marks an account locked by a confirmed deletion request.
 const DeletionStatePending = "pending"
+
+// DeletionStatePurged marks a tombstone: the account was erased.
+const DeletionStatePurged = "purged"
 
 type User struct {
 	PK            string `dynamodbav:"pk"`
@@ -66,6 +73,8 @@ type User struct {
 	// path refuses a non-empty value.
 	DeletionState     string `dynamodbav:"deletion_state,omitempty"`
 	DeletionRequestID string `dynamodbav:"deletion_request_id,omitempty"`
+	PurgedAt          string `dynamodbav:"purged_at,omitempty"` // RFC3339, set on the tombstone
+	CPFHMAC           string `dynamodbav:"cpf_hmac,omitempty"`  // keyed hash kept for fraud prevention (D10)
 }
 
 // Address is the residential address collected during Basic KYC. It lives
@@ -112,4 +121,58 @@ func (u *User) DisplayOrFullName() string {
 		return u.DisplayName
 	}
 	return u.FullName()
+}
+
+// EmailMarkerPK is the uniqueness lock written at registration.
+func EmailMarkerPK(email string) string { return "EMAIL#" + crypto.HashToken(email) }
+
+// CPFMarkerPK is the CPF uniqueness lock written by KYC Basic.
+func CPFMarkerPK(cpf string) string { return "CPF_" + cpf }
+
+func KYCRetentionPK(userID string) string { return "KYCRET#" + userID }
+
+// Tombstone replaces a purged user's item. It deliberately has no email and no
+// kyc_level attribute, so the item leaves email-index and kyc-level-index.
+type Tombstone struct {
+	PK                string `dynamodbav:"pk"`
+	DeletionState     string `dynamodbav:"deletion_state"`
+	DeletionRequestID string `dynamodbav:"deletion_request_id"`
+	PurgedAt          string `dynamodbav:"purged_at"`
+	CPFHMAC           string `dynamodbav:"cpf_hmac,omitempty"`
+	TOSVersion        string `dynamodbav:"tos_version,omitempty"`
+	TOSAcceptedAt     string `dynamodbav:"tos_accepted_at,omitempty"`
+	PrivacyVersion    string `dynamodbav:"privacy_version,omitempty"`
+	PrivacyAcceptedAt string `dynamodbav:"privacy_accepted_at,omitempty"`
+	CreatedAt         string `dynamodbav:"created_at"`
+	UpdatedAt         string `dynamodbav:"updated_at"`
+}
+
+// KYCRetention keeps the KYC record of a deleted account for PLD (D6), in a
+// map attribute so none of its fields is a GSI key. Not readable by any app
+// endpoint.
+type KYCRetention struct {
+	PK          string    `dynamodbav:"pk"`
+	RequestID   string    `dynamodbav:"deletion_request_id"`
+	RetainUntil string    `dynamodbav:"retain_until"`
+	ExpiresAt   int64     `dynamodbav:"expires_at"`
+	Record      KYCRecord `dynamodbav:"kyc_record"`
+}
+
+type KYCRecord struct {
+	CPF                string        `dynamodbav:"cpf,omitempty"`
+	LegalName          string        `dynamodbav:"legal_name,omitempty"`
+	BirthDate          string        `dynamodbav:"birth_date,omitempty"`
+	Address            Address       `dynamodbav:"address,omitempty"`
+	PhoneNumber        string        `dynamodbav:"phone_number,omitempty"`
+	PhoneVerifiedAt    string        `dynamodbav:"phone_verified_at,omitempty"`
+	KYCLevel           string        `dynamodbav:"kyc_level,omitempty"`
+	KYCStatus          string        `dynamodbav:"kyc_status,omitempty"`
+	KYCBasicVerifiedAt string        `dynamodbav:"kyc_basic_verified_at,omitempty"`
+	KYCVerifiedAt      string        `dynamodbav:"kyc_verified_at,omitempty"`
+	KYCReviewedAt      string        `dynamodbav:"kyc_reviewed_at,omitempty"`
+	KYCReviewedBy      string        `dynamodbav:"kyc_reviewed_by,omitempty"`
+	KYCReviewDecision  string        `dynamodbav:"kyc_review_decision,omitempty"`
+	KYCRiskScore       int           `dynamodbav:"kyc_risk_score,omitempty"`
+	KYCRiskSignals     []string      `dynamodbav:"kyc_risk_signals,omitempty"`
+	KYCDocuments       []KYCDocument `dynamodbav:"kyc_documents,omitempty"` // S3 keys; moved to retention/ in Phase 2b
 }

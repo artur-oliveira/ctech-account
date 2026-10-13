@@ -414,3 +414,52 @@ func (s *Service) CheckPassword(ctx context.Context, userID, password string) er
 	}
 	return nil
 }
+
+// Purge erases the account for deletion request requestID: the user item
+// becomes a tombstone, the KYC record (if any) moves to a retention item kept
+// 5 years (D6), and the e-mail and CPF locks are released so the e-mail can
+// register again (D10). Idempotent: a tombstone is left alone.
+func (s *Service) Purge(ctx context.Context, userID, requestID string, cpfMAC func(string) string, at time.Time) error {
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.DeletionState == DeletionStatePurged {
+		return nil
+	}
+	if u.DeletionRequestID != requestID {
+		return ErrPurgeConflict
+	}
+	purgedAt := at.UTC().Format(time.RFC3339)
+	tomb := &Tombstone{
+		PK: u.PK, DeletionState: DeletionStatePurged, DeletionRequestID: requestID, PurgedAt: purgedAt,
+		TOSVersion: u.TOSVersion, TOSAcceptedAt: u.TOSAcceptedAt,
+		PrivacyVersion: u.PrivacyVersion, PrivacyAcceptedAt: u.PrivacyAcceptedAt,
+		CreatedAt: u.CreatedAt, UpdatedAt: purgedAt,
+	}
+	var markers []string
+	if u.Email != "" {
+		markers = append(markers, EmailMarkerPK(u.Email))
+	}
+	var kyc *KYCRetention
+	if u.CPF != "" {
+		tomb.CPFHMAC = cpfMAC(u.CPF)
+		markers = append(markers, CPFMarkerPK(u.CPF))
+	}
+	if u.CPF != "" || u.KYCLevel != "" {
+		until := at.UTC().AddDate(5, 0, 0)
+		kyc = &KYCRetention{
+			PK: KYCRetentionPK(userID), RequestID: requestID,
+			RetainUntil: until.Format(time.RFC3339), ExpiresAt: until.Unix(),
+			Record: KYCRecord{
+				CPF: u.CPF, LegalName: u.LegalName, BirthDate: u.BirthDate, Address: u.Address,
+				PhoneNumber: u.PhoneNumber, PhoneVerifiedAt: u.PhoneVerifiedAt,
+				KYCLevel: u.KYCLevel, KYCStatus: u.KYCStatus, KYCBasicVerifiedAt: u.KYCBasicVerifiedAt,
+				KYCVerifiedAt: u.KYCVerifiedAt, KYCReviewedAt: u.KYCReviewedAt, KYCReviewedBy: u.KYCReviewedBy,
+				KYCReviewDecision: u.KYCReviewDecision, KYCRiskScore: u.KYCRiskScore,
+				KYCRiskSignals: u.KYCRiskSignals, KYCDocuments: u.KYCDocuments,
+			},
+		}
+	}
+	return s.repo.Purge(ctx, tomb, kyc, markers)
+}

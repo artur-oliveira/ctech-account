@@ -42,11 +42,11 @@ Tables: `{env}_account_*`. Buckets: KYC documents (versioned, 5 y expiry), logs.
 | MFA secrets, backup codes | `account_mfa` | Erase | — |
 | Passkeys | `account_passkeys` | Erase | — |
 | API keys | `account_api_keys` | Erase | — |
-| OAuth clients the user registered (`owner_user_id`) | `account_oauth_clients` | **Blocker** if the client is used by other users; otherwise Erase. `TODO`: confirm whether any non-internal client exists | — |
+| OAuth clients the user registered (`owner_user_id`) | `account_oauth_clients` | **Blocker** (ruling R4, Phase 2a): a non-first-party client the user registered blocks deletion; the user deletes it first | — |
 | Organizations owned (`owner_user_id`) | `account_organizations` | **Blocker** if it has other members (transfer ownership). If the user is the **sole member: Erase** the organization with the account, irreversibly (D4), and dispatch it to dfe for a full org purge (§5) | Data processed on the organization's behalf; the 5 y fiscal duty is the taxpayer's |
 | Organization ↔ company links of an erased organization | `account_memberships` / `account_companies` edges | Erase the links. The company (CNPJ) row itself stays if another organization still references it; if no organization references it anymore, Erase it | — |
 | Memberships | `account_memberships` | Erase | — |
-| Invitations sent/received | `account_invitations` | Erase those received; anonymize `invited_by` on those sent | — |
+| Invitations sent/received | `account_invitations` | Erase those received; `invited_by` on those sent keeps the opaque `sub` (ruling R5) | — |
 | Companies (CNPJ registry) | `account_companies` | A company row is erased when no surviving organization references it. **MEI companies are personal data** (D12): the business name carries the owner's name and the CNPJ is tied to their CPF. So an orphaned MEI row is always erased, never just left in the registry. An MEI row still referenced by another organization (e.g. the accountant's) stays: it is that organization's data about its client | — |
 | Support tickets + messages | `account_support_tickets` | Anonymize requester fields, erase message bodies the user wrote; keep agent-side metadata | Erase unless a ticket is part of a dispute (then legal hold) |
 | Support metrics | `account_support_metrics` | Aggregates; verify no `sub` is stored | `TODO` |

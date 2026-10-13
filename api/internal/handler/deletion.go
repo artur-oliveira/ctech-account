@@ -66,6 +66,10 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 		return err
 	}
 	r, err := h.svc.Request(c.Context(), userID)
+	var blocked *deletion.BlockedError
+	if errors.As(err, &blocked) {
+		return apierror.DeletionBlocked(blocked.Blockers, c.Path()).Send(c)
+	}
 	if errors.Is(err, deletion.ErrOpenRequest) {
 		return apierror.Conflict("A deletion request is already in progress for this account.", c.Path())
 	}

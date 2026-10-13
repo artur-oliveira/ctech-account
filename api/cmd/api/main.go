@@ -199,7 +199,8 @@ func main() {
 	userSvc := userDomain.NewService(userRepo)
 	supportSvc := supportDomain.NewService(supportDomain.NewRepository(db, cfg.TablePrefix))
 	orgSvc := orgDomain.NewService(orgDomain.NewRepository(db, cfg.TablePrefix), time.Now)
-	companySvc := companyDomain.NewService(companyDomain.NewRepository(db, cfg.TablePrefix), time.Now)
+	companyRepo := companyDomain.NewRepository(db, cfg.TablePrefix)
+	companySvc := companyDomain.NewService(companyRepo, time.Now)
 	// An accepted invitation grants the companies it named. Wired here rather
 	// than injected into the organization package, which stays ignorant that
 	// companies exist (ctech-billing ADR 0023).
@@ -490,6 +491,13 @@ func main() {
 			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServices),
 			emailCli,
 		)
+		purgeUser := func(ctx context.Context, userID, requestID string, at time.Time) error {
+			return userSvc.Purge(ctx, userID, requestID, func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) }, at)
+		}
+		deletionSvc = deletionSvc.
+			WithOwnership(deletion.NewAccountOwnership(orgSvc, oauthClientRepo)).
+			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser),
+				len(cfg.ErasureServices) > 0)
 		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment

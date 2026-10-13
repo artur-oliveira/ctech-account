@@ -119,3 +119,21 @@ func TestAccountLocker_StaleUnlockKeepsNewerRevocation(t *testing.T) {
 		t.Fatalf("pre-lock token must stay revoked, got %v", err)
 	}
 }
+
+func TestAccountLocker_ErasePublishesFrozenWorkspaces(t *testing.T) {
+	pub := &fakePub{}
+	l := NewAccountLocker(&fakeBlocker{}, &fakeSessions{}, &fakeKeys{}, &fakeTokens{}, pub, []string{"dfe"})
+	r := lockedRequest()
+	r.Organizations = []string{"org-1", "space-1"}
+	r.Workspaces = []Workspace{{ID: "org-1", Kind: "organization"}, {ID: "space-1", Kind: "personal"}}
+	if err := l.Erase(context.Background(), r); err != nil {
+		t.Fatalf("Erase: %v", err)
+	}
+	if len(pub.msgs) != 1 || len(pub.msgs[0].Organizations) != 2 || len(pub.msgs[0].Workspaces) != 2 ||
+		pub.msgs[0].Workspaces[1].ID != "space-1" || pub.msgs[0].Workspaces[1].Kind != "personal" {
+		t.Fatalf("published %+v", pub.msgs)
+	}
+	if err := pub.msgs[0].Validate(); err != nil {
+		t.Fatalf("published message is invalid: %v", err)
+	}
+}
