@@ -1,5 +1,14 @@
 # Account Deletion — Phase 3 (participants: eligibility, acks, reconciler, admin) Implementation Plan
 
+> **Amendment 2026-10-13 (review `docs/2026-10-13-account-deletion-plan-review.md`):**
+> - `user.erase` and `user.locked` gain an additive field `workspaces: [{"id": "...", "kind": "personal|organization"}]`, a superset
+>   of `organizations[]` (kept for compatibility, schema version stays 1). Frozen at LOCKED like `organizations[]`. Update
+>   `erasure.Message` in ctech-go-common and the saga protocol §3.
+> - Phase 2a/2b must also purge the plan-limit rows: `OWNER#{sub}` counters (`PERSONAL_SPACES`, `people_n`) and `LEVEL_DIRTY` queue
+>   rows whose `owner_user_id` is the erased sub; the level worker must skip a tombstoned owner.
+> - Participants must not pin api-commons `v1.13.1`; use the current `go.mod` version (minimum v1.13.0 plus the `workspaces` field).
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make ctech-account the orchestrator of the saga with the other services:

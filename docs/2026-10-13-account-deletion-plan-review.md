@@ -134,15 +134,15 @@ arestas sociais, #424 UI); a paginação reforça que o purge de arestas precisa
 - Workspaces `personal` compartilhados já têm regra (bloqueia até transferir); falta definir como `kind` chega aos participantes (2.4).
 - Regra de manutenção (seção 8).
 
-## 7. Decisões que dependem de você
+## 7. Decisões (tomadas em 2026-10-13)
 
-1. **Tenant merchant de um workspace apagado.** Recomendação: bloquear (`billing.merchant_tenant`, mensagem para falar com o suporte)
-   até existir exclusão de tenant; apagar o tenant inteiro é feature própria (credenciais, webhooks, BYOK, clientes finais) e não deve
-   nascer escondida dentro do purge.
-2. **Auditoria de workspace apagado:** apagar sempre (recomendado: a organização inteira some) ou manter 5 anos.
-3. **Ator (sub) em auditoria/ledger de space compartilhado que sobrevive:** anonimizar (alinha ao dfe) ou reter como opaco.
-4. **Linhas `LATEST` de nível por `USER_{sub}`:** apagar (recomendado) ou documentar como opaco.
-5. **`kind` na mensagem `user.erase`:** adicionar campo (por exemplo `workspaces[]` com `{id, kind}`) ou tratar todos como organização.
+1. **Tenant merchant de um workspace apagado: bloquear.** Novo blocker `billing.merchant_tenant` (fale com o suporte). Exclusão de
+   tenant fica como feature própria, com seu próprio fluxo de exclusão.
+2. **Auditoria de workspace apagado: apagar sempre**, de qualquer tipo, quando o workspace está na lista da mensagem.
+3. **Ator (sub) em auditoria e ledger de space compartilhado que sobrevive: reter como identificador opaco.** O sub já é a chave que
+   o tombstone mantém, não carrega dado pessoal e o ledger é imutável; anonimizar exigiria reescrever histórico.
+4. **Linhas `LATEST` de nível por `USER_{sub}` / `ORG_{id}`: apagar.**
+5. **`user.erase` ganha `workspaces[]` com `{id, kind}`** (campo aditivo, versão 1; `organizations[]` continua como lista de ids).
 
 ## 8. Regra de manutenção (adicionada aos READMEs)
 

@@ -148,6 +148,10 @@ ADR 0026). Tables `{env}_billing_ledger_accounts`, `ledger_transactions`, `bills
 | **Organization space** of an organization erased with the user (`organizations[]`, D4) | **Erase** everything under `{organization_id}#live` and `#test` | Same purge path ADR 0026 defines for "organization closed" |
 | The seeded *Assinaturas CTech* payable in the personal space | Erased with the space. The CTech invoice it mirrors stays in tenant zero (retained, fiscal) | — |
 | Import batches/lines | TTL 90 days already; erased with the space if still present | — |
+| Cards, statements and imports (`cards`, `imports`: `S#CARD#{id}`, `S#IMPORT#{id}`, `FITID#` locks, `CSVMAP#`) | **Erase** with the space, including the per-card and per-import partitions (2026-10-13) | Same as the space |
+| **BYOK** (`byok`): bank connection of an organization (account number, Pix key, sealed credentials and mTLS certificate), hooks, charge pointers | Erased with an erased organization; also remove the webhook registered at the bank. A workspace with a merchant tenant **blocks** deletion (`billing.merchant_tenant`, decision 2026-10-13) | Credentials of the organization; art. 18 §6 for the bank |
+| Organization customers in tenant zero (`CUSTOMER_ORG#`, incl. the DF-e organization subscription) of an erased workspace | Cancel subscriptions, anonymize the customer (CNPJ and name of an MEI are personal data, D12), keep invoices | fiscal |
+| Merchant applications (`applications`), level rows (`usage` `LATEST`) for `USER_{sub}` / `ORG_{id}` | Erase | — |
 
 Billing's purge test must list every finance table and assert each one is covered (ADR 0026
 consequence); the `PurgeFunc` reuses that per-prefix job.
