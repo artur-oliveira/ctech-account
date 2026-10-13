@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"uuid"
@@ -40,11 +41,8 @@ func (s *Service) Create(ctx context.Context, userID, deviceName, ip, userAgent 
 	now := time.Now().UTC()
 
 	var lastMFA int64
-	for _, m := range amr {
-		if IsMFAMethod(m) {
-			lastMFA = now.Unix()
-			break
-		}
+	if slices.ContainsFunc(amr, IsMFAMethod) {
+		lastMFA = now.Unix()
 	}
 
 	sess := &Session{
@@ -201,7 +199,6 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("generating new refresh token: %w", err)
 	}
-	oldHash := t.RefreshTokenHash
 	now := time.Now().UTC()
 	// Create new refresh token with fresh TTL
 	newToken := &RefreshToken{
@@ -215,18 +212,15 @@ func (s *Service) RotateClientToken(ctx context.Context, rawToken, clientID stri
 		LastUsedAt:       now.Format(time.RFC3339),
 		ExpiresAt:        now.Add(SessionTTL).Unix(),
 	}
-	// Put consumed token marker for the old token (best-effort)
-	if err := s.repo.PutConsumedToken(ctx, t.UserID(), t.SessionID, t.ClientID, oldHash, sess.ExpiresAt); err != nil {
-		observability.Error(ctx, "session: failed to persist consumed-token marker", err,
-			"user_id", t.UserID(), "session_id", t.SessionID, "client_id", t.ClientID)
-	}
-	// Delete the old refresh token record
-	if err := s.repo.DeleteRefreshToken(ctx, t.UserID(), t.SessionID, t.ClientID); err != nil {
-		return nil, "", nil, fmt.Errorf("deleting old refresh token: %w", err)
-	}
-	// Put the new refresh token record
-	if err := s.repo.PutRefreshToken(ctx, newToken); err != nil {
-		return nil, "", nil, fmt.Errorf("persisting new refresh token: %w", err)
+	if err := s.repo.RotateRefreshToken(ctx, t, newToken, sess.ExpiresAt); err != nil {
+		if errors.Is(err, ErrTokenReuse) {
+			if revokeErr := s.Revoke(ctx, t.UserID(), t.SessionID); revokeErr != nil {
+				observability.Error(ctx, "session: failed to revoke session after concurrent token reuse", revokeErr,
+					"user_id", t.UserID(), "session_id", t.SessionID)
+			}
+			return nil, "", nil, ErrTokenReuse
+		}
+		return nil, "", nil, fmt.Errorf("rotating refresh token: %w", err)
 	}
 	return sess, newRaw, t.Scopes, nil
 }

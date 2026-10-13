@@ -97,8 +97,30 @@ type RefreshToken struct {
 	ExpiresAt  int64    `dynamodbav:"expires_at"` // Unix epoch — DynamoDB TTL attribute
 }
 
+// tokenLookup gives refresh-token hashes a strongly consistent key lookup.
+// It shares the sessions table but uses a separate partition from user data.
+type tokenLookup struct {
+	PK        string `dynamodbav:"pk"`
+	SK        string `dynamodbav:"sk"`
+	State     string `dynamodbav:"state"`
+	UserID    string `dynamodbav:"user_id"`
+	SessionID string `dynamodbav:"session_id"`
+	ClientID  string `dynamodbav:"client_id"`
+	ExpiresAt int64  `dynamodbav:"expires_at"`
+}
+
+const (
+	tokenLookupPrefix   = "TOKEN#"
+	tokenLookupSK       = "META"
+	tokenLookupActive   = "active"
+	tokenLookupConsumed = "consumed"
+)
+
+func tokenLookupPK(hash string) string { return tokenLookupPrefix + hash }
+
 const refreshSKPrefix = "REFRESH_"
 const sessionSKPrefix = "SESSION_"
+
 // consumedSKPrefix marks the sk of a consumed-token marker (see ConsumedToken).
 // It is distinct from refreshSKPrefix so the marker never collides with the
 // active per-(session,client) refresh item under the same pk.

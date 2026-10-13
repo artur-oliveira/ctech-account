@@ -753,14 +753,17 @@ func (m *memSessionRepo) GetRefreshTokenByHash(_ context.Context, tokenHash stri
 	return nil, sessionDomain.ErrRefreshTokenNotFound
 }
 
-func (m *memSessionRepo) PutConsumedToken(_ context.Context, userID, sessionID, clientID, supersededHash string, _ int64) error {
-	m.consumed[supersededHash] = &sessionDomain.ConsumedToken{
-		PK:               sessionDomain.BuildPK(userID),
-		SK:               "CONSUMED_" + supersededHash,
-		RefreshTokenHash: supersededHash,
-		UserID:           userID,
-		SessionID:        sessionID,
-		ClientID:         clientID,
+func (m *memSessionRepo) RotateRefreshToken(_ context.Context, old, next *sessionDomain.RefreshToken, consumedUntil int64) error {
+	k := old.PK + "|" + old.SK
+	current, ok := m.tokens[k]
+	if !ok || current.RefreshTokenHash != old.RefreshTokenHash {
+		return sessionDomain.ErrTokenReuse
+	}
+	m.tokens[k] = next
+	m.consumed[old.RefreshTokenHash] = &sessionDomain.ConsumedToken{
+		PK: sessionDomain.BuildPK(old.UserID()), SK: "CONSUMED_" + old.RefreshTokenHash,
+		RefreshTokenHash: old.RefreshTokenHash, UserID: old.UserID(),
+		SessionID: old.SessionID, ClientID: old.ClientID, ExpiresAt: consumedUntil,
 	}
 	return nil
 }
@@ -770,19 +773,6 @@ func (m *memSessionRepo) GetConsumedByHash(_ context.Context, tokenHash string) 
 		return c, nil
 	}
 	return nil, sessionDomain.ErrRefreshTokenNotFound
-}
-
-func (m *memSessionRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
-	k := sessionDomain.BuildPK(userID) + "|" + sessionDomain.BuildRefreshSK(sessionID, clientID)
-	t, ok := m.tokens[k]
-	if !ok {
-		return sessionDomain.ErrRefreshTokenNotFound
-	}
-	if t.RefreshTokenHash != oldHash {
-		return sessionDomain.ErrTokenReuse
-	}
-	t.RefreshTokenHash = newHash
-	return nil
 }
 
 func (m *memSessionRepo) ListRefreshTokensBySession(_ context.Context, userID, sessionID string) ([]*sessionDomain.RefreshToken, error) {

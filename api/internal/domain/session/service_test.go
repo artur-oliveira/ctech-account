@@ -5,14 +5,17 @@ import (
 	"errors"
 	"testing"
 
+	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 )
 
 // mockRepo is an in-memory session Repository.
 type mockRepo struct {
-	sessions map[string]*session.Session      // key: pk|sk
-	tokens   map[string]*session.RefreshToken // key: pk|sk
-	consumed map[string]*session.ConsumedToken // key: superseded hash
+	sessions   map[string]*session.Session       // key: pk|sk
+	tokens     map[string]*session.RefreshToken  // key: pk|sk
+	consumed   map[string]*session.ConsumedToken // key: superseded hash
+	lookups    map[string]*session.RefreshToken  // strongly consistent token-hash records
+	failRotate bool
 }
 
 func newMockRepo() *mockRepo {
@@ -20,6 +23,7 @@ func newMockRepo() *mockRepo {
 		sessions: make(map[string]*session.Session),
 		tokens:   make(map[string]*session.RefreshToken),
 		consumed: make(map[string]*session.ConsumedToken),
+		lookups:  make(map[string]*session.RefreshToken),
 	}
 }
 
@@ -76,10 +80,17 @@ func (m *mockRepo) ListByUserID(_ context.Context, userID string) ([]*session.Se
 
 func (m *mockRepo) PutRefreshToken(_ context.Context, t *session.RefreshToken) error {
 	m.tokens[t.PK+"|"+t.SK] = t
+	m.lookups[t.RefreshTokenHash] = t
 	return nil
 }
 
 func (m *mockRepo) GetRefreshTokenByHash(_ context.Context, tokenHash string) (*session.RefreshToken, error) {
+	if t, ok := m.lookups[tokenHash]; ok {
+		if active, exists := m.tokens[t.PK+"|"+t.SK]; exists && active.RefreshTokenHash == tokenHash {
+			return active, nil
+		}
+		return nil, session.ErrRefreshTokenNotFound
+	}
 	for _, t := range m.tokens {
 		if t.RefreshTokenHash == tokenHash {
 			return t, nil
@@ -88,14 +99,21 @@ func (m *mockRepo) GetRefreshTokenByHash(_ context.Context, tokenHash string) (*
 	return nil, session.ErrRefreshTokenNotFound
 }
 
-func (m *mockRepo) PutConsumedToken(_ context.Context, userID, sessionID, clientID, supersededHash string, _ int64) error {
-	m.consumed[supersededHash] = &session.ConsumedToken{
-		PK:               session.BuildPK(userID),
-		SK:               "CONSUMED_" + supersededHash,
-		RefreshTokenHash: supersededHash,
-		UserID:           userID,
-		SessionID:        sessionID,
-		ClientID:         clientID,
+func (m *mockRepo) RotateRefreshToken(_ context.Context, old *session.RefreshToken, next *session.RefreshToken, _ int64) error {
+	if m.failRotate {
+		return errors.New("transaction failed")
+	}
+	key := old.PK + "|" + old.SK
+	if current, ok := m.tokens[key]; !ok || current.RefreshTokenHash != old.RefreshTokenHash {
+		return session.ErrTokenReuse
+	}
+	m.tokens[key] = next
+	m.lookups[old.RefreshTokenHash] = old
+	m.lookups[next.RefreshTokenHash] = next
+	m.consumed[old.RefreshTokenHash] = &session.ConsumedToken{
+		PK: session.BuildPK(old.UserID()), SK: "CONSUMED_" + old.RefreshTokenHash,
+		RefreshTokenHash: old.RefreshTokenHash, UserID: old.UserID(),
+		SessionID: old.SessionID, ClientID: old.ClientID, ExpiresAt: old.ExpiresAt,
 	}
 	return nil
 }
@@ -105,22 +123,6 @@ func (m *mockRepo) GetConsumedByHash(_ context.Context, tokenHash string) (*sess
 		return c, nil
 	}
 	return nil, session.ErrRefreshTokenNotFound
-}
-
-func (m *mockRepo) UpdateRefreshTokenHash(_ context.Context, userID, sessionID, clientID, newHash, oldHash string) error {
-	k := session.BuildPK(userID) + "|" + session.BuildRefreshSK(sessionID, clientID)
-	t, ok := m.tokens[k]
-	if !ok {
-		return session.ErrRefreshTokenNotFound
-	}
-	// Simulate the conditional update: only apply when the stored hash still
-	// matches oldHash; a stale oldHash (concurrent rotation already succeeded)
-	// is reported as reuse.
-	if t.RefreshTokenHash != oldHash {
-		return session.ErrTokenReuse
-	}
-	t.RefreshTokenHash = newHash
-	return nil
 }
 
 func (m *mockRepo) ListRefreshTokensBySession(_ context.Context, userID, sessionID string) ([]*session.RefreshToken, error) {
@@ -181,6 +183,43 @@ func TestRotateClientToken_TokenReuse(t *testing.T) {
 	_, _, _, err := svc.RotateClientToken(context.Background(), raw, "test-client")
 	if !errors.Is(err, session.ErrTokenReuse) {
 		t.Errorf("expected ErrTokenReuse, got %v", err)
+	}
+}
+
+func TestRotateClientToken_FailedAtomicWriteKeepsOldToken(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	sess, _, _ := svc.Create(context.Background(), "user-atomic", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
+	raw, err := svc.IssueClientToken(context.Background(), "user-atomic", sess.ID(), "client", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.failRotate = true
+
+	if _, _, _, err := svc.RotateClientToken(context.Background(), raw, "client"); err == nil {
+		t.Fatal("expected injected transaction failure")
+	}
+	if _, err := repo.GetRefreshTokenByHash(context.Background(), crypto.HashToken(raw)); err != nil {
+		t.Fatalf("old token must remain active after failed atomic write: %v", err)
+	}
+}
+
+func TestRotateClientToken_StaleLookupCannotReactivateConsumedToken(t *testing.T) {
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	sess, _, _ := svc.Create(context.Background(), "user-stale", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
+	raw, err := svc.IssueClientToken(context.Background(), "user-stale", sess.ID(), "client", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := svc.RotateClientToken(context.Background(), raw, "client"); err != nil {
+		t.Fatalf("first rotation: %v", err)
+	}
+
+	// The lookup record for the old hash remains, as a stale GSI row might,
+	// but it must resolve as consumed rather than as an active refresh token.
+	if _, _, _, err := svc.RotateClientToken(context.Background(), raw, "client"); !errors.Is(err, session.ErrTokenReuse) {
+		t.Fatalf("expected stale lookup to be rejected as reuse, got %v", err)
 	}
 }
 
@@ -375,36 +414,6 @@ func TestRecordMFAUpdatesSessionOnce(t *testing.T) {
 	got, _ = repo.GetByID(context.Background(), "u1", sess.ID())
 	if len(got.AMR) != 2 {
 		t.Errorf("AMR grew on repeat method: %v", got.AMR)
-	}
-}
-
-// Regression test for CON-004: the conditional update must reject a
-// concurrent rotation of the same token as reuse, instead of minting two
-// valid tokens. This drives the new mock conditional directly: two rotations
-// presenting the SAME old hash — exactly the concurrent-refresh race — the
-// second must fail with ErrTokenReuse.
-func TestUpdateRefreshTokenHash_RejectsStaleOldHash(t *testing.T) {
-	repo := newMockRepo()
-	svc := session.NewService(repo)
-	sess, _, _ := svc.Create(context.Background(), "uC", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
-	if _, err := svc.IssueClientToken(context.Background(), "uC", sess.ID(), "c", nil); err != nil {
-		t.Fatalf("issue: %v", err)
-	}
-
-	// Current stored hash (this is what the service passes as oldHash).
-	var oldHash string
-	for _, tk := range repo.tokens {
-		oldHash = tk.RefreshTokenHash
-	}
-
-	// First rotation (oldHash matches) applies successfully.
-	if err := repo.UpdateRefreshTokenHash(context.Background(), "uC", sess.ID(), "c", "newhash1", oldHash); err != nil {
-		t.Fatalf("first rotation should apply: %v", err)
-	}
-	// A second concurrent rotation presenting the SAME old raw token must be
-	// rejected — the stored hash no longer equals oldHash.
-	if err := repo.UpdateRefreshTokenHash(context.Background(), "uC", sess.ID(), "c", "newhash2", oldHash); !errors.Is(err, session.ErrTokenReuse) {
-		t.Fatalf("expected ErrTokenReuse for stale oldHash, got %v", err)
 	}
 }
 

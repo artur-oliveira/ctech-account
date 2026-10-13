@@ -297,9 +297,13 @@ Three cookies exist, all scoped to the parent domain:
 | `ctech_auth`    | no       | Marker (`1`) telling frontend JS a session may exist, so it knows whether a silent refresh is worth attempting |
 
 Refresh tokens are stored per `(session, client)` — item `REFRESH_{session_id}#{client_id}`
-in the sessions table. One client's code exchange or rotation never invalidates the SSO
-session or another client's refresh chain. Revoking a session cascades to all its
-refresh tokens. Reuse of a stale refresh token returns `401 token-reuse`.
+in the sessions table. A `TOKEN#{sha256}` lookup item in that same table resolves refresh
+hashes with a strongly consistent read; rotation updates the active token and changes the
+old lookup to `consumed` in one DynamoDB transaction. Tokens created before this lookup was
+introduced fall back to the existing token-hash index and gain lookup records on their next
+rotation. One client's code exchange or rotation never invalidates the SSO session or another
+client's refresh chain. Revoking a session cascades to all its refresh tokens. Reuse of a stale
+refresh token returns `401 token-reuse` and revokes the session.
 
 ## Scopes
 
