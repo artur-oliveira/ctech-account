@@ -5,6 +5,9 @@ import LoginPage from './page'
 import {beginPasskeyAuthAPI, completePasskeyAuthAPI} from '@/lib/mutations'
 import {buildAssertionCredential} from '@/lib/webauthn'
 import {startOAuthFlow} from '@/lib/auth-flow'
+import {api} from '@/lib/axios'
+
+const mocks = vi.hoisted(() => ({isAxios: false, params: ''}))
 
 vi.mock('@/lib/mutations', () => ({
   beginPasskeyAuthAPI: vi.fn(),
@@ -22,16 +25,18 @@ vi.mock('@/lib/auth-flow', () => ({
 
 vi.mock('@/lib/axios', () => ({
   api: {post: vi.fn()},
-  isAxiosError: () => false,
+  isAxiosError: () => mocks.isAxios,
 }))
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mocks.params),
   useRouter: () => ({replace: vi.fn(), push: vi.fn()}),
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.isAxios = false
+  mocks.params = ''
   vi.stubGlobal('PublicKeyCredential', undefined)
 })
 
@@ -103,5 +108,28 @@ describe('LoginPage — passkey-first authentication', () => {
     await waitFor(() => expect(beginPasskeyAuthAPI).not.toHaveBeenCalled())
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: 'Sign in with passkey'})).toBeInTheDocument()
+  })
+
+  it('login shows pending-deletion message', async () => {
+    mocks.isAxios = true
+    vi.mocked(api.post).mockRejectedValue({response: {status: 403, data: {
+      type: 'https://accounts.aoctech.app/problems/account-pending-deletion', detail: 'x',
+    }}})
+    const user = userEvent.setup()
+    render(<LoginPage/>)
+
+    await user.type(screen.getByLabelText('Email'), 'ana@example.com')
+    await user.type(screen.getByLabelText('Password'), 'Password!123')
+    await user.click(screen.getByRole('button', {name: 'Sign in'}))
+
+    expect(await screen.findByText(/scheduled for deletion/i)).toBeInTheDocument()
+    expect(screen.queryByText(/resend/i)).toBeNull()
+  })
+
+  it('shows the pending-deletion message after the Google redirect', () => {
+    mocks.params = 'error=account_pending_deletion'
+    render(<LoginPage/>)
+
+    expect(screen.getByText(/scheduled for deletion/i)).toBeInTheDocument()
   })
 })

@@ -16,7 +16,7 @@ import {startOAuthFlow} from '@/lib/auth-flow'
 import {beginPasskeyAuthAPI, completePasskeyAuthAPI, resendVerificationAPI} from '@/lib/mutations'
 import {buildAssertionCredential} from '@/lib/webauthn'
 import {sanitizeContinue} from '@/lib/safe-redirect'
-import {CONTINUE_URL_KEY, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
+import {ACCOUNT_PENDING_DELETION_PROBLEM, CONTINUE_URL_KEY, MFA_METHODS_KEY, MFA_TOKEN_KEY} from '@/lib/constants'
 import {useRedirectIfAuthenticated} from '@/hooks/use-redirect-if-authenticated'
 import {GoogleSignInButton} from '@/components/google-sign-in-button'
 import {Fingerprint} from 'lucide-react'
@@ -62,6 +62,7 @@ function LoginForm() {
   const oauthErrorMessages: Record<string, string> = {
     google_denied: t('errors.googleDenied'),
     google_email_unverified: t('errors.googleEmailUnverified'),
+    account_pending_deletion: t('errors.accountPendingDeletion'),
   }
   const oauthErrorCode = params.get('error')
   const oauthError = oauthErrorCode
@@ -156,10 +157,14 @@ function LoginForm() {
     } catch (submitError) {
       reportClientError('password-login', submitError)
       if (isAxiosError(submitError)) {
-        if (submitError.response?.status === HTTP_FORBIDDEN) {
-          setUnverifiedEmail(email)
+        if (String(submitError.response?.data?.type ?? '').endsWith(ACCOUNT_PENDING_DELETION_PROBLEM)) {
+          setError(t('errors.accountPendingDeletion'))
+        } else {
+          if (submitError.response?.status === HTTP_FORBIDDEN) {
+            setUnverifiedEmail(email)
+          }
+          setError(submitError.response?.data?.detail ?? t('errors.loginFailed'))
         }
-        setError(submitError.response?.data?.detail ?? t('errors.loginFailed'))
       } else {
         setError(t('errors.network'))
       }
@@ -183,7 +188,9 @@ function LoginForm() {
         setError(t('login.passkeyCancelled'))
       } else if (isAxiosError(passkeyError)) {
         reportClientError('passkey-login', passkeyError)
-        setError(passkeyError.response?.data?.detail ?? t('errors.loginFailed'))
+        setError(String(passkeyError.response?.data?.type ?? '').endsWith(ACCOUNT_PENDING_DELETION_PROBLEM)
+          ? t('errors.accountPendingDeletion')
+          : passkeyError.response?.data?.detail ?? t('errors.loginFailed'))
       } else {
         reportClientError('passkey-login', passkeyError)
         setError(t('errors.network'))
