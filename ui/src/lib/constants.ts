@@ -73,3 +73,9 @@ export const SUPPORT_EMAIL = 'dpo@aoctech.app'
 
 /** Billing's plan screen (Finanças → Plano), opened by "Ver planos". */
 export const BILLING_PLAN_PATH = '/finance/plans'
+
+// Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md).
+// The API compares the phrase exactly; it is shown verbatim in every language.
+export const DELETION_PHRASE = 'EXCLUIR MINHA CONTA'
+export const DELETION_BLOCKED_PROBLEM = 'deletion-blocked'
+export const ACCOUNT_PENDING_DELETION_PROBLEM = 'account-pending-deletion'

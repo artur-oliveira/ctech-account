@@ -98,6 +98,7 @@ export type ProblemDetail = {
   status: number
   detail: string
   instance: string
+  blockers?: DeletionBlocker[]
 }
 
 export interface ActivityEvent {
@@ -407,4 +408,23 @@ export interface SpaceUsage {
   pending_invitations: number
   limit: number
   plan?: string
+}
+
+export type DeletionState =
+  | 'awaiting_confirmation' | 'pending_deletion' | 'blocked' | 'locked'
+  | 'purging' | 'stalled' | 'purged' | 'cancelled' | 'expired'
+
+export type DeletionRequest = {
+  request_id: string
+  state: DeletionState
+  requested_at?: string
+  confirm_by?: string
+  grace_until?: string
+  legal_hold?: boolean
+}
+
+export type DeletionBlocker = {
+  code: string
+  detail?: Record<string, unknown>
+  action_url?: string
 }

@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationKind, OrganizationMember, OrganizationRole, Company } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationKind, OrganizationMember, OrganizationRole, Company, DeletionRequest } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -389,4 +389,21 @@ export async function revokeCompanyActorAPI(id: string, companyID: string, userI
   await api.delete(
     `/v1.0/organizations/${encodeURIComponent(id)}/companies/${encodeURIComponent(companyID)}/actors/${encodeURIComponent(userID)}`,
   )
+}
+
+export async function requestDeletionAPI(confirmationPhrase: string, password?: string): Promise<DeletionRequest> {
+  const body: Record<string, string> = { confirmation_phrase: confirmationPhrase }
+  if (password) body.password = password
+  const { data } = await api.post<DeletionRequest>('/v1.0/account/deletion', body)
+  return data
+}
+
+export async function confirmDeletionAPI(requestID: string, token: string): Promise<DeletionRequest> {
+  const { data } = await api.post<DeletionRequest>('/v1.0/auth/deletion/confirm', { request_id: requestID, token })
+  return data
+}
+
+export async function cancelDeletionAPI(requestID: string, token: string): Promise<DeletionRequest> {
+  const { data } = await api.post<DeletionRequest>('/v1.0/auth/deletion/cancel', { request_id: requestID, token })
+  return data
 }
