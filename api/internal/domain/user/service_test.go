@@ -849,3 +849,16 @@ func TestPurge_FreesEmailForReRegistration(t *testing.T) {
 		t.Fatalf("re-registering the e-mail of a purged account: %v", err)
 	}
 }
+
+func TestPurge_RetainedDocumentsPointAtRetentionKeys(t *testing.T) {
+	ctx := context.Background()
+	svc, repo, u := purgedFixture(t)
+	repo.byID[u.ID()].KYCDocuments = []user.KYCDocument{{ID: "d1", Type: "id_front", Key: "kyc/" + u.ID() + "/d1"}}
+	if err := svc.Purge(ctx, u.ID(), "req-1", fakeMAC, time.Now()); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	docs := repo.kycRet[0].Record.KYCDocuments
+	if len(docs) != 1 || docs[0].Key != user.KYCRetentionDocKey(u.ID(), "d1") {
+		t.Fatalf("retained documents %+v", docs)
+	}
+}

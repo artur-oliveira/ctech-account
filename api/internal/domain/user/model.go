@@ -176,3 +176,9 @@ type KYCRecord struct {
 	KYCRiskSignals     []string      `dynamodbav:"kyc_risk_signals,omitempty"`
 	KYCDocuments       []KYCDocument `dynamodbav:"kyc_documents,omitempty"` // S3 keys; moved to retention/ in Phase 2b
 }
+
+// KYCRetentionDocKey is where a deleted account's KYC document is kept for
+// 5 years (D6); the bucket's expiration rule counts from the copy.
+func KYCRetentionDocKey(userID, documentID string) string {
+	return "retention/" + userID + "/" + documentID
+}

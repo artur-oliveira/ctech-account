@@ -445,3 +445,9 @@ func decodeCursor(cursor string) (string, error) {
 func encodeCursor(sk string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(sk))
 }
+
+// RedactMessage replaces one message's body (account deletion only).
+func (r *dynamoRepository) RedactMessage(ctx context.Context, ticketID, messageSK, body string) error {
+	_, err := r.table.UpdateItem(ctx, BuildPK(ticketID), &messageSK, map[string]any{"body": body})
+	return err
+}
