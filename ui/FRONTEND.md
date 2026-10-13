@@ -31,7 +31,22 @@ Top-level:
   `/verify-email`, `/consent`, `/accept-terms`.
 - `/account/*` — **guarded** account hub: `profile`, `security` (+`security/totp`,
   `security/passkeys`), `sessions`, `api-keys`, `oauth-clients`,
-  `connected-apps`, `activity`, `identity` (KYC).
+  `connected-apps`, `activity`, `identity` (KYC), `delete` (account deletion).
+- `/account/delete` (entry point: `DeleteAccountCard` at the bottom of `/account/profile`): explains the
+  consequences, takes the typed phrase `EXCLUIR MINHA CONTA` (`DELETION_PHRASE`, verbatim in every
+  language) and, when `profile.has_password`, the password (always asked then: R14 keeps the page
+  independent of token freshness and never triggers the step-up dialog). `409 deletion-blocked`
+  renders `blockers[]` with the copy at `deletion.blockers.<code>` (unknown codes fall back to a
+  generic line naming the code) and the participant's `action_url` as "Resolve"; `503` means a CTech
+  product could not be checked, try again.
+- `/account-deletion/confirm?request=&token=` and `/account-deletion/cancel?request=&token=` (public,
+  opened from the e-mail links): both are `DeletionLinkPage` and **act only when the button is
+  pressed** (a POST), never on load, so e-mail scanners that prefetch links cannot confirm or cancel
+  a deletion. Cancel distinguishes `409` ("can no longer be cancelled") from an invalid link. Confirm
+  clears the in-memory auth state: every session was just revoked.
+- `/login` shows `errors.accountPendingDeletion` for the `account-pending-deletion` problem (password
+  and passkey) and for the Google redirect `?error=account_pending_deletion`, instead of the
+  unverified-e-mail resend flow.
 - `/account/oauth-clients?new=1&scopes=a,b,c` is a cross-repo link contract (first caller:
   ctech-billing's console credentials page). `new=1` opens the "new client" dialog; `scopes` replaces
   the default `openid profile email` with exactly the listed scopes, keeping only scope-shaped tokens
@@ -40,7 +55,7 @@ Top-level:
   is a convenience, never authority. Closing the dialog `router.replace`s the bare path, so reopening
   starts from the defaults and Back does not reopen it.
 - Static/legal: `/terms`, `/terms/v1`, `/terms/v2`, `/privacy`, `/privacy/v1`,
-  `/privacy/v2`, `/cookies`, `/legal`, `/kyc-policy`, `/data-processing`,
+  `/privacy/v2`, `/privacy/v3`, `/cookies`, `/legal`, `/kyc-policy`, `/data-processing`,
   `/security-policy`, `/acceptable-use`, `/responsible-disclosure`,
   `/transparency`, `/products/*`.
 

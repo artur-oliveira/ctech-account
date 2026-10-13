@@ -54,7 +54,8 @@
     "googleDenied": "O login com o Google foi cancelado.",
     "googleEmailUnverified": "O e-mail da sua conta Google não está verificado. Verifique-o no Google e tente novamente.",
     "retry": "Tentar novamente",
-    "loadFailed": "Algo deu errado ao carregar."
+    "loadFailed": "Algo deu errado ao carregar.",
+    "accountPendingDeletion": "Esta conta está agendada para exclusão. Para mantê-la, use o link de cancelamento enviado ao seu e-mail."
   },
   "login": {
     "title": "Entrar",
@@ -1061,5 +1062,70 @@
       "usage": "{{people}} + {{pending}} de {{limit}} pessoas",
       "usageUnlimited": "{{people}} + {{pending}} pessoas"
     }
+  },
+  "deletion": {
+    "cardTitle": "Excluir conta",
+    "cardDesc": "Apaga sua conta CTech e seus dados em todos os produtos CTech.",
+    "cardAction": "Excluir minha conta",
+    "title": "Excluir conta",
+    "subtitle": "Leia com atenção: depois do prazo de 7 dias, a exclusão não pode ser desfeita.",
+    "whatHappens": "O que acontece",
+    "steps": [
+      "Enviamos um link de confirmação para o seu e-mail (válido por 24 horas).",
+      "Ao confirmar, sua conta é bloqueada na hora em todos os produtos CTech.",
+      "Durante 7 dias você pode cancelar pelo link que enviaremos por e-mail.",
+      "Depois disso, seus dados são apagados ou anonimizados em todos os produtos."
+    ],
+    "whatIsKept": "O que a lei nos obriga a manter",
+    "kept": [
+      "Registros de verificação de identidade (KYC) e movimentações financeiras do CTech Ledger, por 5 anos.",
+      "Documentos fiscais de organizações que continuam ativas com outros membros.",
+      "Um código irreversível derivado do seu CPF, para prevenção a fraudes."
+    ],
+    "soleOrgsWarning": "Organizações em que você é o único membro serão apagadas junto, com todas as notas fiscais. Exporte os XMLs antes.",
+    "phraseLabel": "Para confirmar, digite {{phrase}}",
+    "passwordLabel": "Senha da conta",
+    "noPasswordHint": "Sua conta não tem senha: a confirmação será feita pelo seu e-mail.",
+    "submit": "Solicitar exclusão",
+    "checkEmail": "Enviamos um link de confirmação para o seu e-mail. Ele vale até {{date}}.",
+    "awaitingConfirmation": "Há um pedido aguardando confirmação no seu e-mail até {{date}}. Você pode pedir um novo link enviando o formulário novamente.",
+    "legalHold": "Sua solicitação está suspensa por bloqueio jurídico. Fale com o suporte para mais informações.",
+    "blockedTitle": "Antes de excluir a conta, resolva:",
+    "blockers": {
+      "account.organization_shared_owner": "Você é titular de uma organização com outros membros. Transfira a titularidade.",
+      "account.oauth_client_owned": "Você tem aplicativos OAuth cadastrados. Exclua-os em Aplicativos OAuth.",
+      "wallet.balance_nonzero": "Você tem saldo no CTech Ledger. Use o saldo antes de excluir a conta.",
+      "poker.seated_at_table": "Você está sentado em uma mesa do CTech Poker. Saia da mesa.",
+      "poker.chips_held": "Você tem fichas em jogo no CTech Poker. Encerre a partida.",
+      "poker.pending_cashout": "Há um resgate do CTech Poker em processamento. Aguarde a conclusão.",
+      "poker.pending_fee_debit": "Há uma cobrança do CTech Poker em processamento. Aguarde a conclusão.",
+      "billing.invoice_open": "Você tem uma fatura da CTech em aberto. Pague-a antes de excluir a conta.",
+      "billing.tenant_owner": "Você é responsável por uma conta de cobrança. Fale com o suporte.",
+      "unknown": "Um produto CTech informou uma pendência ({{code}}). Fale com o suporte."
+    },
+    "blockerAction": "Resolver",
+    "errors": {
+      "phrase": "Digite a frase exatamente como mostrada.",
+      "password": "Senha incorreta.",
+      "conflict": "Sua conta já tem uma exclusão em andamento. Verifique seu e-mail.",
+      "tooMany": "Muitas tentativas. Tente novamente mais tarde.",
+      "unavailable": "Não conseguimos verificar todos os produtos CTech agora. Tente novamente em alguns minutos."
+    },
+    "confirm": {
+      "title": "Confirmar exclusão da conta",
+      "description": "Ao confirmar, sua conta é bloqueada imediatamente e será excluída em 7 dias.",
+      "button": "Confirmar exclusão",
+      "done": "Exclusão confirmada. Sua conta será excluída em {{date}}. Enviamos para o seu e-mail um link para cancelar até lá.",
+      "invalid": "Este link é inválido ou expirou. Faça um novo pedido em Perfil › Excluir conta."
+    },
+    "cancel": {
+      "title": "Cancelar exclusão da conta",
+      "description": "Sua conta volta a funcionar. Por segurança, você precisará entrar de novo.",
+      "button": "Cancelar exclusão",
+      "done": "Exclusão cancelada. Sua conta foi mantida.",
+      "tooLate": "O prazo terminou e a exclusão não pode mais ser cancelada.",
+      "invalid": "Este link é inválido."
+    },
+    "goToLogin": "Ir para o login"
   }
 }
