@@ -37,11 +37,12 @@ account                       SNS user-erasure topic           SQS <svc>-erasure
 ```
 
 - One **SNS topic** owned by ctech-account (`{env}-account-user-erasure`). Each
-  participant owns its **SQS queue + DLQ** subscribed with a filter policy on
-  `services` (so a `service`-scoped request only reaches that service).
+  participant owns its **SQS queue + DLQ** subscribed with a filter policy on the
+  `services` **message attribute** (`{"services":["<name>"]}`, a String.Array attribute; the filter
+  never reads the body), so a re-publish to a subset of services reaches only those.
 - Messages are signed implicitly by IAM (only the account role can publish). The ack
   endpoint is authenticated with the participant's **client-credentials token** with
-  scope `account:erasure:ack`. A participant may only ack for its own service id.
+  scope `internal:account:erasure-ack` (R10). A participant may only ack for its own service id.
 
 ### Message schema (v1)
 
@@ -78,8 +79,8 @@ No personal data, ever. `user.unlocked` is sent when a request is cancelled duri
 
 ### 4.1 Eligibility endpoint
 
-`GET /internal/erasure/eligibility/{sub}` (client-credentials, scope
-`erasure:eligibility`), responding in under 2 s:
+`GET /internal/erasure/eligibility/{sub}` (client-credentials token minted by ctech-account, scope
+`internal:{service}:erasure-eligibility`; R10), responding in under 2 s:
 
 ```json
 { "eligible": false,
@@ -134,7 +135,7 @@ No personal data, ever. `user.unlocked` is sent when a request is cancelled duri
 Messages never carry PII, but dfe must find **e-CPF certificates** whose holder CPF is
 the user's (inventory §5, D14). It calls
 `GET /internal/erasure/{request_id}/subject` (client-credentials, scope
-`erasure:subject`, allow-listed per service — only `dfe` today), which returns
+`internal:account:erasure-subject`, allow-listed per service — only `dfe` today), which returns
 `{ "cpf": "..." }` **only while the request is in PURGING**, and writes an audit event per
 call. The CPF is used in memory for matching and never persisted or logged.
 
@@ -189,7 +190,7 @@ Table `{env}_account_deletion_requests`:
 | pk | sk | attributes |
 |---|---|---|
 | `REQ#{request_id}` | `META` | `sub`, `scope`, `services[]`, `state`, `requested_at`, `grace_until`, `locked_at`, `purged_at`, `legal_hold`, `requested_via` (self/support), `approved_by[]` |
-| `REQ#{request_id}` | `SVC#{service}` | `status` (`pending`/`dispatched`/`acked`/`blocked`/`failed`), `attempts`, `last_dispatch_at`, `ack` (counts), `blockers[]` |
+| `REQ#{request_id}` | `SVC#{service}` | `service_status` (`dispatched`/`acked`/`blocked`), `attempts`, `first_dispatch_at`, `last_dispatch_at`, `acked_at`, `counts`, `blockers[]` (same table as `META`) |
 | GSI `gsi_sub` on `sub` | | at most one open request per `sub` (conditional put on `SUB#{sub}` / `OPEN` marker item) |
 | GSI `gsi_state_due` on `state` + `next_action_at` | | drives the worker |
 
@@ -206,18 +207,20 @@ cancel racing with the lock cannot both win.
 - Escalation: alarm at 48 h without ack per service; the request is never auto-closed as
   done. A human resolves `failed` (fix and redrive), not by marking it acked.
 - A `blocked` ack during PURGING (rare, e.g. a deposit raced the lock) moves the request
-  to `BLOCKED` and pauses the reconciler for it. The user **cannot** resolve it: they have
+  to `stalled` (open, holds the marker, not due) and pauses the reconciler for it. The user **cannot** resolve it: they have
   no tokens, and cancelling is impossible after LOCKED because other services may already
   have erased. **Support resolves it** (typically the stray deposit is returned to the
-  payer through a PIX refund) and redrives the service. Services already acked stay acked; their purge was idempotent and
+  payer through a PIX refund) and redrives the service (`POST /v1.0/admin/deletion/{request_id}/redrive`, admin role). Services already acked stay acked; their purge was idempotent and
   stays valid.
 
 ## 8. Backup restore runbook (each service)
 
 Restoring a DynamoDB table from PITR/backup can bring back erased users. Every service's
 restore runbook gets a mandatory step: replay erasure for every `request_id` whose
-`purged_at` is after the restore point. ctech-account exposes
-`GET /internal/erasure/purged-since?ts=` (client-credentials) to list them.
+`purged_at` is after the restore point (R12). Purged requests are not in the sparse
+`gsi_state_due` index, so the operator lists them with a `Scan` of `{env}_account_deletion_requests`
+(`FilterExpression request_state = :purged AND purged_at >= :restore_point`; rare, operator-only)
+and re-publishes `user.erase` for each one.
 
 ## 9. `ctech-go-common/erasure` package
 

@@ -577,7 +577,7 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Behind `ACCOUNT_DELETION_E
    passkeys go, and the user item becomes a tombstone (`purged`): only the ids, the CPF keyed hash
    (`HMAC` via `Sealer.MAC("cpf-hmac", ...)`) and the ToS/privacy acceptance stay. The KYC record
    moves to `KYCRET#{sub}`, kept 5 years. The e-mail can register again at once. With
-   `ERASURE_SERVICES` set, the account purge waits for the participants' acks (Phase 3).
+   `ERASURE_PARTICIPANTS` set, the request first waits in `purging` for every participant's ack.
 
    The purge also erases the frozen single-member workspaces (their companies, memberships and
    invitations; either kind), redacts the user's own support messages and NPS comment (agent replies
@@ -586,6 +586,27 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Behind `ACCOUNT_DELETION_E
    level-queue rows, and moves the KYC documents to `retention/{sub}/{document}` (kept 5 years; the
    originals under `kyc/{sub}/` are deleted, old versions expire through the bucket lifecycle). The
    `KYCRET#{sub}` item expires by DynamoDB TTL (`expires_at`) 5 years after the purge.
+
+Participants (Phase 3): at request time and again at the end of grace the account asks each
+participant `GET /internal/erasure/eligibility/{sub}?workspaces=...` with a token it mints
+(`internal:{service}:erasure-eligibility`); any failure answers `503` and never passes. After `locked`,
+`user.erase` goes to every participant and the request waits in `purging`: the reconciler
+re-publishes only to silent participants (15 min, 1 h, 6 h, 24 h backoff; error log after 48 h) and
+the account purge runs once all acked. A participant that acks `blocked` moves the request to
+`stalled` (past the point of no return, not cancellable): support resolves the cause and calls
+`POST /v1.0/admin/deletion/{id}/redrive`. Support can also place a legal hold (lifted by a different
+admin) or cancel a pending request.
+
+Operator steps to enable a participant: (1) create its confidential client and grant it
+`internal:account:erasure-ack` (dfe also `internal:account:erasure-subject`); (2) add it to the SSM
+JSON `erasure-participants`; (3) subscribe its SQS queue to the topic with FilterPolicy
+`{"services":["<name>"]}`; (4) deploy the participant with its eligibility endpoint and consumer first,
+because a participant listed here but not live makes every deletion request answer `503`.
+`ERASURE_PARTICIPANTS` issuer check: every participant's issuer URL must equal this API's `APP_URL`.
+
+Backup restore: after restoring any participant table from PITR, `Scan`
+`{env}_account_deletion_requests` with `request_state = :purged AND purged_at >= :restore_point`
+(purged requests are not in `gsi_state_due`) and re-publish `user.erase` for each.
 
 Every state change is a conditional write to `{env}_account_deletion_requests` made before
 its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)
@@ -690,8 +711,8 @@ All configuration is read from environment variables at startup.
 | `TURNSTILE_SECRET_KEY`       | No       | Cloudflare Turnstile Siteverify secret for public support-ticket creation. The deployed API reads it from `/ctech-account/{env}/turnstile-secret-key`; empty disables verification only for local development. Never expose this value to the SPA. |
 | `KYC_DOCUMENTS_BUCKET`       | No       | Private S3 bucket for KYC identity documents and selfie clips. When unset, Enhanced document verification is unavailable                                                                                                                                                                                                      |
 | `ACCOUNT_DELETION_ENABLED`   | No       | `true` wires the account-deletion routes and worker (default off: Phase 1 ships dark until the account's own purge lands)                                                                                                                                                   |
-| `ACCOUNT_ERASURE_TOPIC_ARN`  | No       | SNS topic `{env}-account-user-erasure` for the deletion saga (set by CDK). Required when `ERASURE_SERVICES` is set                                                                                                                                                          |
-| `ERASURE_SERVICES`           | No       | Comma-separated participants that receive `user.locked/unlocked/erase` (e.g. `wallet,dfe,billing,poker`). Empty publishes nothing                                                                                                                                           |
+| `ACCOUNT_ERASURE_TOPIC_ARN`  | No       | SNS topic `{env}-account-user-erasure` for the deletion saga (set by CDK). Required when `ERASURE_PARTICIPANTS` is set                                                                                                                                                          |
+| `ERASURE_PARTICIPANTS`       | No       | JSON list `[{"service","url","audience","client_id"}]` of deletion-saga participants (from SSM `/ctech-account/{env}/erasure-participants`; empty = none). `client_id` is the participant's confidential client, the `azp` allowed on the ack route. Replaces `ERASURE_SERVICES` |
 | `BILLING_API_URL`            | No       | ctech-billing's API (e.g. `https://billing-api.aoctech.app`). Set → plan limits on personal spaces and level reports to billing; the account signs its own token as OAuth client `account-billing` (register it with `cmd/createclient`). Unset → no limits (dev). The CDK sets it only with `PLAN_LIMITS=on`. |
 | `AUDIENCE`                   | No       | Public Resource Server identifier expected in access-token `aud` (defaults to `APP_URL`, e.g. `https://accounts.aoctech.app`)                                                                                                                                                                                                |
 | `ACCESS_TOKEN_TTL`           | No       | Access token lifetime in seconds (default `900`)                                                                                                                                                                                                                                                                              |
