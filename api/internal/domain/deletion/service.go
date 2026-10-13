@@ -60,6 +60,9 @@ func (noOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Block
 
 const dueBatch = 25
 
+// legalHoldRecheck is how often a held request is looked at again.
+const legalHoldRecheck = time.Hour
+
 type Service struct {
 	repo     Repository
 	users    Users
@@ -309,6 +312,12 @@ func (s *Service) Cancel(ctx context.Context, id, token string) (*Request, error
 	if !anyTokenMatches(token, r.CancelTokenHashes) {
 		return nil, ErrInvalidToken
 	}
+	return s.cancel(ctx, r)
+}
+
+// cancel moves a pending or blocked request to cancelled and unlocks the
+// account; shared by the link cancel and the support cancel.
+func (s *Service) cancel(ctx context.Context, r *Request) (*Request, error) {
 	if r.State != StatePending && r.State != StateBlocked {
 		return nil, ErrNotCancellable
 	}
@@ -388,6 +397,10 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		case !r.Reminded && now.Before(parseTime(r.GraceUntil)):
 			return s.sendCancelLink(ctx, r, linkReminder)
 		case !now.Before(parseTime(r.GraceUntil)):
+			if r.LegalHold {
+				r.setDue(now.Add(legalHoldRecheck))
+				return s.repo.Save(ctx, r, StatePending)
+			}
 			sole, blockers, err := s.ownership.Assess(ctx, r.UserID)
 			if err != nil {
 				return err
@@ -438,6 +451,10 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		}
 		return s.repo.Save(ctx, r, StateLocked)
 	case StatePurging:
+		if r.LegalHold {
+			r.setDue(now.Add(legalHoldRecheck))
+			return s.repo.Save(ctx, r, StatePurging)
+		}
 		if len(s.participants) > 0 {
 			done, err := s.reconcile(ctx, r, now)
 			if err != nil || !done {
@@ -511,12 +528,77 @@ func (s *Service) Subject(ctx context.Context, requestID string) (string, error)
 	return u.CPF, nil
 }
 
+var ErrHoldNeedsSecondAdmin = errors.New("deletion: a legal hold is lifted by a different admin")
+
+// SetLegalHold pauses (or resumes) a request before it locks or purges.
+func (s *Service) SetLegalHold(ctx context.Context, requestID, adminID string, on bool) error {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	if !on && r.LegalHold && r.LegalHoldBy == adminID {
+		return ErrHoldNeedsSecondAdmin
+	}
+	from := r.State
+	r.LegalHold, r.UpdatedAt = on, ts(s.now())
+	r.LegalHoldBy = ""
+	if on {
+		r.LegalHoldBy = adminID
+	}
+	if !on && (r.State == StatePending || r.State == StatePurging) {
+		r.setDue(s.now()) // resume promptly
+	}
+	return s.repo.Save(ctx, r, from)
+}
+
+// SupportCancel cancels on the user's behalf (R1: support is the fallback
+// when the user lost every e-mail). Same rules as a link cancel.
+func (s *Service) SupportCancel(ctx context.Context, requestID, _ string) (*Request, error) {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+	return s.cancel(ctx, r)
+}
+
+// Redrive puts a stalled request back to purging after support resolved the
+// participant's blocker: that participant is dispatched again.
+func (s *Service) Redrive(ctx context.Context, requestID, service, _ string) error {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	sts, err := s.repo.ListServices(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	for _, st := range sts {
+		if st.Service == service && st.Status == ServiceBlocked {
+			st.Status, st.Blockers, st.AckedAt = ServiceDispatched, nil, ""
+			st.Attempts, st.FirstDispatchAt, st.LastDispatchAt = 0, ts(now), ""
+			if err := s.repo.SaveService(ctx, st, ServiceBlocked); err != nil {
+				return err
+			}
+		}
+	}
+	if r.State == StateStalled {
+		r.State, r.UpdatedAt = StatePurging, ts(now)
+		r.setDue(now)
+		return s.repo.Save(ctx, r, StateStalled)
+	}
+	return nil
+}
+
 var ackBackoff = []time.Duration{15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
 
 const ackOverdueAfter = 48 * time.Hour
 
 func nextDispatch(st *ServiceStatus) time.Time {
-	i := min(max(st.Attempts-1, 0), len(ackBackoff)-1)
+	if st.Attempts == 0 {
+		return time.Time{} // redriven: due immediately
+	}
+	i := min(st.Attempts-1, len(ackBackoff)-1)
 	return parseTime(st.LastDispatchAt).Add(ackBackoff[i])
 }
 

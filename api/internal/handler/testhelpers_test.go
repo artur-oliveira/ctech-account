@@ -249,6 +249,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
 	deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc),
 		func(clientID string) (string, bool) { return "dfe", clientID == "dfe" }, []string{"dfe"})
+	deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
+		middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)

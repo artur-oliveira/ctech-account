@@ -51,8 +51,12 @@ const (
 
 // Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md §10).
 const (
-	EventDeletionRequested   = "account.deletion.requested"
-	EventDeletionConfirmed   = "account.deletion.confirmed"
-	EventDeletionCancelled   = "account.deletion.cancelled"
-	EventDeletionSubjectRead = "account.deletion.subject_read"
+	EventDeletionRequested        = "account.deletion.requested"
+	EventDeletionConfirmed        = "account.deletion.confirmed"
+	EventDeletionCancelled        = "account.deletion.cancelled"
+	EventDeletionLegalHoldOn      = "account.deletion.legal_hold_on"
+	EventDeletionLegalHoldOff     = "account.deletion.legal_hold_off"
+	EventDeletionSupportCancelled = "account.deletion.support_cancelled"
+	EventDeletionRedriven         = "account.deletion.redriven"
+	EventDeletionSubjectRead      = "account.deletion.subject_read"
 )

@@ -74,6 +74,8 @@ type Request struct {
 	Workspaces        []Workspace `dynamodbav:"workspaces,omitempty"`    // the same workspaces with their kind
 	Blockers          []string    `dynamodbav:"blockers,omitempty"`      // blocker codes found at the end of grace
 	PurgedAt          string      `dynamodbav:"purged_at,omitempty"`
+	LegalHold         bool        `dynamodbav:"legal_hold"`
+	LegalHoldBy       string      `dynamodbav:"legal_hold_by,omitempty"` // admin who placed it; another must lift it (R13)
 	RequestedAt       string      `dynamodbav:"requested_at"`
 	ConfirmBy         string      `dynamodbav:"confirm_by"`
 	ConfirmedAt       string      `dynamodbav:"confirmed_at,omitempty"`

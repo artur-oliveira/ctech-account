@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strings"
 	"syscall"
-	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -520,6 +520,8 @@ func main() {
 		deletionH.Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
 		deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient, []string{erasureSubjectReader})
+		deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
+			middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment
 		go deletion.RunWorker(ctx, deletionSvc, func(ctx context.Context) (bool, error) {
 			if !valkeyClient.Enabled() {

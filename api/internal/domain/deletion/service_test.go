@@ -691,3 +691,53 @@ func TestAck_DuplicateAndPremature(t *testing.T) {
 		t.Fatalf("duplicate ack must be a no-op, got %v", err)
 	}
 }
+
+func TestLegalHold_PausesAndNeedsSecondAdmin(t *testing.T) {
+	f, p := participantFixture(t)
+	r := f.confirm(t)
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-a", true); err != nil {
+		t.Fatalf("hold: %v", err)
+	}
+	f.now = f.now.Add(GracePeriod)
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePending || p.calls != 0 {
+		t.Fatal("a held request must not lock")
+	}
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-a", false); !errors.Is(err, ErrHoldNeedsSecondAdmin) {
+		t.Fatalf("same admin lifting the hold: %v", err)
+	}
+	if err := f.svc.SetLegalHold(ctx, r.ID, "admin-b", false); err != nil {
+		t.Fatalf("second admin: %v", err)
+	}
+	f.svc.ProcessDue(ctx)
+	if f.stored(t, r.ID).State != StatePurged {
+		t.Fatalf("after the hold is lifted the request proceeds, got %s", f.stored(t, r.ID).State)
+	}
+}
+
+func TestSupportCancel_AndRedrive(t *testing.T) {
+	f, _ := participantFixture(t, "wallet")
+	r := f.confirm(t)
+	if _, err := f.svc.SupportCancel(ctx, r.ID, "admin-a"); err != nil {
+		t.Fatalf("SupportCancel: %v", err)
+	}
+	if f.stored(t, r.ID).State != StateCancelled {
+		t.Fatal("support cancel must cancel a pending request")
+	}
+
+	f2, p2 := participantFixture(t, "wallet")
+	r2 := f2.toPurging(t)
+	_ = f2.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r2.ID, Result: erasure.ResultBlocked})
+	f2.svc.ProcessDue(ctx)
+	if f2.stored(t, r2.ID).State != StateStalled {
+		t.Fatal("blocked ack must stall")
+	}
+	if err := f2.svc.Redrive(ctx, r2.ID, "wallet", "admin-a"); err != nil {
+		t.Fatalf("Redrive: %v", err)
+	}
+	_ = f2.svc.Ack(ctx, "wallet", erasure.Ack{RequestID: r2.ID, Result: erasure.ResultDone})
+	f2.svc.ProcessDue(ctx)
+	if f2.stored(t, r2.ID).State != StatePurged || p2.calls != 1 {
+		t.Fatalf("after redrive and ack: state %s calls %d", f2.stored(t, r2.ID).State, p2.calls)
+	}
+}

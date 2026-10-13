@@ -27,3 +27,11 @@ func TestErasureAck_RequiresServiceTokenOfAParticipant(t *testing.T) {
 		t.Fatalf("subject for unknown request: %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestAdminDeletion_RequiresAdminRole(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "agent@example.com", "Sup3rSecret!", "Ana")
+	if resp := ta.doWithToken("POST", "/v1.0/admin/deletion/nope/cancel", nil, ta.issueToken(t, u.ID())); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-admin: %d, want 403", resp.StatusCode)
+	}
+}
