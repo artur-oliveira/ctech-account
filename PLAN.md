@@ -196,7 +196,8 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Phase 1 plan:
 `docs/plans/2026-10-07-account-deletion-phase1-lifecycle.md`.
 
 - [x] Phase 1 — request, e-mail confirmation, lock, cancel, reminder, grace end → `locked` → `purging` (behind `ACCOUNT_DELETION_ENABLED`)
-- [ ] Phase 2 — own purge (organizations, memberships, consents, MFA, passkeys, support, audit anonymization, KYC retention), tombstone, local blockers
+- [x] Phase 2a — local blockers, `blocked`, frozen workspaces, own purge (memberships, company edges, consents, sessions, API keys, MFA, passkeys), tombstone, KYC retention item (`docs/plans/2026-10-07-account-deletion-phase2a-purge-core.md`)
+- [ ] Phase 2b — erase the frozen workspaces, anonymize support and audit, KYC documents to `retention/`, `KYCRET#` TTL (`docs/plans/2026-10-07-account-deletion-phase2b-purge-data.md`)
 - [ ] Phase 3 — participants: eligibility fan-out, ack endpoint, reconciler, `blocked`, legal hold / redrive
 - [ ] Phase 4 — UI: settings screens, `/account-deletion/confirm` and `/account-deletion/cancel`, new privacy-policy version
 

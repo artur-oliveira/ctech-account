@@ -152,7 +152,7 @@ Last step, only after every participant acked, following inventory §3 in this o
    `retain-until` tag, then delete all versions of the originals. Copy-then-delete is
    idempotent: re-running skips objects already present in `retention/`.
 6. Valkey keys for the user.
-7. Write tombstone in `account_users`: replace the user item with
+7. Write tombstone in `account_users` (Phase 2a: a dedicated item shape, `user.Tombstone`, with no `email` and no `kyc_level`, so it leaves both GSIs; the KYC record goes to `KYCRET#{sub}` in the same transaction, with the e-mail and CPF uniqueness markers deleted): replace the user item with
    `{pk, deletion_state: "purged", purged_at, deletion_request_id, cpf_hmac,
    tos_version, tos_accepted_at, privacy_version, privacy_accepted_at}` — every other
    attribute removed. Keeping the item under the same `pk` means any code path that loads
@@ -163,6 +163,13 @@ Last step, only after every participant acked, following inventory §3 in this o
 against tombstones (new GSI `gsi_cpf_hmac`). A match does not block registration; it is a
 risk signal for KYC (`risk` domain) and blocks only while the old request is under legal
 hold. The HMAC key lives in KMS/SSM and is never logged.
+
+### Rulings of Phase 2a
+
+- **R4** A non-first-party OAuth client the user registered **blocks** deletion instead of being erased: other users may hold consents and refresh tokens for it, and there is no index from a client to its consents.
+- **R5** Invitations the user sent keep `invited_by`: it is the opaque `sub`, not PII, and invitations expire on their own.
+- **R6** The owner memberships of the frozen workspaces are left to the workspace erase (Phase 2b), which removes the whole workspace.
+- The frozen set is `workspaces[{id, kind}]` (plus `organizations[]` ids for compatibility) of every workspace, organization or personal, where the user is the only member. A workspace with other members blocks.
 
 ## 8. UI (`ui/`)
 
