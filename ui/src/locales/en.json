@@ -54,7 +54,8 @@
     "googleDenied": "Google sign-in was cancelled.",
     "googleEmailUnverified": "Your Google account's email address is not verified. Verify it with Google and try again.",
     "retry": "Try again",
-    "loadFailed": "Something went wrong while loading."
+    "loadFailed": "Something went wrong while loading.",
+    "accountPendingDeletion": "This account is scheduled for deletion. To keep it, use the cancel link sent to your e-mail."
   },
   "login": {
     "title": "Sign in",
@@ -1061,5 +1062,70 @@
       "usage": "{{people}} + {{pending}} of {{limit}} people",
       "usageUnlimited": "{{people}} + {{pending}} people"
     }
+  },
+  "deletion": {
+    "cardTitle": "Delete account",
+    "cardDesc": "Deletes your CTech account and your data across all CTech products.",
+    "cardAction": "Delete my account",
+    "title": "Delete account",
+    "subtitle": "Read carefully: after the 7-day period, the deletion cannot be undone.",
+    "whatHappens": "What happens",
+    "steps": [
+      "We send a confirmation link to your e-mail (valid for 24 hours).",
+      "When you confirm, your account is locked at once in every CTech product.",
+      "For 7 days you can cancel using the link we will e-mail you.",
+      "After that, your data is erased or anonymized in every product."
+    ],
+    "whatIsKept": "What the law requires us to keep",
+    "kept": [
+      "Identity verification (KYC) records and CTech Ledger financial movements, for 5 years.",
+      "Tax documents of organizations that remain active with other members.",
+      "An irreversible code derived from your CPF, for fraud prevention."
+    ],
+    "soleOrgsWarning": "Organizations where you are the only member are erased with you, including all their tax documents. Export the XMLs first.",
+    "phraseLabel": "To confirm, type {{phrase}}",
+    "passwordLabel": "Account password",
+    "noPasswordHint": "Your account has no password: confirmation is done through your e-mail.",
+    "submit": "Request deletion",
+    "checkEmail": "We sent a confirmation link to your e-mail. It is valid until {{date}}.",
+    "awaitingConfirmation": "A request is waiting for confirmation in your e-mail until {{date}}. You can ask for a new link by submitting the form again.",
+    "legalHold": "Your request is suspended by a legal hold. Contact support for more information.",
+    "blockedTitle": "Before deleting the account, resolve:",
+    "blockers": {
+      "account.organization_shared_owner": "You own an organization that has other members. Transfer the ownership.",
+      "account.oauth_client_owned": "You have registered OAuth apps. Delete them in OAuth apps.",
+      "wallet.balance_nonzero": "You have a balance in CTech Ledger. Use the balance before deleting the account.",
+      "poker.seated_at_table": "You are seated at a CTech Poker table. Leave the table.",
+      "poker.chips_held": "You have chips in play at CTech Poker. Finish the game.",
+      "poker.pending_cashout": "A CTech Poker cash-out is being processed. Wait for it to finish.",
+      "poker.pending_fee_debit": "A CTech Poker charge is being processed. Wait for it to finish.",
+      "billing.invoice_open": "You have an open CTech invoice. Pay it before deleting the account.",
+      "billing.tenant_owner": "You are responsible for a billing account. Contact support.",
+      "unknown": "A CTech product reported a pending item ({{code}}). Contact support."
+    },
+    "blockerAction": "Resolve",
+    "errors": {
+      "phrase": "Type the phrase exactly as shown.",
+      "password": "Wrong password.",
+      "conflict": "Your account already has a deletion in progress. Check your e-mail.",
+      "tooMany": "Too many attempts. Try again later.",
+      "unavailable": "We could not check every CTech product right now. Try again in a few minutes."
+    },
+    "confirm": {
+      "title": "Confirm account deletion",
+      "description": "When you confirm, your account is locked immediately and will be deleted in 7 days.",
+      "button": "Confirm deletion",
+      "done": "Deletion confirmed. Your account will be deleted on {{date}}. We e-mailed you a link to cancel until then.",
+      "invalid": "This link is invalid or has expired. Make a new request in Profile › Delete account."
+    },
+    "cancel": {
+      "title": "Cancel account deletion",
+      "description": "Your account works again. For security, you will need to sign in again.",
+      "button": "Cancel deletion",
+      "done": "Deletion cancelled. Your account was kept.",
+      "tooLate": "The period has ended and the deletion can no longer be cancelled.",
+      "invalid": "This link is invalid."
+    },
+    "goToLogin": "Go to sign in"
   }
 }
