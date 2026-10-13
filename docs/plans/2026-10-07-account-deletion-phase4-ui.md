@@ -224,7 +224,13 @@ export async function cancelDeletionAPI(requestID: string, token: string): Promi
     "blockers": {
       "account.organization_shared_owner": "Você é titular de uma organização com outros membros. Transfira a titularidade.",
       "account.oauth_client_owned": "Você tem aplicativos OAuth cadastrados. Exclua-os em Aplicativos OAuth.",
-      "wallet.balance_nonzero": "Você tem saldo no CTech Ledger. Saque o valor para uma conta no seu CPF.",
+      "wallet.balance_nonzero": "Você tem saldo no CTech Ledger. Use o saldo antes de excluir a conta.",
+      "poker.seated_at_table": "Você está sentado em uma mesa do CTech Poker. Saia da mesa.",
+      "poker.chips_held": "Você tem fichas em jogo no CTech Poker. Encerre a partida.",
+      "poker.pending_cashout": "Há um resgate do CTech Poker em processamento. Aguarde a conclusão.",
+      "poker.pending_fee_debit": "Há uma cobrança do CTech Poker em processamento. Aguarde a conclusão.",
+      "billing.invoice_open": "Você tem uma fatura da CTech em aberto. Pague-a antes de excluir a conta.",
+      "billing.tenant_owner": "Você é responsável por uma conta de cobrança. Fale com o suporte.",
       "unknown": "Um produto CTech informou uma pendência ({{code}}). Fale com o suporte."
     },
     "blockerAction": "Resolver",

@@ -54,6 +54,7 @@ account                       SNS user-erasure topic           SQS <svc>-erasure
   "scope": "account | service",
   "services": ["wallet"],
   "organizations": ["org id"],
+  "workspaces": [{"id": "workspace id", "kind": "personal | organization"}],
   "attempt": 3,
   "issued_at": "2026-10-06T12:00:00Z"
 }
@@ -66,6 +67,9 @@ Participants that hold org-scoped data (today: dfe, and billing's finance module
 `{organization_id}#{mode}`) erase everything keyed by those ids,
 and the consumer tombstones each org (`ORG#{org_id}` in the erasure-state table, §4.5) so jobs and webhooks for it are dropped.
 Empty for `service` scope.
+
+`workspaces` (added 2026-10-13, additive, same freeze rule) is a superset of `organizations` that also carries each workspace's
+kind, which participants such as billing need. `organizations` stays for compatibility.
 
 No personal data, ever. `user.unlocked` is sent when a request is cancelled during grace
 (for services that cached the lock).
