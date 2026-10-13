@@ -38,7 +38,7 @@ type Mailer interface {
 // Ownership finds what stops a user's deletion and which organizations go
 // with them (they own it and are its only member).
 type Ownership interface {
-	Assess(ctx context.Context, userID string) (soleOrgs []string, blockers []erasure.Blocker, err error)
+	Assess(ctx context.Context, userID string) (sole []Workspace, blockers []erasure.Blocker, err error)
 }
 
 // Purger erases ctech-account's own data for a request. Idempotent and
@@ -54,7 +54,7 @@ func (e *BlockedError) Error() string { return fmt.Sprintf("deletion: %d blocker
 
 type noOwnership struct{}
 
-func (noOwnership) Assess(context.Context, string) ([]string, []erasure.Blocker, error) {
+func (noOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Blocker, error) {
 	return nil, nil, nil
 }
 
@@ -396,7 +396,12 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 				r.setDue(now) // the blocked notice is owed
 				return s.repo.Save(ctx, r, StatePending)
 			}
-			r.State, r.LockedAt, r.UpdatedAt, r.Organizations = StateLocked, ts(now), ts(now), sole
+			r.State, r.LockedAt, r.UpdatedAt = StateLocked, ts(now), ts(now)
+			r.Workspaces = sole
+			r.Organizations = nil
+			for _, w := range sole {
+				r.Organizations = append(r.Organizations, w.ID)
+			}
 			r.setDue(now)
 			return s.repo.Save(ctx, r, StatePending)
 		}

@@ -454,11 +454,11 @@ func (f *fakeMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token 
 }
 
 type fakeOwnership struct {
-	sole     []string
+	sole     []Workspace
 	blockers []erasure.Blocker
 }
 
-func (f *fakeOwnership) Assess(context.Context, string) ([]string, []erasure.Blocker, error) {
+func (f *fakeOwnership) Assess(context.Context, string) ([]Workspace, []erasure.Blocker, error) {
 	return f.sole, f.blockers, nil
 }
 
@@ -513,12 +513,12 @@ func TestGraceEnd_BlockedNotifiesAndCanCancel(t *testing.T) {
 func TestGraceEnd_FreezesSoleOrganizationsAndPurges(t *testing.T) {
 	f := newFixture(t)
 	p := &fakePurger{}
-	f.withPurge(t, &fakeOwnership{sole: []string{"org-1"}}, p, false)
+	f.withPurge(t, &fakeOwnership{sole: []Workspace{{ID: "org-1", Kind: "personal"}}}, p, false)
 	r := f.confirm(t)
 	f.now = f.now.Add(GracePeriod)
 	f.svc.ProcessDue(ctx) // pending -> locked -> purging -> purged in one tick
 	s := f.stored(t, r.ID)
-	if s.State != StatePurged || s.PurgedAt == "" || len(s.Organizations) != 1 || s.Organizations[0] != "org-1" || p.calls != 1 {
+	if s.State != StatePurged || s.PurgedAt == "" || len(s.Organizations) != 1 || s.Organizations[0] != "org-1" || len(s.Workspaces) != 1 || s.Workspaces[0].Kind != "personal" || p.calls != 1 {
 		t.Fatalf("purged request %+v, purge calls %d", s, p.calls)
 	}
 	if _, err := f.svc.Status(ctx, "u1"); !errors.Is(err, ErrNotFound) {

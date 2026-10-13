@@ -45,30 +45,38 @@ var (
 	ErrNotCancellable = errors.New("deletion: request can no longer be cancelled")
 )
 
+// Workspace is a ctech-account workspace erased with the user, with its kind
+// (organization or personal). Participants such as billing need the kind.
+type Workspace struct {
+	ID   string `dynamodbav:"id"`
+	Kind string `dynamodbav:"kind"`
+}
+
 // Request is one deletion request (pk REQ#{id}, sk META).
 type Request struct {
-	PK                string   `dynamodbav:"pk"`
-	SK                string   `dynamodbav:"sk"`
-	ID                string   `dynamodbav:"id"`
-	UserID            string   `dynamodbav:"user_id"`
-	Scope             string   `dynamodbav:"scope"`
-	State             State    `dynamodbav:"request_state"`
-	ConfirmTokenHash  string   `dynamodbav:"confirm_token_hash,omitempty"`
-	CancelTokenHashes []string `dynamodbav:"cancel_token_hashes,omitempty"` // one per e-mail that carried a cancel link
-	LockApplied       bool     `dynamodbav:"lock_applied"`
-	ScheduledSent     bool     `dynamodbav:"scheduled_sent"` // the first cancel link went out
-	Reminded          bool     `dynamodbav:"reminded"`
-	BlockedNotified   bool     `dynamodbav:"blocked_notified"`
-	Organizations     []string `dynamodbav:"organizations,omitempty"` // frozen at LOCKED: single-member orgs erased with the user (D4)
-	Blockers          []string `dynamodbav:"blockers,omitempty"`      // blocker codes found at the end of grace
-	PurgedAt          string   `dynamodbav:"purged_at,omitempty"`
-	RequestedAt       string   `dynamodbav:"requested_at"`
-	ConfirmBy         string   `dynamodbav:"confirm_by"`
-	ConfirmedAt       string   `dynamodbav:"confirmed_at,omitempty"`
-	GraceUntil        string   `dynamodbav:"grace_until,omitempty"`
-	CancelledAt       string   `dynamodbav:"cancelled_at,omitempty"`
-	LockedAt          string   `dynamodbav:"locked_at,omitempty"`
-	UpdatedAt         string   `dynamodbav:"updated_at"`
+	PK                string      `dynamodbav:"pk"`
+	SK                string      `dynamodbav:"sk"`
+	ID                string      `dynamodbav:"id"`
+	UserID            string      `dynamodbav:"user_id"`
+	Scope             string      `dynamodbav:"scope"`
+	State             State       `dynamodbav:"request_state"`
+	ConfirmTokenHash  string      `dynamodbav:"confirm_token_hash,omitempty"`
+	CancelTokenHashes []string    `dynamodbav:"cancel_token_hashes,omitempty"` // one per e-mail that carried a cancel link
+	LockApplied       bool        `dynamodbav:"lock_applied"`
+	ScheduledSent     bool        `dynamodbav:"scheduled_sent"` // the first cancel link went out
+	Reminded          bool        `dynamodbav:"reminded"`
+	BlockedNotified   bool        `dynamodbav:"blocked_notified"`
+	Organizations     []string    `dynamodbav:"organizations,omitempty"` // frozen at LOCKED: ids of the single-member workspaces erased with the user (D4)
+	Workspaces        []Workspace `dynamodbav:"workspaces,omitempty"`    // the same workspaces with their kind
+	Blockers          []string    `dynamodbav:"blockers,omitempty"`      // blocker codes found at the end of grace
+	PurgedAt          string      `dynamodbav:"purged_at,omitempty"`
+	RequestedAt       string      `dynamodbav:"requested_at"`
+	ConfirmBy         string      `dynamodbav:"confirm_by"`
+	ConfirmedAt       string      `dynamodbav:"confirmed_at,omitempty"`
+	GraceUntil        string      `dynamodbav:"grace_until,omitempty"`
+	CancelledAt       string      `dynamodbav:"cancelled_at,omitempty"`
+	LockedAt          string      `dynamodbav:"locked_at,omitempty"`
+	UpdatedAt         string      `dynamodbav:"updated_at"`
 	// DueState/NextActionAt feed the sparse gsi_state_due index. Empty means
 	// the worker has nothing to do for this request.
 	DueState     string `dynamodbav:"due_state,omitempty"`
