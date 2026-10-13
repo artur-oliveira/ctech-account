@@ -2,6 +2,8 @@ package deletion
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
 
 type fakeOrgs struct {
@@ -154,5 +157,70 @@ func TestAccountPurger_RunsEveryStepThenTombstone(t *testing.T) {
 	}
 	if len(orgs.removed) == 0 || orgs.removed[len(orgs.removed)-1] != "other" || purgedFor != "u1/r1" {
 		t.Fatalf("owner membership must be skipped (R6); removed=%v purgedFor=%q", orgs.removed, purgedFor)
+	}
+}
+
+type recEraser struct {
+	log  *[]string
+	fail int // fail this many calls first
+}
+
+func (r *recEraser) step(name string) error {
+	*r.log = append(*r.log, name)
+	if r.fail > 0 {
+		r.fail--
+		return errors.New("throttled")
+	}
+	return nil
+}
+func (r *recEraser) EraseOrganization(context.Context, string) error    { return r.step("org") }
+func (r *recEraser) EraseForOrganization(context.Context, string) error { return r.step("companies") }
+func (r *recEraser) RedactUser(context.Context, string) error           { return r.step("support") }
+func (r *recEraser) AnonymizeUser(context.Context, string) error        { return r.step("audit") }
+
+func TestAccountPurger_DataErasersRunFirstAndAreRetried(t *testing.T) {
+	var log []string
+	orgs := &fakeOrgs{memberships: map[string][]*organization.Membership{}, log: &log}
+	purgeUser := func(context.Context, string, string, time.Time) error { log = append(log, "tombstone"); return nil }
+	companies := &recEraser{log: &log, fail: 1} // first attempt fails before the org row is touched
+	er := &recEraser{log: &log}
+	p := NewAccountPurger(orgs, recCompanies{&log}, recConsents{&log}, recSessions{&log}, &fakeKeys{}, recTOTP{&log}, recPasskeys{&log}, purgeUser).
+		WithDataErasers(er, companies, er, er, &fakeBucket{objects: map[string]bool{}}, fakeUsers{u: &user.User{PK: user.BuildPK("u1")}})
+	r := &Request{ID: "r1", UserID: "u1", Organizations: []string{"solo"}}
+	if err := p.Purge(context.Background(), r); err == nil {
+		t.Fatal("the first run must surface the companies failure")
+	}
+	log = nil
+	if err := p.Purge(context.Background(), r); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if log[0] != "companies" || log[1] != "org" || log[len(log)-1] != "tombstone" {
+		t.Fatalf("order %v: companies, org first; tombstone last", log)
+	}
+	for _, want := range []string{"support", "audit"} {
+		if !slices.Contains(log, want) {
+			t.Fatalf("missing step %q in %v", want, log)
+		}
+	}
+}
+
+type recOwner struct{ log *[]string }
+
+func (r recOwner) EraseOwner(context.Context, string) error {
+	*r.log = append(*r.log, "owner")
+	return nil
+}
+
+func TestAccountPurger_OwnerDataGoBeforeTheTombstone(t *testing.T) {
+	var log []string
+	orgs := &fakeOrgs{memberships: map[string][]*organization.Membership{}, log: &log}
+	purgeUser := func(context.Context, string, string, time.Time) error { log = append(log, "tombstone"); return nil }
+	p := NewAccountPurger(orgs, recCompanies{&log}, recConsents{&log}, recSessions{&log}, &fakeKeys{}, recTOTP{&log}, recPasskeys{&log}, purgeUser).
+		WithOwnerData(recOwner{&log}, recOwner{&log})
+	if err := p.Purge(context.Background(), &Request{ID: "r1", UserID: "u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(log); n < 3 || log[n-1] != "tombstone" || log[n-2] != "owner" || log[n-3] != "owner" {
+		t.Fatalf("steps %v: owner data must go just before the tombstone", log)
 	}
 }

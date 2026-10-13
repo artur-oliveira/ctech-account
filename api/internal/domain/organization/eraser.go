@@ -34,3 +34,11 @@ func (e *Eraser) EraseOrganization(ctx context.Context, orgID string) error {
 	_, err := e.orgs.DeleteItem(ctx, orgPK(orgID), metaSK)
 	return err
 }
+
+// EraseOwner removes the plan-limit guard counters of a deleted user
+// (docs/specs/2026-10-10-space-plan-limits.md § 3.2: OWNER#{sub} rows). They
+// hold counts only, but they are keyed by the sub and have no reason to outlive
+// the account.
+func (e *Eraser) EraseOwner(ctx context.Context, userID string) error {
+	return database.DeleteAllUnder(ctx, &e.orgs, ownerPK(userID), "")
+}

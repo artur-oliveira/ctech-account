@@ -9,6 +9,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/domain/user"
 )
 
 type PurgeMemberships interface {
@@ -43,8 +44,9 @@ type UserPurgeFunc func(ctx context.Context, userID, requestID string, at time.T
 // inventory §3. Each step lists what is left and removes it, so a re-run after
 // a partial failure finishes the job. The tombstone is always last: until it
 // is written the user item still carries what the earlier steps need.
-// Phase 2b adds: erase frozen workspaces, anonymize support and audit,
-// move KYC documents to retention.
+// With the data erasers (WithDataErasers) the order is: the frozen workspaces
+// (companies, then the workspace), support and audit, the memberships and
+// credentials, the KYC documents, and the tombstone last.
 type AccountPurger struct {
 	orgs      PurgeMemberships
 	companies CompanyEdges
@@ -55,6 +57,14 @@ type AccountPurger struct {
 	passkeys  Passkeys
 	purgeUser UserPurgeFunc
 	now       func() time.Time
+
+	orgEraser     OrgEraser
+	companyEraser CompanyEraser
+	support       SupportRedactor
+	audit         AuditAnonymizer
+	kyc           KYCStore
+	users         Users
+	ownerData     []OwnerEraser
 }
 
 func NewAccountPurger(orgs PurgeMemberships, companies CompanyEdges, consents Consents, sessions SessionRevoker,
@@ -63,8 +73,62 @@ func NewAccountPurger(orgs PurgeMemberships, companies CompanyEdges, consents Co
 		keys: keys, totp: totp, passkeys: passkeys, purgeUser: purgeUser, now: time.Now}
 }
 
+type OrgEraser interface {
+	EraseOrganization(ctx context.Context, orgID string) error
+}
+
+type CompanyEraser interface {
+	EraseForOrganization(ctx context.Context, orgID string) error
+}
+
+type SupportRedactor interface {
+	RedactUser(ctx context.Context, userID string) error
+}
+
+type AuditAnonymizer interface {
+	AnonymizeUser(ctx context.Context, userID string) error
+}
+
+// WithDataErasers adds the Phase 2b steps. kyc may be nil when no KYC bucket
+// is configured (dev).
+func (p *AccountPurger) WithDataErasers(orgs OrgEraser, companies CompanyEraser, support SupportRedactor,
+	audit AuditAnonymizer, kyc KYCStore, users Users) *AccountPurger {
+	p.orgEraser, p.companyEraser, p.support, p.audit, p.kyc, p.users = orgs, companies, support, audit, kyc, users
+	return p
+}
+
+// OwnerEraser removes data keyed by the user that no other step covers (the
+// plan-limit counters and the level queue rows).
+type OwnerEraser interface {
+	EraseOwner(ctx context.Context, userID string) error
+}
+
+// WithOwnerData adds erasers for owner-keyed rows, run before the tombstone.
+func (p *AccountPurger) WithOwnerData(e ...OwnerEraser) *AccountPurger {
+	p.ownerData = append(p.ownerData, e...)
+	return p
+}
+
 func (p *AccountPurger) Purge(ctx context.Context, r *Request) error {
 	u := r.UserID
+	if p.orgEraser != nil {
+		for _, orgID := range r.Organizations {
+			// Companies first: their rows live under the org id, which stays
+			// known from the request even after the org row is gone.
+			if err := p.companyEraser.EraseForOrganization(ctx, orgID); err != nil {
+				return fmt.Errorf("erasing companies of %s: %w", orgID, err)
+			}
+			if err := p.orgEraser.EraseOrganization(ctx, orgID); err != nil {
+				return fmt.Errorf("erasing organization %s: %w", orgID, err)
+			}
+		}
+		if err := p.support.RedactUser(ctx, u); err != nil {
+			return fmt.Errorf("redacting support: %w", err)
+		}
+		if err := p.audit.AnonymizeUser(ctx, u); err != nil {
+			return fmt.Errorf("anonymizing audit: %w", err)
+		}
+	}
 	memberships, err := p.orgs.ListForUser(ctx, u)
 	if err != nil {
 		return fmt.Errorf("listing memberships: %w", err)
@@ -117,6 +181,22 @@ func (p *AccountPurger) Purge(ctx context.Context, r *Request) error {
 	for _, c := range creds {
 		if err := p.passkeys.Delete(ctx, u, c.SK); err != nil {
 			return fmt.Errorf("deleting passkey: %w", err)
+		}
+	}
+	for _, e := range p.ownerData {
+		if err := e.EraseOwner(ctx, u); err != nil {
+			return fmt.Errorf("erasing owner data: %w", err)
+		}
+	}
+	if p.kyc != nil {
+		usr, err := p.users.GetByID(ctx, u)
+		if err != nil {
+			return fmt.Errorf("loading user for kyc documents: %w", err)
+		}
+		if usr.DeletionState != user.DeletionStatePurged { // the tombstone has no document keys
+			if err := moveKYCDocuments(ctx, p.kyc, usr); err != nil {
+				return err
+			}
 		}
 	}
 	return p.purgeUser(ctx, u, r.ID, p.now())

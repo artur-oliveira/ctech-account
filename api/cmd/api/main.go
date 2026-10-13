@@ -491,12 +491,20 @@ func main() {
 			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServices),
 			emailCli,
 		)
+		var kycDocs deletion.KYCStore
+		if s3Cli, ok := kycPresigner.(*storage.S3); ok {
+			kycDocs = s3Cli
+		}
 		purgeUser := func(ctx context.Context, userID, requestID string, at time.Time) error {
 			return userSvc.Purge(ctx, userID, requestID, func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) }, at)
 		}
 		deletionSvc = deletionSvc.
 			WithOwnership(deletion.NewAccountOwnership(orgSvc, oauthClientRepo)).
-			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser),
+			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser).
+				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
+					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
+					kycDocs, userSvc).
+				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix)),
 				len(cfg.ErasureServices) > 0)
 		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
