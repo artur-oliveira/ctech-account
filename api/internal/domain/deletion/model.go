@@ -30,6 +30,7 @@ const (
 	StateExpired              State = "expired"
 	StateLocked               State = "locked"
 	StatePurging              State = "purging"
+	StateStalled              State = "stalled" // a participant reported a blocker after LOCKED; support resolves
 	StateBlocked              State = "blocked" // a local blocker appeared at the end of grace
 	StatePurged               State = "purged"
 )

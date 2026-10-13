@@ -504,8 +504,8 @@ func main() {
 				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
 					kycDocs, userSvc).
-				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix)),
-				len(cfg.ErasureServiceNames()) > 0)
+				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix))).
+			WithParticipants(cfg.ErasureServiceNames())
 		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment

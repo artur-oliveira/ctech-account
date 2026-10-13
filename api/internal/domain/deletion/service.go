@@ -69,9 +69,9 @@ type Service struct {
 	newID    func() string
 	newToken func() (raw, hash string, err error)
 
-	ownership         Ownership
-	purger            Purger
-	awaitParticipants bool
+	ownership    Ownership
+	purger       Purger
+	participants []string
 }
 
 func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Service {
@@ -87,11 +87,16 @@ func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Servi
 // WithOwnership enables blocker checks and organization freezing.
 func (s *Service) WithOwnership(o Ownership) *Service { s.ownership = o; return s }
 
-// WithPurger enables the account purge after the erase is published. With
-// awaitParticipants the request waits in purging for the participants' acks
-// (Phase 3) instead of purging right away.
-func (s *Service) WithPurger(p Purger, awaitParticipants bool) *Service {
-	s.purger, s.awaitParticipants = p, awaitParticipants
+// WithPurger enables the account purge after the erase is published.
+func (s *Service) WithPurger(p Purger) *Service {
+	s.purger = p
+	return s
+}
+
+// WithParticipants makes purging wait for an ack from each of these services
+// (saga protocol §7). Empty means no participants: purge right away.
+func (s *Service) WithParticipants(services []string) *Service {
+	s.participants = services
 	return s
 }
 
@@ -415,14 +420,34 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		if err := s.locker.Erase(ctx, r, nil); err != nil {
 			return err
 		}
+		if len(s.participants) > 0 {
+			rows := make([]*ServiceStatus, 0, len(s.participants))
+			for _, svc := range s.participants {
+				rows = append(rows, &ServiceStatus{PK: BuildPK(r.ID), SK: serviceSK(svc), RequestID: r.ID, Service: svc,
+					Status: ServiceDispatched, Attempts: 1, FirstDispatchAt: ts(now), LastDispatchAt: ts(now)})
+			}
+			if err := s.repo.PutServices(ctx, rows); err != nil {
+				return err
+			}
+		}
 		r.State, r.UpdatedAt = StatePurging, ts(now)
-		if s.purger != nil && !s.awaitParticipants {
+		if s.purger != nil || len(s.participants) > 0 {
 			r.setDue(now)
 		} else {
-			r.clearDue() // no purger yet, or waiting for participant acks (Phase 3)
+			r.clearDue() // nothing to wait for and nothing to purge yet
 		}
 		return s.repo.Save(ctx, r, StateLocked)
 	case StatePurging:
+		if len(s.participants) > 0 {
+			done, err := s.reconcile(ctx, r, now)
+			if err != nil || !done {
+				return err
+			}
+		}
+		if s.purger == nil {
+			r.clearDue()
+			return s.repo.Save(ctx, r, StatePurging)
+		}
 		if err := s.purger.Purge(ctx, r); err != nil {
 			return err
 		}
@@ -431,6 +456,106 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		return s.repo.Save(ctx, r, StatePurging)
 	}
 	return nil
+}
+
+// Ack records a participant's result for a request. A duplicate is a no-op;
+// an ack before the status row exists fails with ErrNotFound, so the
+// participant's message is redelivered.
+func (s *Service) Ack(ctx context.Context, service string, ack erasure.Ack) error {
+	sts, err := s.repo.ListServices(ctx, ack.RequestID)
+	if err != nil {
+		return err
+	}
+	for _, st := range sts {
+		if st.Service != service {
+			continue
+		}
+		if st.Status != ServiceDispatched {
+			return nil // already recorded
+		}
+		st.AckedAt, st.Counts = ts(s.now()), ack.Counts
+		st.Status = ServiceAcked
+		if ack.Result == erasure.ResultBlocked {
+			st.Status = ServiceBlocked
+			for _, b := range ack.Blockers {
+				st.Blockers = append(st.Blockers, b.Code)
+			}
+		}
+		if err := s.repo.SaveService(ctx, st, ServiceDispatched); err != nil && !errors.Is(err, ErrStateChanged) {
+			return err
+		}
+		if r, err := s.repo.Get(ctx, ack.RequestID); err == nil && r.State == StatePurging {
+			r.setDue(s.now()) // let the worker act on it now
+			r.UpdatedAt = ts(s.now())
+			_ = s.repo.Save(ctx, r, StatePurging) // a lost race only delays to the next due time
+		}
+		return nil
+	}
+	return ErrNotFound
+}
+
+var ackBackoff = []time.Duration{15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
+
+const ackOverdueAfter = 48 * time.Hour
+
+func nextDispatch(st *ServiceStatus) time.Time {
+	i := min(max(st.Attempts-1, 0), len(ackBackoff)-1)
+	return parseTime(st.LastDispatchAt).Add(ackBackoff[i])
+}
+
+// reconcile re-publishes to silent participants on their backoff and reports
+// whether every participant acked. A blocked ack stalls the request.
+func (s *Service) reconcile(ctx context.Context, r *Request, now time.Time) (bool, error) {
+	sts, err := s.repo.ListServices(ctx, r.ID)
+	if err != nil {
+		return false, err
+	}
+	var silent []*ServiceStatus
+	next := time.Time{}
+	for _, st := range sts {
+		switch st.Status {
+		case ServiceAcked:
+		case ServiceBlocked:
+			r.State, r.UpdatedAt = StateStalled, ts(now)
+			r.clearDue()
+			return false, s.repo.Save(ctx, r, StatePurging)
+		default:
+			if now.Sub(parseTime(st.FirstDispatchAt)) > ackOverdueAfter {
+				observability.Error(ctx, "deletion: participant ack overdue", errors.New("no ack after 48h"),
+					"request_id", r.ID, "service", st.Service)
+			}
+			if n := nextDispatch(st); !now.Before(n) {
+				silent = append(silent, st)
+			} else if next.IsZero() || n.Before(next) {
+				next = n
+			}
+		}
+	}
+	if len(silent) == 0 && next.IsZero() {
+		return true, nil
+	}
+	if len(silent) > 0 {
+		names := make([]string, 0, len(silent))
+		for _, st := range silent {
+			names = append(names, st.Service)
+		}
+		if err := s.locker.Erase(ctx, r, names); err != nil {
+			return false, err
+		}
+		for _, st := range silent {
+			st.Attempts++
+			st.LastDispatchAt = ts(now)
+			if err := s.repo.SaveService(ctx, st, ServiceDispatched); err != nil && !errors.Is(err, ErrStateChanged) {
+				return false, err
+			}
+			if n := nextDispatch(st); next.IsZero() || n.Before(next) {
+				next = n
+			}
+		}
+	}
+	r.UpdatedAt = ts(now)
+	r.setDue(next)
+	return false, s.repo.Save(ctx, r, StatePurging)
 }
 
 func tokenMatches(raw, hash string) bool {
