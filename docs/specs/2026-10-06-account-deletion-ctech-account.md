@@ -164,6 +164,13 @@ against tombstones (new GSI `gsi_cpf_hmac`). A match does not block registration
 risk signal for KYC (`risk` domain) and blocks only while the old request is under legal
 hold. The HMAC key lives in KMS/SSM and is never logged.
 
+### Rulings of Phase 2b
+
+- **R7** Deleted KYC objects are removed with a delete marker; their old versions expire after 30 days through the bucket's existing lifecycle rule (no `s3:ListBucketVersions`/`DeleteObjectVersion` grants). Cost if wrong: a deleted document survives as a noncurrent version for up to 30 days.
+- **R8** `KYCPEND_{document_id}` rows (unconfirmed uploads) have no index by user and stay; their S3 objects are erased with the prefix.
+- **R9** Agent messages, internal notes and NPS scores are kept; only the user's own message bodies, the NPS comment and the ticket ownership are removed.
+- Implemented order: the frozen workspaces (companies, then the workspace), support and audit, memberships and credentials, plan-limit rows, KYC documents, tombstone. Invitations a user received at their e-mail in other workspaces have no index by e-mail and expire on their own.
+
 ### Rulings of Phase 2a
 
 - **R4** A non-first-party OAuth client the user registered **blocks** deletion instead of being erased: other users may hold consents and refresh tokens for it, and there is no index from a client to its consents.

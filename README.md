@@ -579,6 +579,14 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Behind `ACCOUNT_DELETION_E
    moves to `KYCRET#{sub}`, kept 5 years. The e-mail can register again at once. With
    `ERASURE_SERVICES` set, the account purge waits for the participants' acks (Phase 3).
 
+   The purge also erases the frozen single-member workspaces (their companies, memberships and
+   invitations; either kind), redacts the user's own support messages and NPS comment (agent replies
+   and internal notes stay), strips IP, user agent and metadata from the user's audit rows (the
+   `account.deletion.*` rows keep their `request_id` as proof), deletes the plan-limit counters and
+   level-queue rows, and moves the KYC documents to `retention/{sub}/{document}` (kept 5 years; the
+   originals under `kyc/{sub}/` are deleted, old versions expire through the bucket lifecycle). The
+   `KYCRET#{sub}` item expires by DynamoDB TTL (`expires_at`) 5 years after the purge.
+
 Every state change is a conditional write to `{env}_account_deletion_requests` made before
 its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)
 retries side effects through the sparse `gsi_state_due` index until they are recorded.
