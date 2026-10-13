@@ -244,13 +244,16 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	deletionSvc := deletion.NewService(newMemDeletionRepo(), userSvc,
 		deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), nil, nil),
 		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo))
-	handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
+	deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
+	deletionH.Register(account, v1.Group("/auth"),
 		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
+	deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc),
+		func(clientID string) (string, bool) { return "dfe", clientID == "dfe" }, []string{"dfe"})
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)
 	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
-	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
+	kycH := handler.NewKYCHandler(kycSvc, auditSvc).WithCPFMAC(func(cpf string) string { return "mac:" + cpf })
 	kycH.Register(account, stepUp)
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
 	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))

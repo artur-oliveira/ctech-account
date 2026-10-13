@@ -494,6 +494,23 @@ func (s *Service) Ack(ctx context.Context, service string, ack erasure.Ack) erro
 	return ErrNotFound
 }
 
+// Subject returns the CPF of the user of a purging request (saga protocol
+// §4.4). ErrNotFound for any other state, so it cannot be used as a lookup.
+func (s *Service) Subject(ctx context.Context, requestID string) (string, error) {
+	r, err := s.repo.Get(ctx, requestID)
+	if err != nil {
+		return "", err
+	}
+	if r.State != StatePurging {
+		return "", ErrNotFound
+	}
+	u, err := s.users.GetByID(ctx, r.UserID)
+	if err != nil {
+		return "", err
+	}
+	return u.CPF, nil
+}
+
 var ackBackoff = []time.Duration{15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
 
 const ackOverdueAfter = 48 * time.Hour

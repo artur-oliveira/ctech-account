@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -58,6 +59,10 @@ import (
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonws "gopkg.aoctech.app/api-commons/ws"
 )
+
+// erasureSubjectReader is the participant allowed to read the CPF of a purging
+// user (dfe e-CPF certificates are keyed by CPF).
+const erasureSubjectReader = "dfe"
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -308,7 +313,7 @@ func main() {
 	consentsH := handler.NewConsentsHandler(consentSvc, oauthClientRepo, auditSvc)
 	mfaH := handler.NewMFAHandler(totpSvc, userSvc, cfg, auditSvc)
 	activityH := handler.NewActivityHandler(auditSvc)
-	kycH := handler.NewKYCHandler(kycSvc, auditSvc)
+	kycH := handler.NewKYCHandler(kycSvc, auditSvc).WithCPFMAC(func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) })
 	termsH := handler.NewTermsHandler(userSvc, auditSvc)
 	stepUpH := handler.NewStepUpHandler(sessionSvc, totpSvc, passkeySvc, valkeyClient, auditSvc)
 	passkeyH := handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, valkeyClient, cfg, auditSvc, emailCli)
@@ -499,15 +504,22 @@ func main() {
 			return userSvc.Purge(ctx, userID, requestID, func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) }, at)
 		}
 		deletionSvc = deletionSvc.
-			WithOwnership(deletion.NewAccountOwnership(orgSvc, oauthClientRepo)).
+			WithOwnership(deletion.NewCompositeOwnership(
+				deletion.NewAccountOwnership(orgSvc, oauthClientRepo),
+				erasurepub.NewEligibility(&http.Client{}, cfg.ErasureParticipants, func(aud, scope string) (string, error) {
+					now := time.Now().Unix()
+					return jwtSvc.SignAccessToken("ctech-account", "", cfg.SelfClientID, []string{scope}, cfg.AppURL, []string{aud}, now, now, nil, "")
+				}))).
 			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser).
 				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
 					kycDocs, userSvc).
 				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix))).
 			WithParticipants(cfg.ErasureServiceNames())
-		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
+		deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
+		deletionH.Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
+		deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient, []string{erasureSubjectReader})
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment
 		go deletion.RunWorker(ctx, deletionSvc, func(ctx context.Context) (bool, error) {
 			if !valkeyClient.Enabled() {

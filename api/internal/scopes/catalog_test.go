@@ -26,6 +26,8 @@ func TestEveryInternalAccountScopeIsInTheManifest(t *testing.T) {
 
 	for _, scope := range []string{
 		InternalAccountKYC,
+		InternalAccountErasureAck,
+		InternalAccountErasureSubject,
 		InternalAccountScopeRegistryWrite,
 		InternalAccountCompanyActor,
 		InternalAccountOrgMember,
@@ -58,6 +60,8 @@ func TestEveryInternalManifestScopeHasAConstant(t *testing.T) {
 	}
 	declared := map[string]bool{
 		InternalAccountKYC:                true,
+		InternalAccountErasureAck:         true,
+		InternalAccountErasureSubject:     true,
 		InternalAccountScopeRegistryWrite: true,
 		InternalAccountCompanyActor:       true,
 		InternalAccountOrgMember:          true,

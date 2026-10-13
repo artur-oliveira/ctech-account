@@ -18,10 +18,19 @@ import (
 type KYCHandler struct {
 	kycSvc *kyc.Service
 	audit  *audit.Service
+	cpfMAC func(string) string
 }
 
 func NewKYCHandler(kycSvc *kyc.Service, auditSvc *audit.Service) *KYCHandler {
 	return &KYCHandler{kycSvc: kycSvc, audit: auditSvc}
+}
+
+// WithCPFMAC enables cpf_hmac on the internal KYC read: the keyed hash
+// ctech-wallet uses to carry a self-exclusion across account deletion (D13).
+// The key never leaves ctech-account.
+func (h *KYCHandler) WithCPFMAC(mac func(cpf string) string) *KYCHandler {
+	h.cpfMAC = mac
+	return h
 }
 
 // Register mounts the user-facing routes on the account group. Everything
@@ -174,7 +183,7 @@ func (h *KYCHandler) internalGet(c fiber.Ctx) error {
 	if err != nil {
 		return h.sendKYCError(c, err)
 	}
-	return c.JSON(fiber.Map{
+	resp := fiber.Map{
 		"level":        u.KYCLevel,
 		"status":       u.KYCStatus,
 		"cpf":          u.CPF,
@@ -183,7 +192,11 @@ func (h *KYCHandler) internalGet(c fiber.Ctx) error {
 		"email":        u.Email,
 		"phone_number": u.PhoneNumber,
 		"address":      u.Address,
-	})
+	}
+	if u.CPF != "" && h.cpfMAC != nil {
+		resp["cpf_hmac"] = h.cpfMAC(u.CPF)
+	}
+	return c.JSON(resp)
 }
 
 // sendStatus is the single response shape of every user-facing KYC write, so
