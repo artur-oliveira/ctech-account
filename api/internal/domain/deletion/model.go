@@ -30,10 +30,12 @@ const (
 	StateExpired              State = "expired"
 	StateLocked               State = "locked"
 	StatePurging              State = "purging"
+	StateBlocked              State = "blocked" // a local blocker appeared at the end of grace
+	StatePurged               State = "purged"
 )
 
 // Open reports whether the state holds the user's single open-request marker.
-func (s State) Open() bool { return s != StateCancelled && s != StateExpired }
+func (s State) Open() bool { return s != StateCancelled && s != StateExpired && s != StatePurged }
 
 var (
 	ErrNotFound       = errors.New("deletion: request not found")
@@ -56,6 +58,10 @@ type Request struct {
 	LockApplied       bool     `dynamodbav:"lock_applied"`
 	ScheduledSent     bool     `dynamodbav:"scheduled_sent"` // the first cancel link went out
 	Reminded          bool     `dynamodbav:"reminded"`
+	BlockedNotified   bool     `dynamodbav:"blocked_notified"`
+	Organizations     []string `dynamodbav:"organizations,omitempty"` // frozen at LOCKED: single-member orgs erased with the user (D4)
+	Blockers          []string `dynamodbav:"blockers,omitempty"`      // blocker codes found at the end of grace
+	PurgedAt          string   `dynamodbav:"purged_at,omitempty"`
 	RequestedAt       string   `dynamodbav:"requested_at"`
 	ConfirmBy         string   `dynamodbav:"confirm_by"`
 	ConfirmedAt       string   `dynamodbav:"confirmed_at,omitempty"`

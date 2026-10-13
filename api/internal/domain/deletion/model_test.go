@@ -6,12 +6,12 @@ import (
 )
 
 func TestStateOpen(t *testing.T) {
-	for _, s := range []State{StateAwaitingConfirmation, StatePending, StateLocked, StatePurging} {
+	for _, s := range []State{StateAwaitingConfirmation, StatePending, StateLocked, StatePurging, StateBlocked} {
 		if !s.Open() {
 			t.Errorf("%s must hold the open-request marker", s)
 		}
 	}
-	for _, s := range []State{StateCancelled, StateExpired} {
+	for _, s := range []State{StateCancelled, StateExpired, StatePurged} {
 		if s.Open() {
 			t.Errorf("%s must release the open-request marker", s)
 		}
