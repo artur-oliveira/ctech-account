@@ -87,6 +87,11 @@ No personal data, ever. `user.unlocked` is sent when a request is cancelled duri
                   "action_url": "https://ledger.aoctech.app/withdraw" } ] }
 ```
 
+- Optional query `?workspaces=id1,id2` (added 2026-10-13): the workspaces where the person is the
+  only member, i.e. the ones that would be erased with them (`user.erase` `workspaces[]`). Participants
+  that hold workspace-scoped data (billing: a merchant tenant, unpaid organization invoices) include
+  them in the blockers. Without it only the person is checked. The purge re-check on `user.erase`
+  is authoritative.
 - Blocker `code`s are stable and translated by the account UI.
 - An unknown `sub` returns `eligible: true, blockers: []` (nothing to delete).
 - Errors/timeouts are **not** "eligible". The orchestrator treats them as a transient
