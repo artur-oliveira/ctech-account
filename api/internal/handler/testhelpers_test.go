@@ -1129,13 +1129,14 @@ func (m *mockSupportRepo) ListByStatus(_ context.Context, status, _ string, _ in
 }
 
 type memDeletionRepo struct {
-	mu      sync.Mutex
-	reqs    map[string]deletion.Request
-	markers map[string]string
+	mu       sync.Mutex
+	reqs     map[string]deletion.Request
+	markers  map[string]string
+	services map[string]deletion.ServiceStatus
 }
 
 func newMemDeletionRepo() *memDeletionRepo {
-	return &memDeletionRepo{reqs: map[string]deletion.Request{}, markers: map[string]string{}}
+	return &memDeletionRepo{reqs: map[string]deletion.Request{}, markers: map[string]string{}, services: map[string]deletion.ServiceStatus{}}
 }
 
 func (m *memDeletionRepo) Create(_ context.Context, r *deletion.Request) error {
@@ -1215,5 +1216,45 @@ func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _
 	return nil
 }
 func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string) error {
+	return nil
+}
+
+func (m *memDeletionRepo) PutServices(_ context.Context, sts []*deletion.ServiceStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, st := range sts {
+		k := st.RequestID + "|" + st.Service
+		if _, ok := m.services[k]; !ok {
+			m.services[k] = *st
+		}
+	}
+	return nil
+}
+
+func (m *memDeletionRepo) ListServices(_ context.Context, requestID string) ([]*deletion.ServiceStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*deletion.ServiceStatus
+	for _, st := range m.services {
+		if st.RequestID == requestID {
+			c := st
+			out = append(out, &c)
+		}
+	}
+	return out, nil
+}
+
+func (m *memDeletionRepo) SaveService(_ context.Context, st *deletion.ServiceStatus, from string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := st.RequestID + "|" + st.Service
+	cur, ok := m.services[k]
+	if !ok {
+		return deletion.ErrNotFound
+	}
+	if cur.Status != from {
+		return deletion.ErrStateChanged
+	}
+	m.services[k] = *st
 	return nil
 }

@@ -97,3 +97,27 @@ func parseTime(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339, s)
 	return t
 }
+
+const (
+	ServiceDispatched = "dispatched"
+	ServiceAcked      = "acked"
+	ServiceBlocked    = "blocked"
+)
+
+// ServiceStatus is one participant's progress on a request
+// (pk REQ#{request_id}, sk SVC#{service}).
+type ServiceStatus struct {
+	PK              string         `dynamodbav:"pk"`
+	SK              string         `dynamodbav:"sk"`
+	RequestID       string         `dynamodbav:"request_id"`
+	Service         string         `dynamodbav:"service"`
+	Status          string         `dynamodbav:"service_status"`
+	Attempts        int            `dynamodbav:"attempts"`
+	FirstDispatchAt string         `dynamodbav:"first_dispatch_at"`
+	LastDispatchAt  string         `dynamodbav:"last_dispatch_at"`
+	AckedAt         string         `dynamodbav:"acked_at,omitempty"`
+	Counts          map[string]int `dynamodbav:"counts,omitempty"`
+	Blockers        []string       `dynamodbav:"blockers,omitempty"`
+}
+
+func serviceSK(service string) string { return "SVC#" + service }

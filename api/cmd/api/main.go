@@ -476,9 +476,9 @@ func main() {
 		}
 		jwtSvc.SetRevocation(revocation)
 		var publisher deletion.Publisher
-		if len(cfg.ErasureServices) > 0 {
+		if len(cfg.ErasureServiceNames()) > 0 {
 			if cfg.ErasureTopicARN == "" {
-				log.Fatal("ERASURE_SERVICES is set but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+				log.Fatal("ERASURE_PARTICIPANTS is set but ACCOUNT_ERASURE_TOPIC_ARN is empty")
 			}
 			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
 			if awsErr != nil {
@@ -488,7 +488,7 @@ func main() {
 		}
 		deletionSvc := deletion.NewService(
 			deletion.NewRepository(db, cfg.TablePrefix), userSvc,
-			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServices),
+			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServiceNames()),
 			emailCli,
 		)
 		var kycDocs deletion.KYCStore
@@ -505,7 +505,7 @@ func main() {
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
 					kycDocs, userSvc).
 				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix)),
-				len(cfg.ErasureServices) > 0)
+				len(cfg.ErasureServiceNames()) > 0)
 		handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc).Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
 		workerLockKey := "deletion_worker_lock:" + cfg.Environment

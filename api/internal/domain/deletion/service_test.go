@@ -16,10 +16,13 @@ type memRepo struct {
 	mu         sync.Mutex
 	reqs       map[string]Request
 	markers    map[string]string // userID -> open request id
-	beforeSave func()            // runs once, before the next Save's condition check
+	services   map[string]ServiceStatus
+	beforeSave func() // runs once, before the next Save's condition check
 }
 
-func newMemRepo() *memRepo { return &memRepo{reqs: map[string]Request{}, markers: map[string]string{}} }
+func newMemRepo() *memRepo {
+	return &memRepo{reqs: map[string]Request{}, markers: map[string]string{}, services: map[string]ServiceStatus{}}
+}
 
 func clone(r Request) Request {
 	r.CancelTokenHashes = append([]string(nil), r.CancelTokenHashes...)
@@ -553,4 +556,44 @@ func TestPurging_FailureRetried(t *testing.T) {
 	if f.stored(t, r.ID).State != StatePurged || p.calls != 2 {
 		t.Fatalf("purge must be retried: calls=%d", p.calls)
 	}
+}
+
+func (m *memRepo) PutServices(_ context.Context, sts []*ServiceStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, st := range sts {
+		k := st.RequestID + "|" + st.Service
+		if _, ok := m.services[k]; !ok {
+			m.services[k] = *st
+		}
+	}
+	return nil
+}
+
+func (m *memRepo) ListServices(_ context.Context, requestID string) ([]*ServiceStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*ServiceStatus
+	for _, st := range m.services {
+		if st.RequestID == requestID {
+			c := st
+			out = append(out, &c)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRepo) SaveService(_ context.Context, st *ServiceStatus, from string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := st.RequestID + "|" + st.Service
+	cur, ok := m.services[k]
+	if !ok {
+		return ErrNotFound
+	}
+	if cur.Status != from {
+		return ErrStateChanged
+	}
+	m.services[k] = *st
+	return nil
 }
