@@ -625,7 +625,9 @@ flow exists and is tested.** In the same change:
 1. Add its row to the service's data inventory (erase, anonymize or retain, with legal basis and expiry; retention needs a
    reason, not a convenience).
 2. Implement the erase or anonymize step in the service's purge, idempotent and resumable (re-runnable from scratch).
-3. Add or update the eligibility blockers if it can hold money, debt, open work or ownership.
+3. Add or update the eligibility blockers if it can hold money, debt, open work or ownership. Every new blocker code needs
+   a string under `deletion.blockers` in `ui/src/locales/{en,pt-BR}.json` and an entry in
+   `ui/src/locales/deletion-blockers.test.ts`; an untranslated code shows the generic "contact support" message.
 4. Make every async path (webhook, job, sweep, queue consumer) drop work for a locked or erased `sub` or organization.
 5. Test it: seed the new data, run the purge twice, assert it is gone or anonymized, and that a late write for an erased
    subject is rejected. The purge's table-classification test must fail for an unclassified table; keep it exhaustive.
