@@ -55,7 +55,7 @@ Top-level:
   is a convenience, never authority. Closing the dialog `router.replace`s the bare path, so reopening
   starts from the defaults and Back does not reopen it.
 - Static/legal: `/terms`, `/terms/v1`, `/terms/v2`, `/privacy`, `/privacy/v1`,
-  `/privacy/v2`, `/cookies`, `/legal`, `/kyc-policy`, `/data-processing`,
+  `/privacy/v2`, `/privacy/v3`, `/cookies`, `/legal`, `/kyc-policy`, `/data-processing`,
   `/security-policy`, `/acceptable-use`, `/responsible-disclosure`,
   `/transparency`, `/products/*`.
 

@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: 'Política de Privacidade',
 }
 
-const PRIVACY_VERSION = '3.2'
-const UPDATED_AT = '16 de agosto de 2026'
+const PRIVACY_VERSION = '3.3'
+const UPDATED_AT = '13 de outubro de 2026'
 
 export default function PrivacyPage() {
   return (
@@ -288,6 +288,16 @@ export default function PrivacyPage() {
             </tbody>
           </table>
         </div>
+
+        <p>
+          Após a exclusão da conta CTech, mantemos apenas o que a lei exige:
+          os registros de verificação de identidade (KYC) e as movimentações
+          financeiras do CTech Ledger, por 5 (cinco) anos, para cumprimento da
+          Lei nº 9.613/1998; os documentos fiscais de organizações que
+          continuam ativas com outros membros, que pertencem à organização; e
+          um código irreversível derivado do CPF, para prevenção a fraudes.
+          Cópias de segurança expiram em até 35 (trinta e cinco) dias.
+        </p>
       </LegalSection>
 
       <LegalSection heading="9. Segurança da informação">
@@ -351,6 +361,18 @@ export default function PrivacyPage() {
         <p>
           Solicitações poderão ser encaminhadas ao Encarregado por meio dos
           canais de contato disponibilizados nesta Política.
+        </p>
+
+        <p>
+          A exclusão da conta pode ser solicitada em Perfil › Excluir conta.
+          O pedido é confirmado por e-mail; a partir da confirmação a conta
+          fica bloqueada e é excluída definitivamente após 7 (sete) dias, prazo
+          em que pode ser cancelada pelo link enviado ao e-mail do titular.
+          Concluída a exclusão, os dados pessoais são eliminados ou
+          anonimizados em todos os produtos CTech, salvo as hipóteses de
+          retenção do item 8. Organizações em que o titular é o único membro
+          são excluídas junto com a conta, inclusive seus documentos fiscais;
+          recomendamos exportá-los antes.
         </p>
       </LegalSection>
 
