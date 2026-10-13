@@ -532,6 +532,28 @@ Every state change is a conditional write to `{env}_account_deletion_requests` m
 its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)
 retries side effects through the sparse `gsi_state_due` index until they are recorded.
 
+### Account deletion: every new feature ships its erasure path
+
+ctech-account runs an LGPD deletion saga across the whole CTech family (specs and review in
+`ctech-account/docs/specs/2026-10-06-account-deletion-*.md` and `docs/2026-10-13-account-deletion-plan-review.md`).
+Every service is a participant. The participant plans were written once and went stale as features landed, so this is a rule:
+
+**A feature that stores or derives data tied to a person or an organization (a table, an index, a key prefix, a bucket
+prefix, a cache key, a queue or job row, a third-party registration, an audit field) is not done until its deletion
+flow exists and is tested.** In the same change:
+
+1. Add its row to the service's data inventory (erase, anonymize or retain, with legal basis and expiry; retention needs a
+   reason, not a convenience).
+2. Implement the erase or anonymize step in the service's purge, idempotent and resumable (re-runnable from scratch).
+3. Add or update the eligibility blockers if it can hold money, debt, open work or ownership.
+4. Make every async path (webhook, job, sweep, queue consumer) drop work for a locked or erased `sub` or organization.
+5. Test it: seed the new data, run the purge twice, assert it is gone or anonymized, and that a late write for an erased
+   subject is rejected. The purge's table-classification test must fail for an unclassified table; keep it exhaustive.
+6. Revoke or delete what lives at third parties (e.g. webhooks or credentials registered at a bank).
+7. Update the participant plan or spec, and note the cross-service impact (who else must act when this is erased).
+
+A pull request that adds person-linked data without this is incomplete, whatever else passes.
+
 ### Step-up authentication (recent MFA)
 
 Access tokens issued from a session carry `auth_time`, `amr` (RFC 8176: `pwd`,
