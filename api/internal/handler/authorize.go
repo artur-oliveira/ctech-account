@@ -66,6 +66,13 @@ func (h *AuthorizeHandler) Register(v1 fiber.Router) {
 	v1.Post("/authorize/consent", h.ConsentDecision)
 }
 
+// maxAgeGraceSeconds is the slack on the max_age check. The login (or MFA challenge) that mints
+// the session and the /authorize call that follows are separate round trips, so with max_age=0
+// a strict compare fails whenever the clock ticks over in between — the user logs in, comes
+// back here, and is sent to log in again, forever. A session this young was authenticated by
+// the login the caller is waiting for, so it satisfies the request.
+const maxAgeGraceSeconds = 60
+
 func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 	clientID := c.Query("client_id")
 	redirectURI := c.Query("redirect_uri")
@@ -136,7 +143,7 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 	// through here — right after that login — always satisfies its own
 	// max_age and never loops.
 	if maxAge, ok := parseMaxAge(c.Query("max_age")); ok {
-		if time.Now().UTC().Unix()-sess.AuthTime > maxAge {
+		if time.Now().UTC().Unix()-sess.AuthTime > maxAge+maxAgeGraceSeconds {
 			return c.Redirect().To(h.loginURL(c.OriginalURL()))
 		}
 	}
