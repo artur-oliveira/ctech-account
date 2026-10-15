@@ -379,6 +379,40 @@ func TestAuthorize_MaxAgeZero_DoesNotLoopAfterFreshLogin(t *testing.T) {
 	}
 }
 
+// TestAuthorize_MaxAgeZero_ToleratesSlowRoundTripAfterLogin: the session minted seconds ago by
+// the login the caller waits for must satisfy max_age=0, or the step-up bounces between
+// /authorize and /login (seen in prod with 3s API round trips).
+func TestAuthorize_MaxAgeZero_ToleratesSlowRoundTripAfterLogin(t *testing.T) {
+	ta := newOAuthTestApp(t)
+	_ = ta.clientRepo.Create(context.Background(), &oauthclient.OAuthClient{
+		PK: oauthclient.BuildPK("wallet"), ClientType: "public",
+		RedirectURIs:  []string{"https://wallet.example/cb"},
+		AllowedScopes: []string{"openid"},
+		FirstParty:    true,
+	})
+	_ = ta.userRepo.Create(context.Background(), &userDomain.User{
+		PK: "USER_user-slow", Email: "slow@example.com", EmailVerified: true,
+		TOSVersion: legal.CurrentToSVersion, PrivacyVersion: legal.CurrentPrivacyVersion,
+	})
+	sess, ssoToken, err := ta.sessionSvc.Create(context.Background(), "user-slow", "Chrome", "1.2.3.4", "UA", []string{sessionDomain.AMRPassword}, sessionDomain.GeoData{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// The login finished a few seconds ago: slow round trips and a second boundary in between.
+	sess.AuthTime = time.Now().UTC().Add(-8 * time.Second).Unix()
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1.0/authorize?client_id=wallet&redirect_uri=https://wallet.example/cb&response_type=code&scope=openid&max_age=0&code_challenge=abc&code_challenge_method=S256", nil)
+	req.AddCookie(&http.Cookie{Name: "ctech_session", Value: ssoToken})
+	resp, _ := ta.app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
+
+	loc := resp.Header.Get("Location")
+	if resp.StatusCode != http.StatusFound || !strings.HasPrefix(loc, "https://wallet.example/cb?code=") {
+		t.Fatalf("expected code redirect right after a fresh login, got %d %q", resp.StatusCode, loc)
+	}
+}
+
 // TestUserInfo_AccessibleWithDownstreamClientToken is the regression test for
 // the "dfe /me returns empty email/name" bug: an access token minted for a
 // downstream resource server (aud = the client's own audience, e.g. dfe-api)
