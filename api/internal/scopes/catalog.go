@@ -198,6 +198,8 @@ var defaultCatalog = []ServiceScopes{
 			{Scope: "internal:wallet:game-status", Description: "Check wallet game status", DescriptionPT: "Verifica status da carteira de jogos"},
 			{Scope: "internal:wallet:game-hold", Description: "Hold value for game wallet", DescriptionPT: "Reserva os valores da carteira de jogos"},
 			{Scope: "internal:wallet:game-cashout", Description: "Cashout value for real wallet", DescriptionPT: "Retorna valores para a carteira de jogos"},
+			{Scope: "internal:wallet:hold", Description: "Hold, release and settle value in games", DescriptionPT: "Reserva, libera e liquida saldo em jogos"},
+			{Scope: "internal:wallet:responsible-export", Description: "Export responsible-gambling state", DescriptionPT: "Exporta o estado de jogo responsável"},
 			{Scope: "internal:wallet:sandbox-purchase", Description: "Purchases sandbox credits", DescriptionPT: "Compra créditos sandbox"},
 			{Scope: "internal:wallet:product-purchase", Description: "Purchase product", DescriptionPT: "Compra de produtos"},
 		},
