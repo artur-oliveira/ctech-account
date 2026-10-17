@@ -17,7 +17,8 @@ export const TERMS_VERSION_HISTORY: LegalDocumentVersion[] = [
 ]
 
 export const PRIVACY_VERSION_HISTORY: LegalDocumentVersion[] = [
-  {version: '3.3', updatedAt: '13 de outubro de 2026', href: '/privacy'},
+  {version: '3.4', updatedAt: '17 de outubro de 2026', href: '/privacy'},
+  {version: '3.3', updatedAt: '13 de outubro de 2026', href: '/privacy/v4'},
   {version: '3.2', updatedAt: '16 de agosto de 2026', href: '/privacy/v3'},
   {version: '2.0', updatedAt: '12 de julho de 2026', href: '/privacy/v2'},
   {version: '1.0', updatedAt: '10 de julho de 2026', href: '/privacy/v1'},

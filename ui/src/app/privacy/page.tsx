@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: 'Política de Privacidade',
 }
 
-const PRIVACY_VERSION = '3.3'
-const UPDATED_AT = '13 de outubro de 2026'
+const PRIVACY_VERSION = '3.4'
+const UPDATED_AT = '17 de outubro de 2026'
 
 export default function PrivacyPage() {
   return (
@@ -373,6 +373,16 @@ export default function PrivacyPage() {
           retenção do item 8. Organizações em que o titular é o único membro
           são excluídas junto com a conta, inclusive seus documentos fiscais;
           recomendamos exportá-los antes.
+        </p>
+
+        <p>
+          O titular também pode sair de um único produto CTech, em Perfil ›
+          Sair de um produto CTech, sem encerrar a conta. O pedido segue o
+          mesmo rito (confirmação por e-mail e prazo de 7 (sete) dias para
+          cancelamento); concluído, os dados do titular naquele produto são
+          eliminados ou anonimizados, salvo as hipóteses de retenção do item
+          8, e a conta CTech e os demais produtos permanecem ativos. O titular
+          pode voltar ao produto a qualquer momento, como um novo usuário.
         </p>
       </LegalSection>
 
