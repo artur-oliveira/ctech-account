@@ -85,7 +85,7 @@ export is published only to participants marked `"export": true`, so a service t
 receives one). `erasure.Consumer.WithExporter` is the hook. Account: parts as a map on the row, per-part conditional
 updates, `POST /v1.0/internal/export/ack`, lazy redispatch (20 min, 6 attempts) and failure after 24 h, the "ready" e-mail
 only when no part is pending. Participants never call account for anything but the ack; the part goes straight to S3.
-Participant parts: poker (done), billing (done: the person as a CTech customer plus their personal finance space; workspaces and merchants' customers are out), dfe (done: the person's own rows only: user, memberships, plan snapshot, audit as actor; company data is excluded, e-CPF metadata is a known gap), wallet (to do).
+Participant parts: poker (done), billing (done: the person as a CTech customer plus their personal finance space; workspaces and merchants' customers are out), dfe (done: the person's own rows only: user, memberships, plan snapshot, audit as actor; company data is excluded, e-CPF metadata is a known gap), wallet (done: wallets, the whole statement, deposits, withdrawals, holds, purchases, settings and audit; counterparties opaque; a deposit's payer only when confirmed; the four retired tables are excluded as no longer written, to be confirmed).
 
 ## 9. Open questions
 
