@@ -491,9 +491,16 @@ func main() {
 			}
 			publisher = erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)
 		}
+		// Leaving one product (scope service): the OAuth clients people sign in to
+		// it with come from ERASURE_PARTICIPANTS; a product without any cannot be left.
+		loginClients := func(service string) []string {
+			p, _ := cfg.LeavableService(service)
+			return p.LoginClients
+		}
 		deletionSvc := deletion.NewService(
 			deletion.NewRepository(db, cfg.TablePrefix), userSvc,
-			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServiceNames()),
+			deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), publisher, cfg.ErasureServiceNames()).
+				WithServiceClients(loginClients, sessionSvc),
 			emailCli,
 		)
 		var kycDocs deletion.KYCStore
@@ -503,13 +510,18 @@ func main() {
 		purgeUser := func(ctx context.Context, userID, requestID string, at time.Time) error {
 			return userSvc.Purge(ctx, userID, requestID, func(cpf string) string { return sealer.MAC("cpf-hmac", cpf) }, at)
 		}
+		eligibility := erasurepub.NewEligibility(&http.Client{}, cfg.ErasureParticipants, func(aud, scope string) (string, error) {
+			now := time.Now().Unix()
+			return jwtSvc.SignAccessToken("ctech-account", "", cfg.SelfClientID, []string{scope}, cfg.AppURL, []string{aud}, now, now, nil, "")
+		})
 		deletionSvc = deletionSvc.
 			WithOwnership(deletion.NewCompositeOwnership(
-				deletion.NewAccountOwnership(orgSvc, oauthClientRepo),
-				erasurepub.NewEligibility(&http.Client{}, cfg.ErasureParticipants, func(aud, scope string) (string, error) {
-					now := time.Now().Unix()
-					return jwtSvc.SignAccessToken("ctech-account", "", cfg.SelfClientID, []string{scope}, cfg.AppURL, []string{aud}, now, now, nil, "")
-				}))).
+				deletion.NewAccountOwnership(orgSvc, oauthClientRepo), eligibility)).
+			WithServices(func(name string) (deletion.ServiceTarget, bool) {
+				p, ok := cfg.LeavableService(name)
+				return deletion.ServiceTarget{Service: p.Service, LoginClients: p.LoginClients}, ok
+			}, eligibility).
+			WithServiceUnlinker(deletion.NewServiceUnlinker(consentSvc, userSvc, userSvc, auditSvc, emailCli, loginClients)).
 			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser).
 				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
