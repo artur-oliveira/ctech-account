@@ -62,10 +62,17 @@ func (c *Client) deletionLink(page, requestID, token string) string {
 	return c.baseURL + "/account-deletion/" + page + "?request=" + url.QueryEscape(requestID) + "&token=" + url.QueryEscape(token)
 }
 
+// serviceDeletionLink is deletionLink for a service unlink: it also names the
+// product, so the page can say what it is about before the person presses the
+// button (it acts only on that press).
+func (c *Client) serviceDeletionLink(page, requestID, token, product string) string {
+	return c.deletionLink(page, requestID, token) + "&service=" + url.QueryEscape(product)
+}
+
 func (c *Client) SendDeletionConfirmEmail(ctx context.Context, to, firstName, requestID, token, product string) error {
 	if product != "" {
 		return c.send(ctx, to, "Confirme a sua saída do "+productName(product)+" — ctech",
-			serviceConfirmEmailHTML(firstName, c.deletionLink("confirm", requestID, token), product))
+			serviceConfirmEmailHTML(firstName, c.serviceDeletionLink("confirm", requestID, token, product), product))
 	}
 	return c.send(ctx, to, "Confirme a exclusão da sua conta — ctech",
 		deletionConfirmEmailHTML(firstName, c.deletionLink("confirm", requestID, token)))
@@ -74,7 +81,7 @@ func (c *Client) SendDeletionConfirmEmail(ctx context.Context, to, firstName, re
 func (c *Client) SendDeletionScheduledEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time, product string) error {
 	if product != "" {
 		return c.send(ctx, to, "Sua saída do "+productName(product)+" foi agendada — ctech",
-			serviceScheduledEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil, product))
+			serviceScheduledEmailHTML(firstName, c.serviceDeletionLink("cancel", requestID, cancelToken, product), graceUntil, product))
 	}
 	return c.send(ctx, to, "Sua conta será excluída — ctech",
 		deletionScheduledEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil))
@@ -83,7 +90,7 @@ func (c *Client) SendDeletionScheduledEmail(ctx context.Context, to, firstName, 
 func (c *Client) SendDeletionReminderEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time, product string) error {
 	if product != "" {
 		return c.send(ctx, to, "Último aviso: sua saída do "+productName(product)+" — ctech",
-			serviceReminderEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil, product))
+			serviceReminderEmailHTML(firstName, c.serviceDeletionLink("cancel", requestID, cancelToken, product), graceUntil, product))
 	}
 	return c.send(ctx, to, "Último aviso: sua conta será excluída amanhã — ctech",
 		deletionReminderEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), graceUntil))
@@ -92,7 +99,7 @@ func (c *Client) SendDeletionReminderEmail(ctx context.Context, to, firstName, r
 func (c *Client) SendDeletionBlockedEmail(ctx context.Context, to, firstName, requestID, cancelToken string, blockers []string, product string) error {
 	if product != "" {
 		return c.send(ctx, to, "A sua saída do "+productName(product)+" está pendente — ctech",
-			serviceBlockedEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), blockers, product))
+			serviceBlockedEmailHTML(firstName, c.serviceDeletionLink("cancel", requestID, cancelToken, product), blockers, product))
 	}
 	return c.send(ctx, to, "A exclusão da sua conta está pendente — ctech",
 		deletionBlockedEmailHTML(firstName, c.deletionLink("cancel", requestID, cancelToken), blockers))

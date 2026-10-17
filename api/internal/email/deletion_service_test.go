@@ -33,3 +33,11 @@ func TestAnUnlistedProductIsEscaped(t *testing.T) {
 		t.Fatalf("productName = %q, want escaped", got)
 	}
 }
+
+func TestServiceLinksNameTheProduct(t *testing.T) {
+	c := &Client{baseURL: "https://accounts.example"}
+	got := c.serviceDeletionLink("confirm", "r1", "tok", "poker")
+	if got != "https://accounts.example/account-deletion/confirm?request=r1&token=tok&service=poker" {
+		t.Fatalf("link = %s", got)
+	}
+}

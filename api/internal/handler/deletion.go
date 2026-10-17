@@ -101,7 +101,7 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, userID, audit.EventDeletionRequested, map[string]string{"request_id": r.ID, "scope": r.Scope, "service": r.Service})
-	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"request_id": r.ID, "state": r.State, "confirm_by": r.ConfirmBy})
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"request_id": r.ID, "state": r.State, "confirm_by": r.ConfirmBy, "scope": r.Scope, "service": r.Service})
 }
 
 // verifyIdentity (ruling R2): a recent MFA proof, or the account password.
@@ -166,7 +166,7 @@ func (h *DeletionHandler) confirm(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, r.UserID, audit.EventDeletionConfirmed, map[string]string{"request_id": r.ID})
-	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State, "grace_until": r.GraceUntil})
+	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State, "grace_until": r.GraceUntil, "scope": r.Scope, "service": r.Service})
 }
 
 func (h *DeletionHandler) cancel(c fiber.Ctx) error {
@@ -184,7 +184,7 @@ func (h *DeletionHandler) cancel(c fiber.Ctx) error {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, r.UserID, audit.EventDeletionCancelled, map[string]string{"request_id": r.ID})
-	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State})
+	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State, "scope": r.Scope, "service": r.Service})
 }
 
 // RegisterInternal mounts the saga endpoints for participants (service tokens
