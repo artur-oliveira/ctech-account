@@ -3,6 +3,7 @@ package dataexport
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,20 @@ func (m *memStore) Size(_ context.Context, k string) (int64, error) {
 		return n, nil
 	}
 	return 0, errors.New("missing")
+}
+func (m *memStore) ListKeys(_ context.Context, prefix string) ([]string, error) {
+	var out []string
+	for k := range m.objs {
+		if strings.HasPrefix(k, prefix) {
+			out = append(out, k)
+		}
+	}
+	for k := range m.sizes {
+		if strings.HasPrefix(k, prefix) && m.objs[k] == nil {
+			out = append(out, k)
+		}
+	}
+	return out, nil
 }
 func (m *memStore) DeleteObject(_ context.Context, k string) error {
 	delete(m.objs, k)
@@ -299,4 +314,36 @@ func TestAFailedDispatchIsRetriedLater(t *testing.T) {
 	if len(d.msgs) != 2 {
 		t.Fatalf("msgs=%d", len(d.msgs))
 	}
+}
+
+func TestEraseOwnerDeletesEveryFileUnderThePrefixAndTheRow(t *testing.T) {
+	s, repo, store, _, d, _ := withPoker()
+	ctx := context.Background()
+	e, _ := s.Request(ctx, "u1")
+	// A participant uploaded after the row stopped naming its key (a stale ack).
+	late := "exports/u1/old-export/poker.zip"
+	store.sizes[late] = 9
+	store.objs["exports/someone-else/x/account.zip"] = []byte("keep")
+	store.sizes[d.msgs[0].PutURL[len("https://s3/put/"):]] = 3
+	if err := s.EraseOwner(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Get(ctx, "u1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("row survived: %v", err)
+	}
+	for k := range store.objs {
+		if strings.HasPrefix(k, "exports/u1/") {
+			t.Errorf("file survived: %s", k)
+		}
+	}
+	if _, ok := store.sizes[late]; ok {
+		t.Errorf("a late upload survived")
+	}
+	if _, ok := store.objs["exports/someone-else/x/account.zip"]; !ok {
+		t.Error("another person's file was deleted")
+	}
+	if err := s.EraseOwner(ctx, "u1"); err != nil {
+		t.Fatalf("a rerun must be harmless: %v", err)
+	}
+	_ = e
 }

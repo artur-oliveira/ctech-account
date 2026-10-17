@@ -469,6 +469,38 @@ func main() {
 	termsH.Register(account)
 	passkeyH.RegisterManagement(account, stepUp)
 	supportH.RegisterAccount(account)
+	// Built before the deletion block: the purge of a deleted account removes its
+	// export files and row too (the purger's owner data), so it needs this service.
+	var exportSvc *dataexport.Service
+	if cfg.ExportsBucket != "" && emailCli != nil {
+		exportStore, err := storage.NewS3(ctx, cfg.AWSRegion, cfg.ExportsBucket)
+		if err != nil {
+			log.Fatalf("initializing export storage: %v", err)
+		}
+		exportSvc = dataexport.NewService(
+			dataexport.NewRepository(db, cfg.TablePrefix), exportStore,
+			dataexport.NewZipBuilder(dataexport.AccountSections(dataexport.Sources{
+				Users: userSvc, Sessions: sessionSvc, Keys: apiKeySvc, Consents: consentSvc, Audit: auditSvc})...),
+			dataexport.UserContacts{Users: userSvc}, emailCli, dataexport.AuditRecorder{Audit: auditSvc})
+		// Participants are asked over the erasure topic (routed by its "services"
+		// attribute); only those marked "export" in ERASURE_PARTICIPANTS are asked.
+		if services := cfg.ExportServices(); len(services) > 0 {
+			if cfg.ErasureTopicARN == "" {
+				log.Fatal("ERASURE_PARTICIPANTS has export participants but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+			}
+			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
+			if awsErr != nil {
+				log.Fatalf("loading AWS config for SNS: %v", awsErr)
+			}
+			exportSvc = exportSvc.WithParticipants(services,
+				erasurepub.ExportPublisher{SNS: erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)})
+		}
+		exportH := handler.NewDataExportHandler(exportSvc, userSvc)
+		exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
+		exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient)
+	} else {
+		log.Println("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
+	}
 	if cfg.AccountDeletionEnabled {
 		if emailCli == nil {
 			log.Fatal("ACCOUNT_DELETION_ENABLED requires the e-mail client (FROM_EMAIL / SES)")
@@ -536,7 +568,8 @@ func main() {
 				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),
 					kycDocs, userSvc).
-				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix))).
+				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix)).
+				WithOwnerData(exportEraser(exportSvc)...)).
 			WithParticipants(cfg.ErasureServiceNames())
 		// A person who left a product tells it they are back on their next sign-in
 		// through one of its login clients (service unlink, spec § 7).
@@ -554,35 +587,6 @@ func main() {
 			}
 			return valkeyClient.SetNX(ctx, workerLockKey, "1", deletion.WorkerInterval-5*time.Second)
 		}, deletion.WorkerInterval)
-	}
-	if cfg.ExportsBucket != "" && emailCli != nil {
-		exportStore, err := storage.NewS3(ctx, cfg.AWSRegion, cfg.ExportsBucket)
-		if err != nil {
-			log.Fatalf("initializing export storage: %v", err)
-		}
-		exportSvc := dataexport.NewService(
-			dataexport.NewRepository(db, cfg.TablePrefix), exportStore,
-			dataexport.NewZipBuilder(dataexport.AccountSections(dataexport.Sources{
-				Users: userSvc, Sessions: sessionSvc, Keys: apiKeySvc, Consents: consentSvc, Audit: auditSvc})...),
-			dataexport.UserContacts{Users: userSvc}, emailCli, dataexport.AuditRecorder{Audit: auditSvc})
-		// Participants are asked over the erasure topic (routed by its "services"
-		// attribute); only those marked "export" in ERASURE_PARTICIPANTS are asked.
-		if services := cfg.ExportServices(); len(services) > 0 {
-			if cfg.ErasureTopicARN == "" {
-				log.Fatal("ERASURE_PARTICIPANTS has export participants but ACCOUNT_ERASURE_TOPIC_ARN is empty")
-			}
-			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
-			if awsErr != nil {
-				log.Fatalf("loading AWS config for SNS: %v", awsErr)
-			}
-			exportSvc = exportSvc.WithParticipants(services,
-				erasurepub.ExportPublisher{SNS: erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)})
-		}
-		exportH := handler.NewDataExportHandler(exportSvc, userSvc)
-		exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
-		exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient)
-	} else {
-		log.Println("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
 	}
 	adminAuth := []fiber.Handler{
 		middleware.RequireAuth(jwtSvc),
@@ -638,4 +642,12 @@ func main() {
 		log.Printf("shutdown error: %v", err)
 	}
 	log.Println("server stopped")
+}
+
+// exportEraser is the export's part of a purge, or nothing when the export is off.
+func exportEraser(svc *dataexport.Service) []deletion.OwnerEraser {
+	if svc == nil {
+		return nil
+	}
+	return []deletion.OwnerEraser{svc}
 }

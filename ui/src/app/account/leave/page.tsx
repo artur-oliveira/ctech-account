@@ -90,6 +90,13 @@ function LeaveProduct() {
         <p className="text-muted-foreground text-sm mt-1">{t('deletion.leave.subtitle', {product})}</p>
       </div>
 
+      <Alert>
+        <AlertDescription>
+          {t('deletion.exportHint')}{' '}
+          <a href="/account/export" className="underline underline-offset-4">{t('deletion.exportLink')}</a>
+        </AlertDescription>
+      </Alert>
+
       {request.data && (
         <Alert><AlertDescription>{t('deletion.checkEmail', {date: formatDate(request.data.confirm_by ?? '')})}</AlertDescription></Alert>
       )}

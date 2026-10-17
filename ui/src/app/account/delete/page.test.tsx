@@ -37,6 +37,12 @@ describe('DeleteAccountPage', () => {
     expect(await screen.findByText(/We sent a confirmation link/i)).toBeInTheDocument()
   })
 
+  it('offers a copy of the data before deleting', async () => {
+    renderPage()
+    const link = await screen.findByRole('link', {name: 'Download my data'})
+    expect(link).toHaveAttribute('href', '/account/export')
+  })
+
   it('keeps the button disabled until the phrase matches', async () => {
     const user = userEvent.setup()
     renderPage()

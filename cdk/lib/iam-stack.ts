@@ -113,6 +113,13 @@ export class IAMStack extends cdk.Stack {
       actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
       resources: [`${exportsBucketArn}/exports/*`],
     }));
+    // The purge of a deleted account lists its prefix to remove every export file,
+    // including a part a participant uploaded late.
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [exportsBucketArn],
+      conditions: {StringLike: {'s3:prefix': 'exports/*'}},
+    }));
     // EC2 — update-realip.sh reads the AWS-managed CloudFront origin-facing
     // prefix list. Both actions are read-only and do not support resource-level
     // permissions, so Resource must be *.

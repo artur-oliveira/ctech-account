@@ -1171,7 +1171,9 @@
         "tooLate": "Já não é possível cancelar.",
         "invalid": "Este link é inválido ou expirou."
       }
-    }
+    },
+    "exportHint": "Quer uma cópia dos seus dados antes? Você pode baixar agora; depois que for concluído, não será mais possível.",
+    "exportLink": "Baixar meus dados"
   },
   "dataExport": {
     "title": "Meus dados",

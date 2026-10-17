@@ -605,6 +605,10 @@ JSON `erasure-participants`; (3) subscribe its SQS queue to the topic with Filte
 `{"services":["<name>"]}`; (4) deploy the participant with its eligibility endpoint and consumer first,
 because a participant listed here but not live makes every deletion request answer `503`.
 
+When an account is purged, its personal-data export goes with it: the purge lists `exports/{sub}/` in the exports bucket and
+deletes every file, then deletes the `{env}_account_data_exports` row (`dataexport.Service.EraseOwner`, an `OwnerEraser` run
+just before the tombstone). The app role needs `s3:ListBucket` on the exports bucket for the `exports/` prefix (CDK `IAMStack`).
+
 Operator steps to enable a participant in the **personal-data export** (spec `docs/specs/2026-10-17-data-export.md`):
 (1) the service must already run `api-commons/dataexport` (`Handler.Handle` plugged into its erasure consumer with
 `WithExporter`); (2) grant its existing erasure-ack client `internal:account:export-ack`
