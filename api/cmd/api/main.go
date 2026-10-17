@@ -565,8 +565,22 @@ func main() {
 			dataexport.NewZipBuilder(dataexport.AccountSections(dataexport.Sources{
 				Users: userSvc, Sessions: sessionSvc, Keys: apiKeySvc, Consents: consentSvc, Audit: auditSvc})...),
 			dataexport.UserContacts{Users: userSvc}, emailCli, dataexport.AuditRecorder{Audit: auditSvc})
-		handler.NewDataExportHandler(exportSvc, userSvc).Register(account,
-			middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
+		// Participants are asked over the erasure topic (routed by its "services"
+		// attribute); only those marked "export" in ERASURE_PARTICIPANTS are asked.
+		if services := cfg.ExportServices(); len(services) > 0 {
+			if cfg.ErasureTopicARN == "" {
+				log.Fatal("ERASURE_PARTICIPANTS has export participants but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+			}
+			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
+			if awsErr != nil {
+				log.Fatalf("loading AWS config for SNS: %v", awsErr)
+			}
+			exportSvc = exportSvc.WithParticipants(services,
+				erasurepub.ExportPublisher{SNS: erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)})
+		}
+		exportH := handler.NewDataExportHandler(exportSvc, userSvc)
+		exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
+		exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient)
 	} else {
 		log.Println("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
 	}

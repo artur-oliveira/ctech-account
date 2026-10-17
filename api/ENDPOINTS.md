@@ -370,6 +370,13 @@ Spec: `docs/specs/2026-10-17-data-export.md`. Self client only (`RequireClientID
   is reported `failed`; a ready export past 7 days is `expired` and its files are deleted. `404` when
   the person never asked.
 - `DELETE /v1.0/account/export` → deletes the files; the record stays as an `expired` tombstone so it does not reset the 24 h limit. `204`.
+- `POST /v1.0/internal/export/ack` *(`internal:account:export-ack`; the caller's `azp` must be an erasure participant)* →
+  `{ request_id, sub, service, result: done|failed, size?, at }`. `done` is checked against the bucket (size comes from
+  S3, `409` if the object is missing so the participant uploads again). `204`; a stale ack (export replaced, expired or
+  discarded) is also `204` so the participant stops retrying; `403` for a service that was not asked.
+Participants are asked over the erasure topic (`user.export`, presigned PUT url, no personal data) only when marked
+`"export": true` in `ERASURE_PARTICIPANTS`. `parts[].status` is `building|dispatched|ready|failed`; the export is
+`ready` once the account part is, and the rest of the parts join as they answer.
 Step 1 builds only this service's part (`account.zip`: profile, sessions, api-keys, consents, activity
 as JSON plus `README.txt`; no hashes, secrets or KYC object keys). Other products join later.
 

@@ -22,6 +22,26 @@ const (
 	LinkTTL = 15 * time.Minute
 	// AccountService names ctech-account's own part.
 	AccountService = "account"
+	// PutTTL is how long a participant's presigned upload URL lives.
+	PutTTL = 15 * time.Minute
+	// RedispatchAfter is the silence after which a participant's request is
+	// published again with a fresh URL (a queue outage, a dead URL).
+	RedispatchAfter = 20 * time.Minute
+	// MaxAttempts bounds the republishing of one part.
+	MaxAttempts = 6
+	// PartDeadline is how long a participant may stay silent before its part is
+	// shown as failed (E8): the rest of the export stays downloadable and the
+	// person can ask again.
+	PartDeadline = 24 * time.Hour
+)
+
+// Part statuses. The account's own part is building then ready or failed; a
+// participant's is dispatched then ready or failed.
+const (
+	PartBuilding   = "building"
+	PartDispatched = "dispatched"
+	PartReady      = "ready"
+	PartFailed     = "failed"
 )
 
 type State string
@@ -42,14 +62,22 @@ var (
 	ErrNotReady = errors.New("dataexport: the export is not ready")
 	// ErrLocked: a locked (deletion pending) or purged account has no export (E7).
 	ErrLocked = errors.New("dataexport: the account is not active")
+	// ErrStale: the export an ack or update refers to was replaced or is gone.
+	ErrStale = errors.New("dataexport: the export was replaced")
+	// ErrNotUploaded: an ack for a part whose object is not in the bucket.
+	ErrNotUploaded = errors.New("dataexport: the part was not uploaded")
+	// ErrUnknownPart: an ack from a service that was not asked.
+	ErrUnknownPart = errors.New("dataexport: no such part")
 )
 
 // Part is one product's file of the export.
 type Part struct {
-	Service string
-	Key     string // object key in the exports bucket
-	Size    int64
-	Status  string // building | ready | failed
+	Service      string
+	Key          string // object key in the exports bucket
+	Size         int64
+	Status       string // Part* above
+	DispatchedAt time.Time
+	Attempts     int
 }
 
 // Export is a person's current export. One per person: a new request replaces it.
@@ -62,6 +90,27 @@ type Export struct {
 	ExpiresAt   time.Time
 	Parts       []Part
 	Error       string // a short reason when failed, never personal data
+	Notified    bool   // the "ready" e-mail went out
+}
+
+// Part returns the part of service, if any.
+func (e *Export) Part(service string) (*Part, bool) {
+	for i := range e.Parts {
+		if e.Parts[i].Service == service {
+			return &e.Parts[i], true
+		}
+	}
+	return nil, false
+}
+
+// Pending reports whether any part is still being produced.
+func (e *Export) Pending() bool {
+	for _, p := range e.Parts {
+		if p.Status == PartBuilding || p.Status == PartDispatched {
+			return true
+		}
+	}
+	return false
 }
 
 // ReadyUntil is when a ready export stops being offered.

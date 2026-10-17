@@ -166,6 +166,15 @@
       "status": "active"
     },
     {
+      "name": "internal:account:export-ack",
+      "descriptions": {
+        "en": "Report that a part of a personal-data export was uploaded.",
+        "pt-BR": "Informar que uma parte da exportação de dados pessoais foi enviada."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
       "name": "internal:account:erasure-ack",
       "descriptions": {
         "en": "Report the result of an account-deletion step.",

@@ -60,6 +60,10 @@ const InternalAccountKYC = "internal:account:kyc"
 // InternalAccountErasureAck lets a deletion-saga participant report its result.
 const InternalAccountErasureAck = "internal:account:erasure-ack"
 
+// InternalAccountExportAck lets a data-export participant report that its part
+// was uploaded (docs/specs/2026-10-17-data-export.md § 3).
+const InternalAccountExportAck = "internal:account:export-ack"
+
 // InternalAccountErasureSubject lets a participant read the CPF of a user being
 // purged, to match records keyed by CPF (dfe e-CPF certificates). Purging only.
 const InternalAccountErasureSubject = "internal:account:erasure-subject"

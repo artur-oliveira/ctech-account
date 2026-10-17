@@ -1198,7 +1198,13 @@
       "tooMany": "Muitas tentativas. Tente novamente mais tarde."
     },
     "services": {
-      "account": "Conta"
-    }
+      "account": "Conta",
+      "poker": "CTech Poker",
+      "billing": "CTech Billing",
+      "dfe": "CTech DF-e",
+      "wallet": "CTech Ledger"
+    },
+    "partPending": "{{service}}: ainda sendo preparado",
+    "partFailed": "{{service}}: não foi possível preparar. Peça uma nova cópia para tentar de novo."
   }
 }

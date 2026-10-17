@@ -1198,7 +1198,13 @@
       "tooMany": "Too many attempts. Try again later."
     },
     "services": {
-      "account": "Account"
-    }
+      "account": "Account",
+      "poker": "CTech Poker",
+      "billing": "CTech Billing",
+      "dfe": "CTech DF-e",
+      "wallet": "CTech Ledger"
+    },
+    "partPending": "{{service}}: still being prepared",
+    "partFailed": "{{service}}: could not be prepared. Ask for a new copy to try again."
   }
 }

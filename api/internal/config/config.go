@@ -382,6 +382,11 @@ type ErasureParticipant struct {
 	// unlink, docs/specs/2026-10-17-service-unlink.md), because there is no
 	// sign-in to hang the "come back" trigger on.
 	LoginClients []string `json:"login_clients,omitempty"`
+	// Export marks a participant that builds its part of the personal-data
+	// export (docs/specs/2026-10-17-data-export.md). Off until the service has
+	// adopted api-commons/dataexport and its ack client holds
+	// internal:account:export-ack: account must not ask a service that cannot answer.
+	Export bool `json:"export,omitempty"`
 }
 
 func parseErasureParticipants() ([]ErasureParticipant, error) {
@@ -413,6 +418,17 @@ func (c *Config) ErasureServiceNames() []string {
 	names := make([]string, 0, len(c.ErasureParticipants))
 	for _, p := range c.ErasureParticipants {
 		names = append(names, p.Service)
+	}
+	return names
+}
+
+// ExportServices are the participants asked for a part of the export.
+func (c *Config) ExportServices() []string {
+	var names []string
+	for _, p := range c.ErasureParticipants {
+		if p.Export {
+			names = append(names, p.Service)
+		}
 	}
 	return names
 }

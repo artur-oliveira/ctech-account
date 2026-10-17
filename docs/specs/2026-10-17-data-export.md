@@ -79,6 +79,14 @@ JSON per product plus a README, 1 export per 24 h (a failed one retries at once)
 account is locked or pending deletion. The `api-commons/dataexport` protocol and the product parts are
 still to do (step 2).
 
+Step 2 protocol (implemented): `api-commons/dataexport` v1.29.1 (`Message` `user.export`, `Handler`, `AckClient`) rides the
+**erasure topic and queues** (open question 2: reuse; the `services` attribute isolates each participant, and an
+export is published only to participants marked `"export": true`, so a service that has not adopted the package never
+receives one). `erasure.Consumer.WithExporter` is the hook. Account: parts as a map on the row, per-part conditional
+updates, `POST /v1.0/internal/export/ack`, lazy redispatch (20 min, 6 attempts) and failure after 24 h, the "ready" e-mail
+only when no part is pending. Participants never call account for anything but the ack; the part goes straight to S3.
+Participant parts: poker (done), billing, dfe, wallet (to do).
+
 ## 9. Open questions
 
 1. **Format:** JSON + CSV per product is proposed. Is a single standard schema across products wanted (more work, easier for the person), or per-product schemas with a README each?

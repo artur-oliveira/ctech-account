@@ -604,6 +604,15 @@ Operator steps to enable a participant: (1) create its confidential client and g
 JSON `erasure-participants`; (3) subscribe its SQS queue to the topic with FilterPolicy
 `{"services":["<name>"]}`; (4) deploy the participant with its eligibility endpoint and consumer first,
 because a participant listed here but not live makes every deletion request answer `503`.
+
+Operator steps to enable a participant in the **personal-data export** (spec `docs/specs/2026-10-17-data-export.md`):
+(1) the service must already run `api-commons/dataexport` (`Handler.Handle` plugged into its erasure consumer with
+`WithExporter`); (2) grant its existing erasure-ack client `internal:account:export-ack`
+(`createclient -grant`); (3) set `"export": true` on its entry in the SSM JSON `erasure-participants`. No new topic or
+queue: the request rides the erasure topic and the service's queue, routed by the same `services` filter. Until (3), the
+service is not asked and the export has only the account part. A participant that stays silent is asked again after
+20 minutes (up to 6 times, lazily while the person watches the export page) and shown as failed after 24 hours; the
+other parts stay downloadable.
 `ERASURE_PARTICIPANTS` issuer check: every participant's issuer URL must equal this API's `APP_URL`.
 
 Backup restore: after restoring any participant table from PITR, `Scan`
