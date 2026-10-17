@@ -19,6 +19,9 @@ const (
 	// ConfirmationPhrase must be typed verbatim by the user.
 	ConfirmationPhrase = "EXCLUIR MINHA CONTA"
 	ScopeAccount       = "account"
+	// ScopeService is leaving one product without closing the account
+	// (docs/specs/2026-10-17-service-unlink.md).
+	ScopeService = "service"
 )
 
 type State string
@@ -41,6 +44,9 @@ func (s State) Open() bool { return s != StateCancelled && s != StateExpired && 
 var (
 	ErrNotFound    = errors.New("deletion: request not found")
 	ErrOpenRequest = errors.New("deletion: user already has an open request")
+	// ErrUnknownService: the product is not a participant, or has no login
+	// client, so it cannot be left on its own.
+	ErrUnknownService = errors.New("deletion: unknown service")
 	// ErrEligibilityUnavailable: a participant could not be asked, so the
 	// assessment is unknown (never "eligible").
 	ErrEligibilityUnavailable = errors.New("deletion: eligibility could not be assessed")
@@ -63,6 +69,7 @@ type Request struct {
 	ID                string      `dynamodbav:"id"`
 	UserID            string      `dynamodbav:"user_id"`
 	Scope             string      `dynamodbav:"scope"`
+	Service           string      `dynamodbav:"service,omitempty"` // the product being left (scope service)
 	State             State       `dynamodbav:"request_state"`
 	ConfirmTokenHash  string      `dynamodbav:"confirm_token_hash,omitempty"`
 	CancelTokenHashes []string    `dynamodbav:"cancel_token_hashes,omitempty"` // one per e-mail that carried a cancel link

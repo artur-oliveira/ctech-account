@@ -75,6 +75,28 @@ type Service struct {
 	ownership    Ownership
 	purger       Purger
 	participants []string
+
+	// leavable and serviceElig serve scope service: which products exist, and
+	// what blocks leaving one of them.
+	leavable    func(name string) (ServiceTarget, bool)
+	serviceElig ServiceEligibility
+}
+
+// ServiceTarget is a product a person can leave on its own.
+type ServiceTarget struct {
+	Service      string
+	LoginClients []string
+}
+
+// ServiceEligibility asks one participant what blocks the person leaving it.
+type ServiceEligibility interface {
+	CheckService(ctx context.Context, userID, service string) ([]erasure.Blocker, error)
+}
+
+// WithServices enables scope service. leavable says which products can be left.
+func (s *Service) WithServices(leavable func(name string) (ServiceTarget, bool), e ServiceEligibility) *Service {
+	s.leavable, s.serviceElig = leavable, e
+	return s
 }
 
 func NewService(repo Repository, users Users, locker Locker, mail Mailer) *Service {
@@ -103,16 +125,38 @@ func (s *Service) WithParticipants(services []string) *Service {
 	return s
 }
 
-// Request opens a deletion request awaiting e-mail confirmation. An earlier
-// unconfirmed request is replaced, so a lost e-mail never blocks the user.
+// Request opens an account-deletion request awaiting e-mail confirmation. An
+// earlier unconfirmed request is replaced, so a lost e-mail never blocks the user.
 func (s *Service) Request(ctx context.Context, userID string) (*Request, error) {
+	return s.open(ctx, userID, ScopeAccount, "")
+}
+
+// RequestService opens a request to leave one product, with the same lifecycle.
+// Only that participant is asked, and no workspace is involved (spec U1, U2).
+func (s *Service) RequestService(ctx context.Context, userID, service string) (*Request, error) {
+	return s.open(ctx, userID, ScopeService, service)
+}
+
+func (s *Service) open(ctx context.Context, userID, scope, service string) (*Request, error) {
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if _, blockers, err := s.ownership.Assess(ctx, userID); err != nil {
+	var blockers []erasure.Blocker
+	if scope == ScopeService {
+		if s.leavable == nil || s.serviceElig == nil {
+			return nil, ErrUnknownService
+		}
+		if _, ok := s.leavable(service); !ok {
+			return nil, ErrUnknownService
+		}
+		if blockers, err = s.serviceElig.CheckService(ctx, userID, service); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrEligibilityUnavailable, err)
+		}
+	} else if _, blockers, err = s.ownership.Assess(ctx, userID); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrEligibilityUnavailable, err)
-	} else if len(blockers) > 0 {
+	}
+	if len(blockers) > 0 {
 		return nil, &BlockedError{Blockers: blockers}
 	}
 	raw, hash, err := s.newToken()
@@ -121,7 +165,7 @@ func (s *Service) Request(ctx context.Context, userID string) (*Request, error) 
 	}
 	now := s.now()
 	r := &Request{
-		ID: s.newID(), UserID: userID, Scope: ScopeAccount, State: StateAwaitingConfirmation,
+		ID: s.newID(), UserID: userID, Scope: scope, Service: service, State: StateAwaitingConfirmation,
 		ConfirmTokenHash: hash, RequestedAt: ts(now), ConfirmBy: ts(now.Add(ConfirmWindow)), UpdatedAt: ts(now),
 	}
 	r.PK, r.SK = BuildPK(r.ID), metaSK
