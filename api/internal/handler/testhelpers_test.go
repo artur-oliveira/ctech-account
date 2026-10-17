@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"gopkg.aoctech.app/account/api/internal/domain/deletion"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/erasure"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -243,7 +245,11 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	deletionMail := &fakeDeletionMailer{}
 	deletionSvc := deletion.NewService(newMemDeletionRepo(), userSvc,
 		deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), nil, nil),
-		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo))
+		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo)).
+		WithServices(func(name string) (deletion.ServiceTarget, bool) {
+			return deletion.ServiceTarget{Service: name, LoginClients: []string{name + "-web"}}, name == "poker"
+		}, fakeServiceEligibility{}).
+		WithServiceList(func() []string { return []string{"poker"} })
 	deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
 	deletionH.Register(account, v1.Group("/auth"),
 		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
@@ -673,6 +679,20 @@ func (m *memUserRepo) Create(_ context.Context, u *userDomain.User) error {
 	}
 	m.byID[u.ID()] = u
 	m.byEmail[u.Email] = u
+	return nil
+}
+
+func (m *memUserRepo) AddUnlinkedService(_ context.Context, userID, service string) error {
+	if u, ok := m.byID[userID]; ok && !slices.Contains(u.UnlinkedServices, service) {
+		u.UnlinkedServices = append(u.UnlinkedServices, service)
+	}
+	return nil
+}
+
+func (m *memUserRepo) RemoveUnlinkedService(_ context.Context, userID, service string) error {
+	if u, ok := m.byID[userID]; ok {
+		u.UnlinkedServices = slices.DeleteFunc(u.UnlinkedServices, func(s string) bool { return s == service })
+	}
 	return nil
 }
 
@@ -1204,23 +1224,27 @@ func (m *memDeletionRepo) ListDue(_ context.Context, st deletion.State, now time
 
 type fakeDeletionMailer struct{ confirmToken, cancelToken string }
 
-func (f *fakeDeletionMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token string) error {
+func (f *fakeDeletionMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token, _ string) error {
 	f.confirmToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string) error {
+func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string) error {
+func (f *fakeDeletionMailer) SendServiceUnlinkedEmail(context.Context, string, string, string) error {
+	return nil
+}
+
+func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string, string) error {
 	return nil
 }
 
@@ -1262,4 +1286,11 @@ func (m *memDeletionRepo) SaveService(_ context.Context, st *deletion.ServiceSta
 	}
 	m.services[k] = *st
 	return nil
+}
+
+// fakeServiceEligibility finds nothing blocking a service unlink.
+type fakeServiceEligibility struct{}
+
+func (fakeServiceEligibility) CheckService(context.Context, string, string) ([]erasure.Blocker, error) {
+	return nil, nil
 }

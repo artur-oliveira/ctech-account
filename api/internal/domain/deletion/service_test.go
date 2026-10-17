@@ -118,24 +118,25 @@ func (f *fakeLocker) Erase(_ context.Context, _ *Request, services []string) err
 }
 
 type fakeMailer struct {
+	unlinkedTo                          string
 	blocked                             int
 	confirmToken, cancelToken           string
 	reminders, cancelled                int
 	confirmErr, scheduledErr, remindErr error
 }
 
-func (f *fakeMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token string) error {
+func (f *fakeMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token, _ string) error {
 	f.confirmToken = token
 	return f.confirmErr
 }
-func (f *fakeMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	if f.scheduledErr != nil {
 		return f.scheduledErr
 	}
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	if f.remindErr != nil {
 		return f.remindErr
 	}
@@ -143,7 +144,11 @@ func (f *fakeMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeMailer) SendDeletionCancelledEmail(context.Context, string, string) error {
+func (f *fakeMailer) SendServiceUnlinkedEmail(_ context.Context, _, _, product string) error {
+	f.unlinkedTo = product
+	return nil
+}
+func (f *fakeMailer) SendDeletionCancelledEmail(context.Context, string, string, string) error {
 	f.cancelled++
 	return nil
 }
@@ -455,7 +460,7 @@ func TestApplyLock_CompensationFailureRetried(t *testing.T) {
 	}
 }
 
-func (f *fakeMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string) error {
+func (f *fakeMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string, _ string) error {
 	f.blocked++
 	f.cancelToken = token
 	return nil

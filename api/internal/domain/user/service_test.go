@@ -3,6 +3,7 @@ package user_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -128,6 +129,24 @@ func (m *mockRepo) ClearDeletionIfRequest(_ context.Context, userID, requestID s
 	return nil
 }
 
+func (m *mockRepo) AddUnlinkedService(_ context.Context, userID, service string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u, ok := m.byID[userID]; ok && !slices.Contains(u.UnlinkedServices, service) {
+		u.UnlinkedServices = append(u.UnlinkedServices, service)
+	}
+	return nil
+}
+
+func (m *mockRepo) RemoveUnlinkedService(_ context.Context, userID, service string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u, ok := m.byID[userID]; ok {
+		u.UnlinkedServices = slices.DeleteFunc(u.UnlinkedServices, func(s string) bool { return s == service })
+	}
+	return nil
+}
+
 func (m *mockRepo) Purge(_ context.Context, tomb *user.Tombstone, kyc *user.KYCRetention, markers []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -162,6 +181,13 @@ func (e *errRepo) Create(_ context.Context, _ *user.User) error {
 	return errors.New("db error")
 }
 func (e *errRepo) ClearDeletionIfRequest(_ context.Context, _, _ string) error {
+	return errors.New("db error")
+}
+
+func (e *errRepo) AddUnlinkedService(_ context.Context, _, _ string) error {
+	return errors.New("db error")
+}
+func (e *errRepo) RemoveUnlinkedService(_ context.Context, _, _ string) error {
 	return errors.New("db error")
 }
 
@@ -860,5 +886,38 @@ func TestPurge_RetainedDocumentsPointAtRetentionKeys(t *testing.T) {
 	docs := repo.kycRet[0].Record.KYCDocuments
 	if len(docs) != 1 || docs[0].Key != user.KYCRetentionDocKey(u.ID(), "d1") {
 		t.Fatalf("retained documents %+v", docs)
+	}
+}
+
+func TestAddUnlinkedServiceIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, _ := svc.Register(ctx, "unlink@example.com", "password123", "Ana", "Silva")
+	for range 2 {
+		if err := svc.AddUnlinkedService(ctx, u.ID(), "poker"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := svc.GetByID(ctx, u.ID())
+	if len(got.UnlinkedServices) != 1 || got.UnlinkedServices[0] != "poker" {
+		t.Fatalf("unlinked = %v, want [poker] once", got.UnlinkedServices)
+	}
+}
+
+func TestRemoveUnlinkedServiceKeepsTheOthers(t *testing.T) {
+	ctx := context.Background()
+	svc := user.NewService(newMockRepo())
+	u, _ := svc.Register(ctx, "unlink2@example.com", "password123", "Ana", "Silva")
+	_ = svc.AddUnlinkedService(ctx, u.ID(), "poker")
+	_ = svc.AddUnlinkedService(ctx, u.ID(), "dfe")
+	if err := svc.RemoveUnlinkedService(ctx, u.ID(), "poker"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveUnlinkedService(ctx, u.ID(), "poker"); err != nil { // already gone
+		t.Fatal(err)
+	}
+	got, _ := svc.GetByID(ctx, u.ID())
+	if len(got.UnlinkedServices) != 1 || got.UnlinkedServices[0] != "dfe" {
+		t.Fatalf("unlinked = %v, want [dfe]", got.UnlinkedServices)
 	}
 }

@@ -192,3 +192,26 @@ func TestErasureParticipants(t *testing.T) {
 		t.Fatal("a participant without url/audience/client_id must be rejected")
 	}
 }
+
+func TestParticipantsParseLoginClients(t *testing.T) {
+	t.Setenv("ERASURE_PARTICIPANTS", `[{"service":"poker","url":"https://p","audience":"https://poker.aoctech.app","client_id":"poker-ack","login_clients":["poker-web","poker-app"]}]`)
+	ps, err := parseErasureParticipants()
+	if err != nil || len(ps) != 1 || len(ps[0].LoginClients) != 2 || ps[0].LoginClients[0] != "poker-web" {
+		t.Fatalf("participants = %+v, %v", ps, err)
+	}
+}
+
+func TestLeavableServiceNeedsALoginClient(t *testing.T) {
+	c := &Config{ErasureParticipants: []ErasureParticipant{
+		{Service: "poker", LoginClients: []string{"poker-web"}},
+		{Service: "wallet"},
+	}}
+	if p, ok := c.LeavableService("poker"); !ok || p.Service != "poker" {
+		t.Fatalf("poker = %+v, %v; want leavable", p, ok)
+	}
+	for _, name := range []string{"wallet", "nope"} {
+		if _, ok := c.LeavableService(name); ok {
+			t.Errorf("%s must not be leavable (no login client, or unknown)", name)
+		}
+	}
+}

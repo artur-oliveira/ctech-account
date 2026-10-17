@@ -38,3 +38,27 @@ func TestEligibility_MergesBlockersAndFailsClosed(t *testing.T) {
 		t.Fatalf("an unreachable participant must be an error naming it, got %v", err)
 	}
 }
+
+func TestEligibility_CheckServiceAsksOnlyThatParticipantWithoutWorkspaces(t *testing.T) {
+	var uris []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uris = append(uris, r.Host+r.URL.RequestURI())
+		_, _ = w.Write([]byte(`{"eligible":false,"blockers":[{"code":"poker.seated_at_table"}]}`))
+	}))
+	defer srv.Close()
+	mint := func(aud, scope string) (string, error) { return "tok", nil }
+	e := NewEligibility(srv.Client(), []config.ErasureParticipant{
+		{Service: "wallet", URL: "http://127.0.0.1:1", Audience: "https://wallet", ClientID: "w"}, // unreachable: must not be called
+		{Service: "poker", URL: srv.URL, Audience: "https://poker", ClientID: "p"},
+	}, mint)
+	blockers, err := e.CheckService(context.Background(), "u1", "poker")
+	if err != nil || len(blockers) != 1 || blockers[0].Code != "poker.seated_at_table" {
+		t.Fatalf("blockers %+v err %v", blockers, err)
+	}
+	if len(uris) != 1 || strings.Contains(uris[0], "workspaces") {
+		t.Fatalf("calls = %v, want one call without workspaces", uris)
+	}
+	if _, err := e.CheckService(context.Background(), "u1", "nope"); err == nil {
+		t.Fatal("an unknown service must be an error, never eligible")
+	}
+}

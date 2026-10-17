@@ -135,3 +135,68 @@ func TestDeletion_RequestBlockedByOwnedOAuthClient(t *testing.T) {
 		t.Fatalf("status %d body %s, want 409 deletion-blocked with the blocker", resp.StatusCode, body)
 	}
 }
+
+func TestRequestingAServiceNeedsItsOwnPhrase(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "leave@example.com", "Sup3rSecret!", "Ana")
+	token := ta.issueToken(t, u.ID())
+	body := func(phrase string) map[string]string {
+		return map[string]string{"scope": "service", "service": "poker", "confirmation_phrase": phrase}
+	}
+
+	if resp := ta.doWithToken("POST", "/v1.0/account/deletion", body(deletionPhrase), token); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("the account phrase for a service request: %d, want 400", resp.StatusCode)
+	}
+	resp := ta.doWithToken("POST", "/v1.0/account/deletion", body("SAIR DO POKER"), token)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("service phrase: %d %s", resp.StatusCode, bodyString(resp))
+	}
+	status := ta.doWithToken("GET", "/v1.0/account/deletion", nil, token)
+	var got struct{ Scope, Service string }
+	readJSON(t, status, &got)
+	if got.Scope != "service" || got.Service != "poker" {
+		t.Fatalf("status = %+v", got)
+	}
+}
+
+func TestRequestingAnUnknownServiceIs422(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "leave2@example.com", "Sup3rSecret!", "Ana")
+	token := ta.issueToken(t, u.ID())
+	resp := ta.doWithToken("POST", "/v1.0/account/deletion",
+		map[string]string{"scope": "service", "service": "wallet", "confirmation_phrase": "SAIR DO WALLET"}, token)
+	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(bodyString(resp), "unknown-service") {
+		t.Fatalf("status %d, want 422 unknown-service", resp.StatusCode)
+	}
+	// service is required with scope service
+	resp = ta.doWithToken("POST", "/v1.0/account/deletion",
+		map[string]string{"scope": "service", "confirmation_phrase": "SAIR DO "}, token)
+	if resp.StatusCode != http.StatusUnprocessableEntity && resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a service request without a service: %d", resp.StatusCode)
+	}
+}
+
+func TestServicesListsOnlyLeavableProductsAndCanLeaveFollowsTheOpenRequest(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "leave3@example.com", "Sup3rSecret!", "Ana")
+	token := ta.issueToken(t, u.ID())
+	type option struct {
+		Service  string `json:"service"`
+		CanLeave bool   `json:"can_leave"`
+	}
+	list := func() []option {
+		var out []option
+		readJSON(t, ta.doWithToken("GET", "/v1.0/account/deletion/services", nil, token), &out)
+		return out
+	}
+	if got := list(); len(got) != 1 || got[0].Service != "poker" || !got[0].CanLeave {
+		t.Fatalf("services = %+v, want [{poker true}]", got)
+	}
+	if resp := ta.doWithToken("POST", "/v1.0/account/deletion",
+		map[string]string{"scope": "service", "service": "poker", "confirmation_phrase": "SAIR DO POKER"}, token); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("request: %d", resp.StatusCode)
+	}
+	if got := list(); len(got) != 1 || got[0].CanLeave {
+		t.Fatalf("services = %+v, want can_leave false while a request is open", got)
+	}
+}

@@ -34,6 +34,10 @@ type Repository interface {
 	// ClearDeletionIfRequest removes the deletion block only while it still
 	// belongs to requestID (conditional write); otherwise it is a no-op.
 	ClearDeletionIfRequest(ctx context.Context, userID, requestID string) error
+	// AddUnlinkedService and RemoveUnlinkedService change the unlinked_services
+	// set atomically. Both are idempotent.
+	AddUnlinkedService(ctx context.Context, userID, service string) error
+	RemoveUnlinkedService(ctx context.Context, userID, service string) error
 }
 
 type dynamoRepository struct {
@@ -146,6 +150,28 @@ func (r *dynamoRepository) ClearDeletionIfRequest(ctx context.Context, userID, r
 		map[string]types.AttributeValue{":rid": &types.AttributeValueMemberS{Value: requestID}},
 	)
 	return err // a failed condition means a newer request owns the block: nothing to do
+}
+
+func (r *dynamoRepository) changeUnlinked(ctx context.Context, userID, verb, service string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName:           aws.String(r.tableName),
+		Key:                 map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: BuildPK(userID)}},
+		UpdateExpression:    aws.String(verb + " unlinked_services :s SET updated_at = :now"),
+		ConditionExpression: aws.String("attribute_exists(pk)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":s":   &types.AttributeValueMemberSS{Value: []string{service}},
+			":now": &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
+		},
+	})
+	return err
+}
+
+func (r *dynamoRepository) AddUnlinkedService(ctx context.Context, userID, service string) error {
+	return r.changeUnlinked(ctx, userID, "ADD", service)
+}
+
+func (r *dynamoRepository) RemoveUnlinkedService(ctx context.Context, userID, service string) error {
+	return r.changeUnlinked(ctx, userID, "DELETE", service)
 }
 
 var ErrPurgeConflict = errors.New("user: purge refused, the deletion block belongs to another request")

@@ -34,3 +34,10 @@ Instances of abusive, harassing, or otherwise unacceptable behaviour may be repo
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
 
 Native OAuth clients use PKCE and exact registered reverse-domain callbacks. Never embed confidential client secrets in mobile binaries or grant first-party status through self-service registration.
+
+## Service unlink and the code exchange
+
+`POST /v1.0/token` (`authorization_code`) may answer `503` for a person who left a CTech product on their own and signs
+in to it again, when telling the product they are back (`user.relinked`) fails. No token is minted and nothing is
+cleared locally. Do not add a fallback that mints anyway: the product would still refuse the person. The check reads
+`unlinked_services` on the already loaded user, so it costs nothing for everyone else.

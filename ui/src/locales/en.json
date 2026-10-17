@@ -1132,6 +1132,44 @@
       "tooLate": "The period has ended and the deletion can no longer be cancelled.",
       "invalid": "This link is invalid."
     },
-    "goToLogin": "Go to sign in"
+    "goToLogin": "Go to sign in",
+    "services": {
+      "wallet": "CTech Ledger",
+      "billing": "CTech Billing",
+      "dfe": "CTech DF-e",
+      "poker": "CTech Poker"
+    },
+    "leave": {
+      "cardTitle": "Leave a CTech product",
+      "cardDesc": "Stop using one product and erase your data in it. Your CTech account and the other products keep working.",
+      "cardAction": "Leave",
+      "busy": "Another deletion request is in progress.",
+      "leaving": "Leaving {{product}} on {{date}}. Use the cancel link we e-mailed you to stay.",
+      "title": "Leave {{product}}",
+      "subtitle": "Your data in {{product}} is erased or anonymized, except what the law requires us to keep. Your CTech account and the other products are not affected.",
+      "steps": [
+        "When you confirm, your access to {{product}} is blocked right away.",
+        "You can cancel through the link in the e-mails for 7 days.",
+        "After that your data in {{product}} is erased or anonymized and this cannot be undone."
+      ],
+      "phraseLabel": "Type {{phrase}} to confirm",
+      "submit": "Leave {{product}}",
+      "unknown": "This product cannot be left on its own.",
+      "confirm": {
+        "title": "Confirm leaving {{product}}",
+        "description": "Access to {{product}} is blocked right away and your data there is erased in 7 days.",
+        "button": "Confirm",
+        "done": "Done. {{product}} is blocked for you now and your data there is erased on {{date}}. We e-mailed you a link to cancel until then. Your CTech account is untouched.",
+        "invalid": "This link is invalid or has expired. Start again in Profile › Leave a CTech product."
+      },
+      "cancel": {
+        "title": "Stay in {{product}}",
+        "description": "Cancel leaving {{product}} and keep your data.",
+        "button": "Stay in {{product}}",
+        "done": "Cancelled. You can use {{product}} again; sign in to it.",
+        "tooLate": "This can no longer be cancelled.",
+        "invalid": "This link is invalid or has expired."
+      }
+    }
   }
 }

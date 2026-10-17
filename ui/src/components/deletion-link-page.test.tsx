@@ -39,6 +39,19 @@ describe('DeletionLinkPage', () => {
     expect(await screen.findByText(/link is invalid/i)).toBeInTheDocument()
   })
 
+  it('a service link names the product and keeps the person signed in', async () => {
+    const clearAuth = vi.fn()
+    const user = userEvent.setup()
+    const {useAuthStore} = await import('@/store/auth')
+    vi.spyOn(useAuthStore, 'getState').mockReturnValue({clearAuth} as never)
+    const action = vi.fn().mockResolvedValue({request_id: 'r1', state: 'pending_deletion', grace_until: '2026-10-14T12:00:00Z', scope: 'service', service: 'poker'})
+    renderWithClient(<DeletionLinkPage kind="confirm" requestID="r1" token="t1" service="poker" action={action}/>)
+    expect(screen.getByRole('heading', {name: 'Confirm leaving CTech Poker'})).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: 'Confirm'}))
+    expect(await screen.findByText(/Your CTech account is untouched/i)).toBeInTheDocument()
+    expect(clearAuth).not.toHaveBeenCalled()
+  })
+
   it('shows the invalid message when the link lacks parameters', () => {
     renderWithClient(<DeletionLinkPage kind="confirm" requestID="" token="" action={vi.fn()}/>)
     expect(screen.queryByRole('button')).toBeNull()

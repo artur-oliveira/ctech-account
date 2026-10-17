@@ -40,6 +40,14 @@ Top-level:
   generic line naming the code) and the participant's `action_url` as "Resolve"; `503` means a CTech
   product could not be checked, try again. Every participant blocker code needs its line in both locales
   (billing's: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`).
+- `/account/leave?service=<id>` leaves one CTech product without closing the account (spec
+  `docs/specs/2026-10-17-service-unlink.md`): the same form as `/account/delete` with the product phrase
+  (`servicePhrase`: `SAIR DO POKER`), `POST /account/deletion {scope: "service", service}`, the participant's blockers and `422
+  unknown-service`. It is a query parameter, not a path segment, because the production build is a static export. The profile's
+  `LeaveProductsCard` lists `GET /account/deletion/services` and renders nothing while that list is empty (the feature is dark
+  until a participant has `login_clients`). Product names are `deletion.services.<id>` in both locales.
+- The e-mail-link pages take an optional `service` query parameter (added by the service e-mails): they use
+  `deletion.leave.{confirm,cancel}.*` and, on confirm, do **not** clear the auth store (leaving a product revokes no session).
 - `/account-deletion/confirm?request=&token=` and `/account-deletion/cancel?request=&token=` (public,
   opened from the e-mail links): both are `DeletionLinkPage` and **act only when the button is
   pressed** (a POST), never on load, so e-mail scanners that prefetch links cannot confirm or cancel

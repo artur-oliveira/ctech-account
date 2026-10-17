@@ -77,5 +77,7 @@ export const BILLING_PLAN_PATH = '/finance/plans'
 // Account deletion (docs/specs/2026-10-06-account-deletion-ctech-account.md).
 // The API compares the phrase exactly; it is shown verbatim in every language.
 export const DELETION_PHRASE = 'EXCLUIR MINHA CONTA'
+/** What the person types to leave one product; mirrors the API's deletion.ServicePhrase. */
+export const servicePhrase = (service: string) => `SAIR DO ${service.toUpperCase()}`
 export const DELETION_BLOCKED_PROBLEM = 'deletion-blocked'
 export const ACCOUNT_PENDING_DELETION_PROBLEM = 'account-pending-deletion'

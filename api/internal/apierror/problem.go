@@ -106,6 +106,12 @@ func InvalidRequest(detail, instance string) *Problem {
 	return newProblem("invalid-request", "Bad Request", http.StatusBadRequest, detail, instance)
 }
 
+// UnknownService → 422: the product named in a service unlink is not one a
+// person can leave on its own.
+func UnknownService(detail, instance string) *Problem {
+	return newProblem("unknown-service", "Unprocessable Entity", http.StatusUnprocessableEntity, detail, instance)
+}
+
 func ValidationFailed(detail, instance string) *Problem {
 	return newProblem("validation-failed", "Unprocessable Entity", http.StatusUnprocessableEntity, detail, instance)
 }

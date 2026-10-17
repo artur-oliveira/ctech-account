@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -72,6 +73,21 @@ type TokenHandler struct {
 	// clients derives whether a developer-page client is usable (owner
 	// active). It is the same rule GET /internal/oauth-clients reports.
 	clients *oauthclient.InternalService
+	// relinker tells a product the person left that they are back. Nil when
+	// service unlink is not configured.
+	relinker Relinker
+}
+
+// Relinker runs on a sign-in through clientID for a user who may have left a
+// product (service unlink, docs/specs/2026-10-17-service-unlink.md § 7).
+type Relinker interface {
+	Relink(ctx context.Context, u *user.User, clientID string) error
+}
+
+// WithRelinker enables the "come back" trigger in the code exchange.
+func (h *TokenHandler) WithRelinker(r Relinker) *TokenHandler {
+	h.relinker = r
+	return h
 }
 
 func NewTokenHandler(
@@ -335,6 +351,15 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		// not brute-force traffic. Don't burn the shared /token rate-limit budget.
 		middleware.SkipRateLimitCount(c)
 		return apierror.InvalidGrant("Session no longer exists.", c.Path()).WithCause(err).Send(c)
+	}
+
+	// A person who left this product signs in to it again: tell it before any
+	// token is minted. If that fails the sign-in fails (the product still refuses
+	// them) and the person simply signs in again.
+	if h.relinker != nil && len(u.UnlinkedServices) > 0 {
+		if err := h.relinker.Relink(c.Context(), u, clientID); err != nil {
+			return apierror.ServiceUnavailable("Could not reconnect this product to your account. Please try again.", c.Path()).WithCause(err).Send(c)
+		}
 	}
 
 	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycClaimFor(u, ac.Scopes))

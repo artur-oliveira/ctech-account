@@ -468,3 +468,15 @@ func (s *Service) Purge(ctx context.Context, userID, requestID string, cpfMAC fu
 	}
 	return s.repo.Purge(ctx, tomb, kyc, markers)
 }
+
+// AddUnlinkedService records that the person left a product on their own.
+// Idempotent.
+func (s *Service) AddUnlinkedService(ctx context.Context, userID, service string) error {
+	return s.repo.AddUnlinkedService(ctx, userID, service)
+}
+
+// RemoveUnlinkedService clears the record once the product was told the person
+// is back. Idempotent.
+func (s *Service) RemoveUnlinkedService(ctx context.Context, userID, service string) error {
+	return s.repo.RemoveUnlinkedService(ctx, userID, service)
+}

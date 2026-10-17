@@ -80,3 +80,20 @@ func (e *Eligibility) checkOne(ctx context.Context, p config.ErasureParticipant,
 	}
 	return el.Blockers, nil
 }
+
+// CheckService asks one participant what blocks the person leaving it on its
+// own (scope service). No workspaces are sent: a service unlink never touches
+// them. An unknown service is an error, never "eligible".
+func (e *Eligibility) CheckService(ctx context.Context, userID, service string) ([]erasure.Blocker, error) {
+	for _, p := range e.participants {
+		if p.Service != service {
+			continue
+		}
+		blockers, err := e.checkOne(ctx, p, userID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("eligibility of %s: %w", p.Service, err)
+		}
+		return blockers, nil
+	}
+	return nil, fmt.Errorf("eligibility: unknown service %q", service)
+}

@@ -23,9 +23,16 @@ func (f *fakeBlocker) ClearPendingDeletion(_ context.Context, _, rid string) err
 	return nil
 }
 
-type fakeSessions struct{ revokedAll int }
+type fakeSessions struct {
+	revokedAll int
+	clients    [][]string
+}
 
 func (f *fakeSessions) RevokeAll(context.Context, string, string) error { f.revokedAll++; return nil }
+func (f *fakeSessions) RevokeClients(_ context.Context, _ string, c []string, _ string) error {
+	f.clients = append(f.clients, c)
+	return nil
+}
 
 type fakeKeys struct {
 	keys    []*apikey.APIKey
@@ -146,5 +153,76 @@ func TestAccountLocker_EraseToSubset(t *testing.T) {
 	}
 	if len(pub.msgs) != 1 || len(pub.msgs[0].Services) != 1 || pub.msgs[0].Services[0] != "dfe" {
 		t.Fatalf("published %+v", pub.msgs)
+	}
+}
+
+func serviceLockedRequest() *Request {
+	r := lockedRequest()
+	r.Scope, r.Service = ScopeService, "poker"
+	return r
+}
+
+// Review Focus 1: leaving one product must not sign the person out of anything else.
+func TestServiceLockLeavesTheAccountAndOtherProductsAlone(t *testing.T) {
+	users, sessions, tokens, pub := &fakeBlocker{}, &fakeSessions{}, &fakeTokens{}, &fakePub{}
+	keys := &fakeKeys{keys: []*apikey.APIKey{
+		{PK: apikey.BuildPK("u1"), SK: apikey.BuildSK("poker-key"), Scopes: []string{"poker:tables:read"}},
+		{PK: apikey.BuildPK("u1"), SK: apikey.BuildSK("wallet-key"), Scopes: []string{"wallet:balance:read"}},
+		{PK: apikey.BuildPK("u1"), SK: apikey.BuildSK("mixed-key"), Scopes: []string{"wallet:balance:read", "internal:poker:x"}},
+	}}
+	l := NewAccountLocker(users, sessions, keys, tokens, pub, []string{"wallet", "poker"}).
+		WithServiceClients(func(s string) []string {
+			if s == "poker" {
+				return []string{"poker-web"}
+			}
+			return nil
+		}, sessions)
+
+	if err := l.Lock(context.Background(), serviceLockedRequest()); err != nil {
+		t.Fatal(err)
+	}
+
+	if users.marked != "" || sessions.revokedAll != 0 || tokens.revoked != 0 {
+		t.Fatalf("account touched: marked=%q revokedAll=%d jwtRevoked=%d", users.marked, sessions.revokedAll, tokens.revoked)
+	}
+	if len(sessions.clients) != 1 || len(sessions.clients[0]) != 1 || sessions.clients[0][0] != "poker-web" {
+		t.Fatalf("refresh tokens revoked for %v, want only poker-web", sessions.clients)
+	}
+	if len(keys.revoked) != 2 || keys.revoked[0] != "poker-key" || keys.revoked[1] != "mixed-key" {
+		t.Fatalf("api keys revoked = %v, want the ones holding a poker scope", keys.revoked)
+	}
+	if len(pub.msgs) != 1 {
+		t.Fatalf("published %d messages", len(pub.msgs))
+	}
+	m := pub.msgs[0]
+	if m.Type != erasure.TypeLocked || m.Scope != erasure.ScopeService || len(m.Services) != 1 || m.Services[0] != "poker" {
+		t.Fatalf("message = %+v, want locked / service / [poker]", m)
+	}
+}
+
+func TestServiceUnlockAndEraseAddressOnlyThatServiceWithNoWorkspaces(t *testing.T) {
+	users, sessions, pub := &fakeBlocker{}, &fakeSessions{}, &fakePub{}
+	l := NewAccountLocker(users, sessions, &fakeKeys{}, &fakeTokens{}, pub, []string{"wallet", "poker"})
+	r := serviceLockedRequest()
+	r.Organizations = []string{"org-1"} // must never leak into a service message
+	r.Workspaces = []Workspace{{ID: "org-1", Kind: "organization"}}
+
+	if err := l.Unlock(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Erase(context.Background(), r, nil); err != nil {
+		t.Fatal(err)
+	}
+	if users.cleared != "" {
+		t.Fatal("unlock must not clear a pending-deletion mark the request never set")
+	}
+	for _, m := range pub.msgs {
+		if m.Scope != erasure.ScopeService || len(m.Services) != 1 || m.Services[0] != "poker" ||
+			len(m.Organizations) != 0 || len(m.Workspaces) != 0 {
+			t.Fatalf("message = %+v, want service scope, [poker], no workspaces", m)
+		}
+	}
+	if len(pub.msgs) != 2 || pub.msgs[0].Type != erasure.TypeUnlocked || pub.msgs[1].Type != erasure.TypeErase {
+		t.Fatalf("messages = %+v", pub.msgs)
 	}
 }

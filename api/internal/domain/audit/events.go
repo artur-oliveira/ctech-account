@@ -59,4 +59,5 @@ const (
 	EventDeletionSupportCancelled = "account.deletion.support_cancelled"
 	EventDeletionRedriven         = "account.deletion.redriven"
 	EventDeletionSubjectRead      = "account.deletion.subject_read"
+	EventDeletionServiceUnlinked  = "account.deletion.service_unlinked"
 )

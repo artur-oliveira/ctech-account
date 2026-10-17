@@ -3,9 +3,11 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/apikey"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/jwtverify"
@@ -18,6 +20,12 @@ type UserBlocker interface {
 
 type SessionRevoker interface {
 	RevokeAll(ctx context.Context, userID, exceptSessionID string) error
+}
+
+// ClientTokenRevoker drops the refresh tokens of the given OAuth clients only
+// holding one of the product's scopes (service unlink); sessions stay.
+type ClientTokenRevoker interface {
+	RevokeClients(ctx context.Context, userID string, clientIDs []string, service string) error
 }
 
 type APIKeys interface {
@@ -45,6 +53,16 @@ type AccountLocker struct {
 	tokens   TokenRevoker
 	pub      Publisher
 	services []string
+	// serviceClients maps a product to the OAuth clients people sign in to it
+	// with (config.ErasureParticipant.LoginClients), for scope service.
+	serviceClients func(service string) []string
+	clientTokens   ClientTokenRevoker
+}
+
+// WithServiceClients enables scope service on the locker.
+func (l *AccountLocker) WithServiceClients(f func(service string) []string, tokens ClientTokenRevoker) *AccountLocker {
+	l.serviceClients, l.clientTokens = f, tokens
+	return l
 }
 
 func NewAccountLocker(users UserBlocker, sessions SessionRevoker, keys APIKeys, tokens TokenRevoker, pub Publisher, services []string) *AccountLocker {
@@ -52,6 +70,9 @@ func NewAccountLocker(users UserBlocker, sessions SessionRevoker, keys APIKeys, 
 }
 
 func (l *AccountLocker) Lock(ctx context.Context, r *Request) error {
+	if r.Scope == ScopeService {
+		return l.lockService(ctx, r)
+	}
 	if err := l.users.MarkPendingDeletion(ctx, r.UserID, r.ID); err != nil {
 		return fmt.Errorf("blocking sign-in: %w", err)
 	}
@@ -77,6 +98,12 @@ func (l *AccountLocker) Lock(ctx context.Context, r *Request) error {
 // revocation entry stay as they are: the user signs in again, and the entry
 // expires on its own (jwtverify.RevocationTTL).
 func (l *AccountLocker) Unlock(ctx context.Context, r *Request) error {
+	if r.Scope == ScopeService {
+		// Nothing was marked on the user, so there is nothing to clear: only the
+		// product's lock is lifted. Revoked refresh tokens stay revoked; the
+		// person signs in to the product again.
+		return l.publish(ctx, r, erasure.TypeUnlocked, parseTime(r.CancelledAt), nil, nil, nil)
+	}
 	if err := l.users.ClearPendingDeletion(ctx, r.UserID, r.ID); err != nil {
 		return fmt.Errorf("unblocking sign-in: %w", err)
 	}
@@ -90,6 +117,11 @@ func (l *AccountLocker) Erase(ctx context.Context, r *Request, services []string
 // publish uses the request's own timestamps as issued_at, so a retried
 // publish is a duplicate the participants ignore, never a newer event.
 func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Type, at time.Time, organizations []string, workspaces []Workspace, services []string) error {
+	scope := erasure.ScopeAccount
+	if r.Scope == ScopeService {
+		// One product, never a workspace (spec U1): whatever the request holds.
+		scope, services, organizations, workspaces = erasure.ScopeService, []string{r.Service}, nil, nil
+	}
 	if len(services) == 0 {
 		services = l.services
 	}
@@ -98,7 +130,7 @@ func (l *AccountLocker) publish(ctx context.Context, r *Request, typ erasure.Typ
 	}
 	return l.pub.Publish(ctx, erasure.Message{
 		Version: erasure.Version, Type: typ, RequestID: r.ID, Sub: r.UserID,
-		Scope: erasure.ScopeAccount, Services: services, Organizations: organizations, Workspaces: toErasureWorkspaces(workspaces),
+		Scope: scope, Services: services, Organizations: organizations, Workspaces: toErasureWorkspaces(workspaces),
 		Attempt: 1, IssuedAt: at,
 	})
 }
@@ -121,4 +153,29 @@ func toErasureWorkspaces(ws []Workspace) []erasure.Workspace {
 		out = append(out, erasure.Workspace{ID: w.ID, Kind: erasure.WorkspaceKind(w.Kind)})
 	}
 	return out
+}
+
+// lockService cuts one product: its refresh tokens and the API keys holding one
+// of its scopes, then the product's own lock. The account stays signed in and
+// the jwtverify revocation entry (keyed by sub alone) is never written.
+func (l *AccountLocker) lockService(ctx context.Context, r *Request) error {
+	if l.serviceClients == nil || l.clientTokens == nil {
+		return fmt.Errorf("deletion: scope service is not configured")
+	}
+	if err := l.clientTokens.RevokeClients(ctx, r.UserID, l.serviceClients(r.Service), r.Service); err != nil {
+		return fmt.Errorf("revoking product refresh tokens: %w", err)
+	}
+	keys, err := l.keys.List(ctx, r.UserID)
+	if err != nil {
+		return fmt.Errorf("listing api keys: %w", err)
+	}
+	for _, k := range keys {
+		if !slices.ContainsFunc(k.Scopes, func(sc string) bool { return scopes.BelongsToService(sc, r.Service) }) {
+			continue
+		}
+		if err := l.keys.Revoke(ctx, r.UserID, k.ID()); err != nil {
+			return fmt.Errorf("revoking api key: %w", err)
+		}
+	}
+	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil, nil)
 }

@@ -15,6 +15,7 @@ import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
 import { QueryError } from '@/components/query-error'
 import { DeleteAccountCard } from '@/components/delete-account-card'
+import { LeaveProductsCard } from '@/components/leave-products-card'
 
 function ProfileForm() {
   const { t } = useTranslation()
@@ -149,6 +150,7 @@ export default function ProfilePage() {
 
       <Separator />
 
+      <LeaveProductsCard />
       <DeleteAccountCard />
     </div>
   )

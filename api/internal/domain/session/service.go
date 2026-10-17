@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 	"slices"
 	"time"
 
@@ -301,6 +302,36 @@ func (s *Service) RevokeAll(ctx context.Context, userID, exceptSessionID string)
 		}
 		if err := s.Revoke(ctx, userID, sess.ID()); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// RevokeClients deletes the user's refresh tokens that give access to one
+// product, in every session: those issued to its login clients, and those of any
+// other client that holds one of the product's scopes. The sessions themselves
+// stay, so the person is not signed out of anything else (service unlink,
+// docs/specs/2026-10-17-service-unlink.md U4).
+func (s *Service) RevokeClients(ctx context.Context, userID string, clientIDs []string, service string) error {
+	if len(clientIDs) == 0 && service == "" {
+		return nil
+	}
+	sessions, err := s.repo.ListByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, sess := range sessions {
+		tokens, err := s.repo.ListRefreshTokensBySession(ctx, userID, sess.ID())
+		if err != nil {
+			return fmt.Errorf("listing session refresh tokens: %w", err)
+		}
+		for _, t := range tokens {
+			if !slices.Contains(clientIDs, t.ClientID) && !slices.ContainsFunc(t.Scopes, func(sc string) bool { return scopes.BelongsToService(sc, service) }) {
+				continue
+			}
+			if err := s.repo.DeleteRefreshToken(ctx, userID, t.SessionID, t.ClientID); err != nil {
+				return fmt.Errorf("deleting client refresh token: %w", err)
+			}
 		}
 	}
 	return nil

@@ -373,6 +373,11 @@ type ErasureParticipant struct {
 	URL      string `json:"url"`       // base URL of the service's API
 	Audience string `json:"audience"`  // aud of the token account mints for it
 	ClientID string `json:"client_id"` // its confidential client; acks are matched on azp
+	// LoginClients are the OAuth clients people sign in to this product with.
+	// Optional: a participant without any cannot be left on its own (service
+	// unlink, docs/specs/2026-10-17-service-unlink.md), because there is no
+	// sign-in to hang the "come back" trigger on.
+	LoginClients []string `json:"login_clients,omitempty"`
 }
 
 func parseErasureParticipants() ([]ErasureParticipant, error) {
@@ -407,4 +412,15 @@ func (c *Config) ErasureServiceForClient(clientID string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// LeavableService is the participant a person may leave on its own: it must
+// exist and have at least one login client.
+func (c *Config) LeavableService(name string) (ErasureParticipant, bool) {
+	for _, p := range c.ErasureParticipants {
+		if p.Service == name && len(p.LoginClients) > 0 {
+			return p, true
+		}
+	}
+	return ErasureParticipant{}, false
 }
