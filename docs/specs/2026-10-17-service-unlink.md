@@ -167,6 +167,6 @@ sentence before the UI ships.
 
 ## 13. Open questions
 
-- **Wallet and the Asaas sub-account:** may `wallet` be left while the person's CPF keeps its Asaas sub-account? It
+- **Resolved 2026-10-17: wallet and the Asaas sub-account.** Asaas no longer exists (the integration was rejected), so there is nothing to close and wallet is leavable like the others. Original question: may `wallet` be left while the person's CPF keeps its Asaas sub-account? It
   needs a ruling from the wallet owner. Until then `wallet` has no `login_clients` in any environment, so its card
   never appears (§ 5.2). The other three products do not depend on it.
