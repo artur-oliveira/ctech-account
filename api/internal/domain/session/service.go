@@ -305,3 +305,32 @@ func (s *Service) RevokeAll(ctx context.Context, userID, exceptSessionID string)
 	}
 	return nil
 }
+
+// RevokeClients deletes the user's refresh tokens issued to the given OAuth
+// clients, in every session. The sessions themselves stay, so the person is not
+// signed out of anything else (service unlink,
+// docs/specs/2026-10-17-service-unlink.md U4).
+func (s *Service) RevokeClients(ctx context.Context, userID string, clientIDs []string) error {
+	if len(clientIDs) == 0 {
+		return nil
+	}
+	sessions, err := s.repo.ListByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, sess := range sessions {
+		tokens, err := s.repo.ListRefreshTokensBySession(ctx, userID, sess.ID())
+		if err != nil {
+			return fmt.Errorf("listing session refresh tokens: %w", err)
+		}
+		for _, t := range tokens {
+			if !slices.Contains(clientIDs, t.ClientID) {
+				continue
+			}
+			if err := s.repo.DeleteRefreshToken(ctx, userID, t.SessionID, t.ClientID); err != nil {
+				return fmt.Errorf("deleting client refresh token: %w", err)
+			}
+		}
+	}
+	return nil
+}

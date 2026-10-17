@@ -522,3 +522,35 @@ func TestHasSeenDeviceFalseWhenOnlyCountryMatches(t *testing.T) {
 		t.Error("expected false: same country but different device never seen before")
 	}
 }
+
+func TestRevokeClientsDeletesOnlyThoseClientsRefreshTokens(t *testing.T) {
+	ctx := context.Background()
+	repo := newMockRepo()
+	svc := session.NewService(repo)
+	s1, _, _ := svc.Create(ctx, "user9", "Chrome", "1.2.3.4", "UA", nil, session.GeoData{})
+	s2, _, _ := svc.Create(ctx, "user9", "Firefox", "1.2.3.4", "UA", nil, session.GeoData{})
+	for _, sess := range []*session.Session{s1, s2} {
+		for _, client := range []string{"poker-web", "wallet-web"} {
+			if _, err := svc.IssueClientToken(ctx, "user9", sess.ID(), client, []string{"openid"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	if err := svc.RevokeClients(ctx, "user9", []string{"poker-web"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if sessions, _ := svc.List(ctx, "user9"); len(sessions) != 2 {
+		t.Fatalf("sessions = %d, want both kept: only the product's tokens go", len(sessions))
+	}
+	for _, sess := range []*session.Session{s1, s2} {
+		if err := svc.RevokeClients(ctx, "user9", nil); err != nil { // empty set is a no-op
+			t.Fatal(err)
+		}
+		left, _ := repo.ListRefreshTokensBySession(ctx, "user9", sess.ID())
+		if len(left) != 1 || left[0].ClientID != "wallet-web" {
+			t.Fatalf("session %s tokens = %+v, want only wallet-web", sess.ID(), left)
+		}
+	}
+}
