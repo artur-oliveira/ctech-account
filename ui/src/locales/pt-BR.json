@@ -1131,6 +1131,44 @@
       "tooLate": "O prazo terminou e a exclusão não pode mais ser cancelada.",
       "invalid": "Este link é inválido."
     },
-    "goToLogin": "Ir para o login"
+    "goToLogin": "Ir para o login",
+    "services": {
+      "wallet": "CTech Ledger",
+      "billing": "CTech Billing",
+      "dfe": "CTech DF-e",
+      "poker": "CTech Poker"
+    },
+    "leave": {
+      "cardTitle": "Sair de um produto CTech",
+      "cardDesc": "Deixe de usar um produto e apague seus dados nele. Sua conta CTech e os outros produtos continuam funcionando.",
+      "cardAction": "Sair",
+      "busy": "Há outro pedido de exclusão em andamento.",
+      "leaving": "Saindo do {{product}} em {{date}}. Use o link de cancelamento enviado ao seu e-mail para ficar.",
+      "title": "Sair do {{product}}",
+      "subtitle": "Seus dados no {{product}} são apagados ou anonimizados, salvo o que a lei exige guardar. Sua conta CTech e os outros produtos não são afetados.",
+      "steps": [
+        "Ao confirmar, seu acesso ao {{product}} é bloqueado na hora.",
+        "Você pode cancelar pelo link dos e-mails durante 7 dias.",
+        "Depois disso seus dados no {{product}} são apagados ou anonimizados e não há como desfazer."
+      ],
+      "phraseLabel": "Digite {{phrase}} para confirmar",
+      "submit": "Sair do {{product}}",
+      "unknown": "Este produto não pode ser deixado separadamente.",
+      "confirm": {
+        "title": "Confirmar saída do {{product}}",
+        "description": "O acesso ao {{product}} é bloqueado na hora e seus dados lá são apagados em 7 dias.",
+        "button": "Confirmar",
+        "done": "Pronto. O {{product}} está bloqueado para você e seus dados lá serão apagados em {{date}}. Enviamos para o seu e-mail um link para cancelar até lá. Sua conta CTech não foi afetada.",
+        "invalid": "Este link é inválido ou expirou. Comece de novo em Perfil › Sair de um produto CTech."
+      },
+      "cancel": {
+        "title": "Ficar no {{product}}",
+        "description": "Cancele a saída do {{product}} e mantenha seus dados.",
+        "button": "Ficar no {{product}}",
+        "done": "Cancelado. Você pode usar o {{product}} de novo; entre nele.",
+        "tooLate": "Já não é possível cancelar.",
+        "invalid": "Este link é inválido ou expirou."
+      }
+    }
   }
 }

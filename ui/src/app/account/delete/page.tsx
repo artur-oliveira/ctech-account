@@ -71,7 +71,8 @@ export default function DeleteAccountPage() {
           : status === 503 ? t('deletion.errors.unavailable')
             : t('errors.network')
     : ''
-  const sent = request.data ?? (current.data?.state === 'awaiting_confirmation' ? current.data : null)
+  // A pending request to leave one product is shown by the profile's "Leave a CTech product" card, not here.
+  const sent = request.data ?? (current.data?.state === 'awaiting_confirmation' && current.data.scope !== 'service' ? current.data : null)
 
   return (
     <div className="space-y-6">

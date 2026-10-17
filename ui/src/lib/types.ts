@@ -421,7 +421,12 @@ export type DeletionRequest = {
   confirm_by?: string
   grace_until?: string
   legal_hold?: boolean
+  scope?: 'account' | 'service'
+  service?: string
 }
+
+/** A product the person may leave on its own (GET /account/deletion/services). */
+export type LeavableService = { service: string; can_leave: boolean }
 
 export type DeletionBlocker = {
   code: string

@@ -1,6 +1,6 @@
 import { api, cnpjaApi, isAxiosError } from './axios'
 import {TAX_ID_CNPJ_LENGTH} from '@/lib/constants'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest, LeavableService } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -213,4 +213,9 @@ export async function fetchDeletionRequest(): Promise<DeletionRequest | null> {
     if (isAxiosError(err) && err.response?.status === 404) return null
     throw err
   }
+}
+
+export async function fetchLeavableServices(): Promise<LeavableService[]> {
+  const { data } = await api.get<LeavableService[]>('/v1.0/account/deletion/services')
+  return data
 }

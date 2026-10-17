@@ -7,7 +7,7 @@ import {confirmDeletionAPI} from '@/lib/mutations'
 
 function ConfirmFromLink() {
   const params = useSearchParams()
-  return <DeletionLinkPage kind="confirm" requestID={params.get('request') ?? ''} token={params.get('token') ?? ''} action={confirmDeletionAPI}/>
+  return <DeletionLinkPage kind="confirm" requestID={params.get('request') ?? ''} token={params.get('token') ?? ''} service={params.get('service') ?? undefined} action={confirmDeletionAPI}/>
 }
 
 export default function ConfirmDeletionPage() {

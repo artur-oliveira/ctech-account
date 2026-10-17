@@ -7,7 +7,7 @@ import {cancelDeletionAPI} from '@/lib/mutations'
 
 function CancelFromLink() {
   const params = useSearchParams()
-  return <DeletionLinkPage kind="cancel" requestID={params.get('request') ?? ''} token={params.get('token') ?? ''} action={cancelDeletionAPI}/>
+  return <DeletionLinkPage kind="cancel" requestID={params.get('request') ?? ''} token={params.get('token') ?? ''} service={params.get('service') ?? undefined} action={cancelDeletionAPI}/>
 }
 
 export default function CancelDeletionPage() {

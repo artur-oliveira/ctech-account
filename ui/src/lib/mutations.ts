@@ -398,6 +398,13 @@ export async function requestDeletionAPI(confirmationPhrase: string, password?: 
   return data
 }
 
+export async function requestServiceUnlinkAPI(service: string, confirmationPhrase: string, password?: string): Promise<DeletionRequest> {
+  const body: Record<string, string> = { scope: 'service', service, confirmation_phrase: confirmationPhrase }
+  if (password) body.password = password
+  const { data } = await api.post<DeletionRequest>('/v1.0/account/deletion', body)
+  return data
+}
+
 export async function confirmDeletionAPI(requestID: string, token: string): Promise<DeletionRequest> {
   const { data } = await api.post<DeletionRequest>('/v1.0/auth/deletion/confirm', { request_id: requestID, token })
   return data
