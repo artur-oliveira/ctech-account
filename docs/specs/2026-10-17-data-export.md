@@ -85,7 +85,7 @@ export is published only to participants marked `"export": true`, so a service t
 receives one). `erasure.Consumer.WithExporter` is the hook. Account: parts as a map on the row, per-part conditional
 updates, `POST /v1.0/internal/export/ack`, lazy redispatch (20 min, 6 attempts) and failure after 24 h, the "ready" e-mail
 only when no part is pending. Participants never call account for anything but the ack; the part goes straight to S3.
-Participant parts: poker (done), billing, dfe, wallet (to do).
+Participant parts: poker (done), billing (done: the person as a CTech customer plus their personal finance space; workspaces and merchants' customers are out), dfe, wallet (to do).
 
 ## 9. Open questions
 
