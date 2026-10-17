@@ -67,7 +67,7 @@ purge), so a new table cannot be added without choosing.
 
 1. `api-commons/dataexport` + account request/status + the account part, with **no services subscribed** (proves request → part → download for the account alone).
 2. Participants one at a time: poker → billing → dfe → wallet (simplest to hardest), each as its own plan.
-3. The deletion and leave-a-product screens link to the export once at least the account part exists.
+3. The deletion and leave-a-product screens link to the export once at least the account part exists (done: `/account/export`).
 
 ## 8.1 Status
 
@@ -104,5 +104,6 @@ Participant parts: poker (done), billing (done: the person as a CTech customer p
   events. If this proves too weak, add an e-mail confirmation before the build (not before links).
 - **Discard** keeps the row as an `expired` tombstone so request → discard → request cannot bypass the
   24 h limit.
-- **Gap:** the account purge does not yet delete the export row/files (files expire by bucket
-  lifecycle within 8 days). Add it to the purger in step 2.
+- **Purge (done):** the account purge removes the person's export files (listing `exports/{sub}/`, so a part uploaded late
+  goes too) and the row (`EraseOwner`, run before the tombstone). A participant upload that lands after the purge can still
+  orphan an object until the bucket lifecycle expires it (8 days); its ack is dropped as stale.

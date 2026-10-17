@@ -77,3 +77,29 @@ test('app role may write, read and delete data export objects only under exports
     },
   })
 })
+
+test('app role may list only the exports/ prefix of the exports bucket (purge of a deleted account)', () => {
+  const app = new cdk.App()
+  const env = {account: '868899309401', region: 'us-east-1'}
+  const tables = new DynamoDBStack(app, 'TestExportListTables', {env, environment: 'prod'}).tables
+  const stack = new IAMStack(app, 'TestExportListIAM', {
+    env,
+    environment: 'prod',
+    dynamoDBTables: tables,
+    deploymentsBucketArn: 'arn:aws:s3:::deployments',
+    logsBucketArn: 'arn:aws:s3:::logs',
+    kycDocumentsBucketArn: 'arn:aws:s3:::kyc',
+    exportsBucketArn: 'arn:aws:s3:::exports',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 's3:ListBucket',
+          Resource: 'arn:aws:s3:::exports',
+          Condition: {StringLike: {'s3:prefix': 'exports/*'}},
+        }),
+      ]),
+    },
+  })
+})

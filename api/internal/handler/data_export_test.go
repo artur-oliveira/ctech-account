@@ -27,8 +27,9 @@ func (memExportStore) PresignGet(_ context.Context, k string, _ time.Duration) (
 func (memExportStore) PresignPut(_ context.Context, k string, _ string, _ time.Duration) (string, error) {
 	return "https://exports.test/put/" + k, nil
 }
-func (memExportStore) Size(context.Context, string) (int64, error) { return 42, nil }
-func (memExportStore) DeleteObject(context.Context, string) error  { return nil }
+func (memExportStore) Size(context.Context, string) (int64, error)        { return 42, nil }
+func (memExportStore) ListKeys(context.Context, string) ([]string, error) { return nil, nil }
+func (memExportStore) DeleteObject(context.Context, string) error         { return nil }
 
 type recordingDispatcher struct{}
 

@@ -81,6 +81,13 @@ export default function DeleteAccountPage() {
         <p className="text-muted-foreground text-sm mt-1">{t('deletion.subtitle')}</p>
       </div>
 
+      <Alert>
+        <AlertDescription>
+          {t('deletion.exportHint')}{' '}
+          <a href="/account/export" className="underline underline-offset-4">{t('deletion.exportLink')}</a>
+        </AlertDescription>
+      </Alert>
+
       {current.data?.legal_hold && (
         <Alert><AlertDescription>{t('deletion.legalHold')}</AlertDescription></Alert>
       )}

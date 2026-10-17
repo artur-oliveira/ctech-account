@@ -44,6 +44,7 @@ type Store interface {
 	PresignPut(ctx context.Context, key, contentType string, ttl time.Duration) (string, error)
 	Size(ctx context.Context, key string) (int64, error)
 	DeleteObject(ctx context.Context, key string) error
+	ListKeys(ctx context.Context, prefix string) ([]string, error)
 }
 
 // Dispatcher asks a participant for its part (SNS, on the erasure topic).
@@ -376,4 +377,21 @@ func (s *Service) deleteParts(ctx context.Context, e *Export) {
 			slog.ErrorContext(ctx, "dataexport: deleting a part failed", "export", e.ID, "service", p.Service, "error", err)
 		}
 	}
+}
+
+// EraseOwner removes everything of a purged account: every object under the
+// person's prefix (found by listing, so a part a participant uploaded after the
+// row stopped naming it goes too) and the row itself. It is the deletion
+// purge's OwnerEraser; idempotent, so a rerun after a crash finishes the job.
+func (s *Service) EraseOwner(ctx context.Context, userID string) error {
+	keys, err := s.store.ListKeys(ctx, "exports/"+userID+"/")
+	if err != nil {
+		return fmt.Errorf("dataexport: listing exports of the purged account: %w", err)
+	}
+	for _, k := range keys {
+		if err := s.store.DeleteObject(ctx, k); err != nil {
+			return fmt.Errorf("dataexport: deleting an export file of the purged account: %w", err)
+		}
+	}
+	return s.repo.Delete(ctx, userID)
 }
