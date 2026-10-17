@@ -38,7 +38,8 @@ Top-level:
   independent of token freshness and never triggers the step-up dialog). `409 deletion-blocked`
   renders `blockers[]` with the copy at `deletion.blockers.<code>` (unknown codes fall back to a
   generic line naming the code) and the participant's `action_url` as "Resolve"; `503` means a CTech
-  product could not be checked, try again.
+  product could not be checked, try again. Every participant blocker code needs its line in both locales
+  (billing's: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`).
 - `/account-deletion/confirm?request=&token=` and `/account-deletion/cancel?request=&token=` (public,
   opened from the e-mail links): both are `DeletionLinkPage` and **act only when the button is
   pressed** (a POST), never on load, so e-mail scanners that prefetch links cannot confirm or cancel
