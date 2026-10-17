@@ -530,7 +530,7 @@ func main() {
 				}
 				return names
 			}).
-			WithServiceUnlinker(deletion.NewServiceUnlinker(consentSvc, sessionSvc, userSvc, userSvc, auditSvc, emailCli, loginClients)).
+			WithServiceUnlinker(deletion.NewServiceUnlinker(consentSvc, sessionSvc, apiKeySvc, userSvc, userSvc, auditSvc, emailCli, loginClients)).
 			WithPurger(deletion.NewAccountPurger(orgSvc, companyRepo, consentSvc, sessionSvc, apiKeySvc, totpSvc, passkeySvc, purgeUser).
 				WithDataErasers(orgDomain.NewEraser(db, cfg.TablePrefix), companyDomain.NewEraser(db, cfg.TablePrefix),
 					supportDomain.NewRedactor(db, cfg.TablePrefix), auditDomain.NewAnonymizer(db, cfg.TablePrefix),

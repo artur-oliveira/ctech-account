@@ -52,6 +52,19 @@ describe('DeletionLinkPage', () => {
     expect(clearAuth).not.toHaveBeenCalled()
   })
 
+  it('decides the sign-out from the response, not from the link', async () => {
+    const clearAuth = vi.fn()
+    const user = userEvent.setup()
+    const {useAuthStore} = await import('@/store/auth')
+    vi.spyOn(useAuthStore, 'getState').mockReturnValue({clearAuth} as never)
+    // The link lost its service parameter, but the request was a service one.
+    const action = vi.fn().mockResolvedValue({request_id: 'r1', state: 'pending_deletion', grace_until: '2026-10-14T12:00:00Z', scope: 'service', service: 'poker'})
+    renderWithClient(<DeletionLinkPage kind="confirm" requestID="r1" token="t1" action={action}/>)
+    await user.click(screen.getByRole('button', {name: 'Confirm deletion'}))
+    await screen.findByText(/link to cancel/i)
+    expect(clearAuth).not.toHaveBeenCalled()
+  })
+
   it('shows the invalid message when the link lacks parameters', () => {
     renderWithClient(<DeletionLinkPage kind="confirm" requestID="" token="" action={vi.fn()}/>)
     expect(screen.queryByRole('button')).toBeNull()

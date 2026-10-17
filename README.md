@@ -624,6 +624,7 @@ Same lifecycle (e-mail confirmation, 7-day cancelable grace), with these differe
 - The account is **not** locked: no sign-in block, no session or `jwtverify` revocation. At the start of grace account
   revokes the refresh tokens of that product's login clients (and of any client holding one of its scopes) and the API keys
   with one of its scopes; the product's own lock does the cut-off.
+- Revocation is by product, but an API key, refresh token or consent that holds scopes of **several** products is revoked whole when one of them is left (its secret cannot be narrowed): the person recreates it. API keys revoked at lock are not restored by a cancel. `login_clients` must be unique per product (checked at start).
 - At `purged` account deletes the consent grants for the product's clients and adds it to `unlinked_services` on the user.
   Account data is not purged.
 - Coming back: the next code exchange through one of the product's login clients publishes `user.relinked` (the shared

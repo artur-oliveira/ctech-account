@@ -2,7 +2,7 @@
 
 import {Suspense, useState, type SyntheticEvent} from 'react'
 import {useSearchParams} from 'next/navigation'
-import {useMutation, useQuery} from '@tanstack/react-query'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {Alert, AlertDescription} from '@/components/ui/alert'
 import {Button} from '@/components/ui/button'
@@ -54,10 +54,15 @@ function LeaveProduct() {
   const service = useSearchParams().get('service') ?? ''
   const product = productName(service)
   const phrase = servicePhrase(service)
+  const queryClient = useQueryClient()
   const [typed, setTyped] = useState('')
   const profile = useQuery({queryKey: ['profile'], queryFn: fetchProfile})
   const request = useMutation({
     mutationFn: ({password}: {password?: string}) => requestServiceUnlinkAPI(service, phrase, password),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({queryKey: ['deletion']}),
+      queryClient.invalidateQueries({queryKey: ['deletion-services']}),
+    ]),
   })
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {

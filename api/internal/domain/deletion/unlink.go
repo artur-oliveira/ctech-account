@@ -34,6 +34,7 @@ type UnlinkAudit interface {
 type serviceUnlinker struct {
 	consents ConsentRevoker
 	tokens   ClientTokenRevoker
+	keys     APIKeys
 	users    UnlinkRecorder
 	profiles Users
 	audit    UnlinkAudit
@@ -41,8 +42,8 @@ type serviceUnlinker struct {
 	clients  func(service string) []string
 }
 
-func NewServiceUnlinker(consents ConsentRevoker, tokens ClientTokenRevoker, users UnlinkRecorder, profiles Users, a UnlinkAudit, mail Mailer, clients func(service string) []string) ServiceUnlinker {
-	return &serviceUnlinker{consents: consents, tokens: tokens, users: users, profiles: profiles, audit: a, mail: mail, clients: clients}
+func NewServiceUnlinker(consents ConsentRevoker, tokens ClientTokenRevoker, keys APIKeys, users UnlinkRecorder, profiles Users, a UnlinkAudit, mail Mailer, clients func(service string) []string) ServiceUnlinker {
+	return &serviceUnlinker{consents: consents, tokens: tokens, keys: keys, users: users, profiles: profiles, audit: a, mail: mail, clients: clients}
 }
 
 // Finish is idempotent up to the audit row, which is written after every step
@@ -68,6 +69,10 @@ func (u *serviceUnlinker) Finish(ctx context.Context, r *Request) error {
 	// them) would outlive the consent: sweep them again now.
 	if err := u.tokens.RevokeClients(ctx, r.UserID, clients, r.Service); err != nil {
 		return fmt.Errorf("revoking product refresh tokens: %w", err)
+	}
+	// Same for API keys created during the grace period.
+	if err := revokeServiceKeys(ctx, u.keys, r.UserID, r.Service); err != nil {
+		return err
 	}
 	if err := u.users.AddUnlinkedService(ctx, r.UserID, r.Service); err != nil {
 		return fmt.Errorf("recording unlinked service: %w", err)

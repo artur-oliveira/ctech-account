@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"gopkg.aoctech.app/account/api/internal/domain/apikey"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
@@ -45,7 +46,11 @@ func TestFinishRevokesConsentsRecordsTheServiceAuditsAndWrites(t *testing.T) {
 	}}
 	unlinks, au, mail := &recordingUnlinks{}, &recordingAudit{}, &fakeMailer{}
 	tokens := &fakeSessions{}
-	u := NewServiceUnlinker(consents, tokens, unlinks, fakeUsers{u: &user.User{Email: "ana@example.com", FirstName: "Ana"}}, au, mail,
+	keys := &fakeKeys{keys: []*apikey.APIKey{
+		{PK: apikey.BuildPK("u1"), SK: apikey.BuildSK("made-in-grace"), Scopes: []string{"poker:tables:read"}},
+		{PK: apikey.BuildPK("u1"), SK: apikey.BuildSK("wallet-key"), Scopes: []string{"wallet:balance:read"}},
+	}}
+	u := NewServiceUnlinker(consents, tokens, keys, unlinks, fakeUsers{u: &user.User{Email: "ana@example.com", FirstName: "Ana"}}, au, mail,
 		func(string) []string { return []string{"poker-web", "poker-app"} })
 	r := &Request{ID: "r1", UserID: "u1", Scope: ScopeService, Service: "poker"}
 
@@ -57,6 +62,9 @@ func TestFinishRevokesConsentsRecordsTheServiceAuditsAndWrites(t *testing.T) {
 	}
 	if len(tokens.clients) != 1 || len(tokens.clients[0]) != 2 {
 		t.Fatalf("refresh tokens swept = %v, want one sweep for the login clients", tokens.clients)
+	}
+	if len(keys.revoked) != 1 || keys.revoked[0] != "made-in-grace" {
+		t.Fatalf("api keys revoked at the end = %v, want the one created during grace", keys.revoked)
 	}
 	if len(unlinks.added) != 1 || unlinks.added[0] != "poker" {
 		t.Fatalf("unlinked = %v", unlinks.added)
@@ -72,7 +80,7 @@ func TestFinishRevokesConsentsRecordsTheServiceAuditsAndWrites(t *testing.T) {
 
 func TestFinishDoesNotAuditWhenAnEarlierStepFails(t *testing.T) {
 	au := &recordingAudit{}
-	u := NewServiceUnlinker(failingConsents{}, &fakeSessions{}, &recordingUnlinks{}, fakeUsers{u: &user.User{}}, au, &fakeMailer{},
+	u := NewServiceUnlinker(failingConsents{}, &fakeSessions{}, &fakeKeys{}, &recordingUnlinks{}, fakeUsers{u: &user.User{}}, au, &fakeMailer{},
 		func(string) []string { return []string{"poker-web"} })
 	if err := u.Finish(context.Background(), &Request{ID: "r1", UserID: "u1", Service: "poker"}); err == nil {
 		t.Fatal("a failed consent revoke must fail Finish so the worker retries")

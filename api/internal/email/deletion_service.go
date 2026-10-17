@@ -75,7 +75,7 @@ func serviceUnlinkedEmailHTML(firstName, product string) string {
 	p := productName(product)
 	body := `<p>Você saiu do <strong>` + p + `</strong>: seus dados nesse produto foram apagados ou anonimizados, salvo o que a lei exige guardar.</p>
   ` + accountStays + `
-  <p>Se quiser voltar um dia, basta entrar no produto: você começa uma conta nova nele.</p>`
+  <p>Chaves de API com acesso a esse produto foram revogadas e precisam ser recriadas se você voltar. Se quiser voltar um dia, basta entrar no produto: você começa uma conta nova nele.</p>`
 	return emailLayout("Você saiu do "+p, firstName, body,
 		"Se não foi você, fale com o suporte.")
 }
