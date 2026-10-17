@@ -30,6 +30,10 @@ interface ApiStackProps extends cdk.StackProps {
   // (deploy step 2 of docs/specs/2026-10-10-space-plan-limits.md); absent keeps
   // them off.
   billingApiUrl?: string;
+  // Account deletion (LGPD saga) and leaving one product. Without it the routes and
+  // the grace worker are not mounted (404). Needs FROM_EMAIL (the API refuses to
+  // boot without the e-mail client) and live ERASURE_PARTICIPANTS in SSM.
+  accountDeletionEnabled?: boolean;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -50,6 +54,7 @@ export class ApiStack extends cdk.Stack {
       enableSsmAgent = false,
       osFamily = 'al2023',
       billingApiUrl,
+      accountDeletionEnabled = false,
     } = props;
     const isAlpine = osFamily === 'alpine';
 
@@ -139,6 +144,7 @@ export class ApiStack extends cdk.Stack {
       `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
       `TRUSTED_PROXIES=127.0.0.1`,
       ...(billingApiUrl ? [`BILLING_API_URL=${billingApiUrl}`] : []),
+      ...(accountDeletionEnabled ? [`ACCOUNT_DELETION_ENABLED=true`] : []),
       `ENV`,
     );
 

@@ -283,3 +283,10 @@ Spec: `docs/specs/2026-10-17-data-export.md`.
 - [ ] Step 2b — product parts: poker (done) → billing (done) → dfe (done) → wallet (done) (one plan each).
 - [x] Step 2c — all four participants enabled in prod (grant + `"export": true`); the account purge deletes the export files (by prefix) and row (`dataexport.Service.EraseOwner`, an `OwnerEraser`).
 - [x] Step 3 — the deletion and leave-a-product screens link to `/account/export`.
+
+### Account deletion enabled in prod (2026-10-17)
+
+`ACCOUNT_DELETION_ENABLED=true` is now part of the instance environment (CDK `accountDeletionEnabled`, on in prod). It had never been
+set in prod, so the deletion and leave-a-product routes answered 404 there. Found while testing the export purge, enabled by hand on
+the instance first, then made permanent here. Fixed on the way: the billing entry of `erasure-participants` pointed at the portal host
+(`billing.aoctech.app`, 404 on the eligibility route) instead of the API (`billing-api.aoctech.app`), which made every request answer 503.

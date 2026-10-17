@@ -21,6 +21,7 @@ function synth(): Template {
     exportsBucketName: 'prod-ctech-account-exports',
     valkeyUrlSsmPath: '/ctech/prod/valkey/url',
     billingApiUrl: 'https://billing-api.aoctech.app',
+    accountDeletionEnabled: true,
   })
   cachedTemplate = Template.fromStack(stack)
   return cachedTemplate
@@ -76,4 +77,22 @@ test('the API uses only nano On-Demand capacity', () => {
 
 test('the API knows where billing is (plan limits)', () => {
   expect(userDataText()).toContain('BILLING_API_URL=https://billing-api.aoctech.app')
+})
+
+test('account deletion is switched on in the instance environment', () => {
+  expect(userDataText()).toContain('ACCOUNT_DELETION_ENABLED=true')
+})
+
+test('account deletion stays off unless the stack is told to enable it', () => {
+  const stack = new ApiStack(new cdk.App(), 'TestComputeOff', {
+    env: { account: '868899309401', region: 'us-east-1' },
+    environment: 'dev',
+    vpcId: 'vpc-0adfd86727d17445b',
+    instanceProfileName: 'dev-ctech-account-instance-profile',
+    deploymentsBucketName: 'dev-ctech-deployments',
+    logsBucketName: 'dev-ctech-application-logs',
+    kycDocumentsBucketName: 'dev-ctech-account-kyc',
+    exportsBucketName: 'dev-ctech-account-exports',
+  })
+  expect(JSON.stringify(Template.fromStack(stack).toJSON())).not.toContain('ACCOUNT_DELETION_ENABLED')
 })

@@ -135,6 +135,10 @@ const apiStack = new ApiStack(app, id('Api'), {
   // credential (its seed) and this account has the client registered:
   // PLAN_LIMITS=on is the deploy switch, and leaving it out is the rollback.
   billingApiUrl: process.env.PLAN_LIMITS === 'on' ? `https://${domainForEnv(ENVIRONMENT, 'billing-api')}` : undefined,
+  // Account deletion and leaving a product: on in prod, where every participant is live and
+  // reachable. Other environments opt in with ACCOUNT_DELETION=on (they need the e-mail client
+  // and their own erasure-participants); ACCOUNT_DELETION=off is the rollback in prod.
+  accountDeletionEnabled: process.env.ACCOUNT_DELETION ? process.env.ACCOUNT_DELETION === 'on' : ENVIRONMENT === 'prod',
   description: `ctech-account Compute (EC2 + ASG) - ${ENVIRONMENT}`,
 });
 apiStack.addStackDependency(iamStack);
