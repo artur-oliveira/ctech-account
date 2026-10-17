@@ -1105,7 +1105,8 @@
       "poker.pending_cashout": "Há um resgate do CTech Poker em processamento. Aguarde a conclusão.",
       "poker.pending_fee_debit": "Há uma cobrança do CTech Poker em processamento. Aguarde a conclusão.",
       "billing.invoice_open": "Você tem uma fatura da CTech em aberto. Pague-a antes de excluir a conta.",
-      "billing.tenant_owner": "Você é responsável por uma conta de cobrança. Fale com o suporte.",
+      "billing.invoice_uncollectible": "Você tem uma fatura da CTech baixada como inadimplente. Fale com o suporte para regularizá-la.",
+      "billing.merchant_tenant": "Uma das suas organizações tem uma conta de cobrança no CTech Billing. Fale com o suporte para encerrá-la.",
       "unknown": "Um produto CTech informou uma pendência ({{code}}). Fale com o suporte."
     },
     "blockerAction": "Resolver",

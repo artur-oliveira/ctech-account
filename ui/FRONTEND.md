@@ -38,7 +38,8 @@ Top-level:
   independent of token freshness and never triggers the step-up dialog). `409 deletion-blocked`
   renders `blockers[]` with the copy at `deletion.blockers.<code>` (unknown codes fall back to a
   generic line naming the code) and the participant's `action_url` as "Resolve"; `503` means a CTech
-  product could not be checked, try again.
+  product could not be checked, try again. Every participant blocker code needs its line in both locales
+  (billing's: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`).
 - `/account/leave?service=<id>` leaves one CTech product without closing the account (spec
   `docs/specs/2026-10-17-service-unlink.md`): the same form as `/account/delete` with the product phrase
   (`servicePhrase`: `SAIR DO POKER`), `POST /account/deletion {scope: "service", service}`, the participant's blockers and `422
