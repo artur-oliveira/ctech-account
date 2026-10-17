@@ -229,6 +229,15 @@
       "status": "active"
     },
     {
+      "name": "internal:account:user-contact-read",
+      "descriptions": {
+        "en": "Read one user's verified e-mail and first name, to message them at the account's own address.",
+        "pt-BR": "Consultar o e-mail verificado e o primeiro nome de um usuário, para escrever a ele no endereço da própria conta."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
       "name": "internal:account:oauth-client-read",
       "descriptions": {
         "en": "Read an OAuth client's owner, granted scopes and status, never its secret.",
