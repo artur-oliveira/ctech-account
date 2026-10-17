@@ -94,8 +94,11 @@ func TestExport_RequestThenDownloadLink(t *testing.T) {
 	if resp := ta.doWithToken("DELETE", "/v1.0/account/export", nil, token); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("discard: %d", resp.StatusCode)
 	}
-	if resp := ta.doWithToken("GET", "/v1.0/account/export", nil, token); resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("after discard: %d, want 404", resp.StatusCode)
+	if body := bodyString(ta.doWithToken("GET", "/v1.0/account/export", nil, token)); !strings.Contains(body, `"state":"expired"`) || strings.Contains(body, "https://") {
+		t.Fatalf("after discard: %s", body)
+	}
+	if resp := ta.doWithToken("POST", "/v1.0/account/export", map[string]string{}, token); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("request right after discard: %d, want 429", resp.StatusCode)
 	}
 }
 

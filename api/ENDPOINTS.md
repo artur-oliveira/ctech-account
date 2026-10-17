@@ -369,7 +369,7 @@ Spec: `docs/specs/2026-10-17-data-export.md`. Self client only (`RequireClientID
   S3 GETs minted on every read of a ready export (15 min), never e-mailed. A build older than 10 min
   is reported `failed`; a ready export past 7 days is `expired` and its files are deleted. `404` when
   the person never asked.
-- `DELETE /v1.0/account/export` → deletes the files and the record. `204`.
+- `DELETE /v1.0/account/export` → deletes the files; the record stays as an `expired` tombstone so it does not reset the 24 h limit. `204`.
 Step 1 builds only this service's part (`account.zip`: profile, sessions, api-keys, consents, activity
 as JSON plus `README.txt`; no hashes, secrets or KYC object keys). Other products join later.
 

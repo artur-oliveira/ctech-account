@@ -161,11 +161,14 @@ func TestReadyExportExpiresAndFilesGo(t *testing.T) {
 	}
 }
 
-func TestDiscard(t *testing.T) {
+func TestDiscardKeepsTheRateLimit(t *testing.T) {
 	s, repo, store, _, _, _ := setup(true, fakeBuilder{})
 	ctx := context.Background()
 	s.Request(ctx, "u1")
-	if err := s.Discard(ctx, "u1"); err != nil || repo.e != nil || len(store.objs) != 0 {
+	if err := s.Discard(ctx, "u1"); err != nil || len(store.objs) != 0 || repo.e.State != StateExpired {
 		t.Fatalf("err=%v", err)
+	}
+	if _, err := s.Request(ctx, "u1"); !errors.Is(err, ErrTooSoon) {
+		t.Fatalf("discard must not reset the 24h limit: %v", err)
 	}
 }

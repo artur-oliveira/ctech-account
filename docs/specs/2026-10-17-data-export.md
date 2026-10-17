@@ -86,3 +86,15 @@ still to do (step 2).
 3. **Wallet ledger:** a transaction has a counterparty. Export the counterparty's opaque id only, or also the display name the person saw? (Legal.)
 4. **Frequency and size limits:** 1 per 24 h and a size cap per part are proposed; confirm.
 5. **Export during grace (E7):** keep "not offered while pending deletion", or allow it because the person has the strongest reason to take their data then?
+
+## 10. Security review notes
+
+- **Password-less accounts** (Google-only) pass the identity check without proof, as in the deletion
+  flow. Requiring MFA would lock out people who never enrolled one, which is a denial of the access
+  right itself, and an access token already reads the profile (CPF included). Compensations: self
+  client only, links minted per read and never e-mailed, a "requested" e-mail on every request, audit
+  events. If this proves too weak, add an e-mail confirmation before the build (not before links).
+- **Discard** keeps the row as an `expired` tombstone so request → discard → request cannot bypass the
+  24 h limit.
+- **Gap:** the account purge does not yet delete the export row/files (files expire by bucket
+  lifecycle within 8 days). Add it to the purger in step 2.

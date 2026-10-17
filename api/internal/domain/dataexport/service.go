@@ -197,14 +197,16 @@ func (s *Service) Links(ctx context.Context, e *Export) ([]Link, error) {
 	return out, nil
 }
 
-// Discard deletes the person's export and its files.
+// Discard deletes the person's export files. The row stays as an expired
+// tombstone keeping RequestedAt, so discarding is not a way around MinInterval.
 func (s *Service) Discard(ctx context.Context, userID string) error {
 	e, err := s.repo.Get(ctx, userID)
 	if err != nil {
 		return err
 	}
 	s.deleteParts(ctx, e)
-	return s.repo.Delete(ctx, userID)
+	e.State, e.Parts, e.Error = StateExpired, nil, ""
+	return s.repo.Save(ctx, e, e.ID)
 }
 
 func (s *Service) deleteParts(ctx context.Context, e *Export) {
