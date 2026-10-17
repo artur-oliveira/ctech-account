@@ -50,6 +50,7 @@ ui/src/
 │   │   ├── oauth-clients/  # Register/manage OAuth clients (developer/integrator surface)
 │   │   ├── connected-apps/ # Consent grants (revoke third-party access)
 │   │   ├── activity/       # Paginated audit/activity log
+│   │   ├── export/         # Request/download a copy of personal data (LGPD)
 │   │   └── identity/       # KYC verification flow
 │   ├── login/              # Password login + passkey login
 │   ├── login/callback/     # OAuth code exchange (client-side POST to /v1.0/token)

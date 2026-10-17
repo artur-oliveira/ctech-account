@@ -16,6 +16,8 @@ interface ApiStackProps extends cdk.StackProps {
   // Bucket holding KYC identity documents. Absent → the API disables the
   // document verification path and only offers PIX-match.
   kycDocumentsBucketName: string;
+  // Bucket holding the personal-data export zips. Without it the export routes are off.
+  exportsBucketName: string;
   valkeyUrlSsmPath?: string;
   // Session Manager. CI deploys over SSM RunCommand (/opt/app/deploy.sh), which
   // needs the agent running. On also means a shell back onto the box.
@@ -43,6 +45,7 @@ export class ApiStack extends cdk.Stack {
       deploymentsBucketName,
       logsBucketName,
       kycDocumentsBucketName,
+      exportsBucketName,
       valkeyUrlSsmPath,
       enableSsmAgent = false,
       osFamily = 'al2023',
@@ -131,6 +134,7 @@ export class ApiStack extends cdk.Stack {
       `AWS_USE_DUALSTACK_ENDPOINT=true`,
       `PORT=8000`,
       `KYC_DOCUMENTS_BUCKET=${kycDocumentsBucketName}`,
+      `EXPORTS_BUCKET=${exportsBucketName}`,
       `ACCOUNT_ERASURE_TOPIC_ARN=arn:aws:sns:${this.region}:${this.account}:${environment}-account-user-erasure`,
       `MAXMIND_DB_PATH=/var/lib/ctech-account/GeoLite2-City.mmdb`,
       `TRUSTED_PROXIES=127.0.0.1`,

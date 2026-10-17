@@ -357,6 +357,22 @@ KYC and MFA → their respective `read|write`; terms acceptance →
 
 ---
 
+### Personal-data export (LGPD art. 18, V)  *(only when `EXPORTS_BUCKET` and `FROM_EMAIL` are set)*
+Spec: `docs/specs/2026-10-17-data-export.md`. Self client only (`RequireClientID`); scope `account:export:write`.
+- `POST /v1.0/account/export` → `{ password? }`. Identity as for deletion: a recent MFA proof or the
+  correct `password` (failures only count against the shared password-guess limiter). Starts a build in
+  the background. `202` with the export. Problems: `step-up-required`, `invalid-credentials`, `409`
+  (already building, or the account is locked/pending deletion/purged), `429` (one export per 24 h; a
+  failed one can be retried at once).
+- `GET /v1.0/account/export` → `{ id, state: building|ready|failed|expired, requested_at, ready_at,
+  expires_at, parts: [{service, status, size}], links: [{service, url, size}] }`. `links` are presigned
+  S3 GETs minted on every read of a ready export (15 min), never e-mailed. A build older than 10 min
+  is reported `failed`; a ready export past 7 days is `expired` and its files are deleted. `404` when
+  the person never asked.
+- `DELETE /v1.0/account/export` → deletes the files; the record stays as an `expired` tombstone so it does not reset the 24 h limit. `204`.
+Step 1 builds only this service's part (`account.zip`: profile, sessions, api-keys, consents, activity
+as JSON plus `README.txt`; no hashes, secrets or KYC object keys). Other products join later.
+
 ### Account deletion (LGPD)  *(only when `ACCOUNT_DELETION_ENABLED=true`)*
 Spec: `docs/specs/2026-10-06-account-deletion-ctech-account.md`.
 - `POST /v1.0/account/deletion` *(`account:deletion:write`; 3 per user / 30 days)* →

@@ -273,3 +273,11 @@ Spec: `ctech-billing/docs/specs/2026-10-10-console-self-service.md` § 6.3. Plan
   7+ days stale (`internal/geoupdater`, no distributed lock — no shared store for this file across
   the ASG). New-device login (device name + country not seen before) gets `new_device: "true"` audit
   metadata + email notification (see README §GeoIP + new-device login notification).
+
+### Personal-data export (LGPD art. 18, V)
+
+Spec: `docs/specs/2026-10-17-data-export.md`.
+
+- [x] Step 1 — account part: `dataexport` domain, `POST/GET/DELETE /v1.0/account/export`, `account:export:write`, zip of JSON sections + README, presigned links minted per read, CDK `ExportsStack` + `account_data_exports`, UI `/account/export`. Dark until `EXPORTS_BUCKET` is deployed.
+- [ ] Step 2 — `api-commons/dataexport` protocol and product parts: poker → billing → dfe → wallet (one plan each).
+- [ ] Step 3 — link the export from the deletion and leave-a-product screens.

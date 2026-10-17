@@ -12,6 +12,7 @@ interface IAMStackProps extends cdk.StackProps {
   deploymentsBucketArn: string;
   logsBucketArn: string;
   kycDocumentsBucketArn: string;
+  exportsBucketArn: string;
 }
 
 export class IAMStack extends cdk.Stack {
@@ -20,7 +21,7 @@ export class IAMStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: IAMStackProps) {
     super(scope, id, props);
 
-    const {environment, dynamoDBTables, deploymentsBucketArn, logsBucketArn, kycDocumentsBucketArn} = props;
+    const {environment, dynamoDBTables, deploymentsBucketArn, logsBucketArn, kycDocumentsBucketArn, exportsBucketArn} = props;
 
     const appRole = new iam.Role(this, 'AppRole', {
       roleName: `${environment}-ctech-account-role`,
@@ -105,6 +106,12 @@ export class IAMStack extends cdk.Stack {
     appRole.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:DeleteObject'],
       resources: [`${kycDocumentsBucketArn}/kyc/*`],
+    }));
+    // S3 — personal-data export zips: the API writes and deletes them and mints
+    // presigned GETs (signed with the role's credentials, so s3:GetObject too).
+    appRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
+      resources: [`${exportsBucketArn}/exports/*`],
     }));
     // EC2 — update-realip.sh reads the AWS-managed CloudFront origin-facing
     // prefix list. Both actions are read-only and do not support resource-level

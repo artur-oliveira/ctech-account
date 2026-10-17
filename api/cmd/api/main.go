@@ -31,6 +31,7 @@ import (
 	auditDomain "gopkg.aoctech.app/account/api/internal/domain/audit"
 	companyDomain "gopkg.aoctech.app/account/api/internal/domain/company"
 	"gopkg.aoctech.app/account/api/internal/domain/company/registry"
+	"gopkg.aoctech.app/account/api/internal/domain/dataexport"
 	"gopkg.aoctech.app/account/api/internal/domain/deletion"
 	kycDomain "gopkg.aoctech.app/account/api/internal/domain/kyc"
 	passKeyDomain "gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
@@ -553,6 +554,21 @@ func main() {
 			}
 			return valkeyClient.SetNX(ctx, workerLockKey, "1", deletion.WorkerInterval-5*time.Second)
 		}, deletion.WorkerInterval)
+	}
+	if cfg.ExportsBucket != "" && emailCli != nil {
+		exportStore, err := storage.NewS3(ctx, cfg.AWSRegion, cfg.ExportsBucket)
+		if err != nil {
+			log.Fatalf("initializing export storage: %v", err)
+		}
+		exportSvc := dataexport.NewService(
+			dataexport.NewRepository(db, cfg.TablePrefix), exportStore,
+			dataexport.NewZipBuilder(dataexport.AccountSections(dataexport.Sources{
+				Users: userSvc, Sessions: sessionSvc, Keys: apiKeySvc, Consents: consentSvc, Audit: auditSvc})...),
+			dataexport.UserContacts{Users: userSvc}, emailCli, dataexport.AuditRecorder{Audit: auditSvc})
+		handler.NewDataExportHandler(exportSvc, userSvc).Register(account,
+			middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
+	} else {
+		log.Println("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
 	}
 	adminAuth := []fiber.Handler{
 		middleware.RequireAuth(jwtSvc),

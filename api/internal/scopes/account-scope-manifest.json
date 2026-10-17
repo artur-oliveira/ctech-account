@@ -211,6 +211,15 @@
       "status": "active"
     },
     {
+      "name": "account:export:write",
+      "descriptions": {
+        "en": "Request, download and discard an export of your personal data.",
+        "pt-BR": "Solicitar, baixar e descartar uma exportação dos seus dados pessoais."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
       "name": "internal:account:org-member",
       "descriptions": {
         "en": "Check whether a user belongs to an organization and with which role.",

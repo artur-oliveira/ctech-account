@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"slices"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -104,29 +103,8 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"request_id": r.ID, "state": r.State, "confirm_by": r.ConfirmBy, "scope": r.Scope, "service": r.Service})
 }
 
-// verifyIdentity (ruling R2): a recent MFA proof, or the account password.
-// A password-less (Google-only) account relies on the e-mail confirmation.
 func (h *DeletionHandler) verifyIdentity(c fiber.Ctx, userID, password string) error {
-	if last := middleware.GetLastMFAAt(c); last != 0 && time.Since(time.Unix(last, 0)) <= middleware.StepUpMaxAge {
-		return nil
-	}
-	hasPassword, err := h.users.HasPassword(c.Context(), userID)
-	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
-	}
-	if !hasPassword {
-		return nil
-	}
-	if password == "" {
-		return apierror.StepUpRequired(middleware.StepUpMaxAge, c.Path())
-	}
-	if err := h.users.CheckPassword(c.Context(), userID, password); err != nil {
-		if errors.Is(err, user.ErrInvalidCredentials) {
-			return apierror.InvalidCredentials(c.Path())
-		}
-		return apierror.ServerError(c.Path()).WithCause(err)
-	}
-	return nil
+	return verifyIdentity(c, h.users, userID, password)
 }
 
 func (h *DeletionHandler) status(c fiber.Ctx) error {

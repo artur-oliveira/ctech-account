@@ -69,6 +69,16 @@ purge), so a new table cannot be added without choosing.
 2. Participants one at a time: poker → billing → dfe → wallet (simplest to hardest), each as its own plan.
 3. The deletion and leave-a-product screens link to the export once at least the account part exists.
 
+## 8.1 Status
+
+Step 1 (account part) is implemented: `api/internal/domain/dataexport` (model, service, repository, zip
+builder with the section registry), routes `POST/GET/DELETE /v1.0/account/export`, scope
+`account:export:write`, e-mails without links, UI `/account/export`, CDK `ExportsStack` (bucket, 8-day
+lifecycle, no versioning, no CORS) and `{env}_account_data_exports`. The defaults proposed below were taken:
+JSON per product plus a README, 1 export per 24 h (a failed one retries at once), no export while the
+account is locked or pending deletion. The `api-commons/dataexport` protocol and the product parts are
+still to do (step 2).
+
 ## 9. Open questions
 
 1. **Format:** JSON + CSV per product is proposed. Is a single standard schema across products wanted (more work, easier for the person), or per-product schemas with a README each?
@@ -76,3 +86,15 @@ purge), so a new table cannot be added without choosing.
 3. **Wallet ledger:** a transaction has a counterparty. Export the counterparty's opaque id only, or also the display name the person saw? (Legal.)
 4. **Frequency and size limits:** 1 per 24 h and a size cap per part are proposed; confirm.
 5. **Export during grace (E7):** keep "not offered while pending deletion", or allow it because the person has the strongest reason to take their data then?
+
+## 10. Security review notes
+
+- **Password-less accounts** (Google-only) pass the identity check without proof, as in the deletion
+  flow. Requiring MFA would lock out people who never enrolled one, which is a denial of the access
+  right itself, and an access token already reads the profile (CPF included). Compensations: self
+  client only, links minted per read and never e-mailed, a "requested" e-mail on every request, audit
+  events. If this proves too weak, add an e-mail confirmation before the build (not before links).
+- **Discard** keeps the row as an `expired` tombstone so request → discard → request cannot bypass the
+  24 h limit.
+- **Gap:** the account purge does not yet delete the export row/files (files expire by bucket
+  lifecycle within 8 days). Add it to the purger in step 2.
