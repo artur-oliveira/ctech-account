@@ -583,6 +583,8 @@ func main() {
 		middleware.RequireInternalScope(scopesPkg.InternalAccountUserOrganizations))
 	handler.NewOAuthClientInternalHandler(oauthclientDomain.NewInternalService(oauthClientRepo, userSvc)).
 		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountOAuthClientRead))
+	handler.NewUserContactInternalHandler(userSvc).
+		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountUserContactRead))
 	scopeRegistryH.Register(v1,
 		middleware.RequireAuth(jwtSvc),
 		middleware.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),

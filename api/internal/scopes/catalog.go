@@ -99,6 +99,13 @@ const InternalAccountUserOrganizations = "internal:account:user-organizations"
 // client that resolves memberships must not gain it by sharing a grant.
 const InternalAccountOAuthClientRead = "internal:account:oauth-client-read"
 
+// InternalAccountUserContactRead lets a product read one person's verified
+// contact (e-mail, first name, whether the e-mail is verified) to send them a
+// message that must reach the account's own address, never one a requester typed
+// (ctech-billing merchant tenant closure, spec 2026-10-17). Its own scope: it
+// reads a person's e-mail, which no membership check needs.
+const InternalAccountUserContactRead = "internal:account:user-contact-read"
+
 // InternalAccountScopeRegistryWrite authorizes a dedicated resource-server
 // publisher to reconcile the scope manifest bound to its OAuth client. It is
 // an Account-owned root permission and therefore remains in the built-in
