@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/api-commons/erasure"
 )
 
@@ -229,4 +230,65 @@ func TestABlockerAtTheEndOfGraceBlocksAServiceRequestToo(t *testing.T) {
 	if s := sf.stored(t, r.ID); s.State != StateBlocked || len(s.Blockers) != 1 || s.Blockers[0] != "poker.chips_held" {
 		t.Fatalf("request = %+v, want blocked by poker.chips_held", s)
 	}
+}
+
+// The whole cycle through the real locker, worker and relinker, with every
+// outside call recorded: what each product is told, in which order, and that
+// the account itself is never touched. Prod cannot be waited on for 7 days.
+func TestAServiceUnlinkAndComingBackEndToEnd(t *testing.T) {
+	sf := newServiceFixture(t)
+	unlinks := &recordingUnlinks{}
+	sf.svc = sf.svc.WithServiceUnlinker(NewServiceUnlinker(&recordingConsents{}, sf.sessions, unlinks,
+		fakeUsers{u: &user.User{Email: "ana@example.com", FirstName: "Ana"}}, &recordingAudit{}, sf.mail,
+		func(string) []string { return []string{"poker-web"} }))
+	r := sf.confirmed(t)
+	sf.svc.ProcessDue(ctx) // lock applied, cancel link mailed
+	sf.now = sf.now.Add(GracePeriod)
+	sf.svc.ProcessDue(ctx) // grace over: locked, erase published, purging
+	if err := sf.svc.Ack(ctx, "poker", erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone}); err != nil {
+		t.Fatal(err)
+	}
+	sf.svc.ProcessDue(ctx) // purged
+
+	if s := sf.stored(t, r.ID); s.State != StatePurged {
+		t.Fatalf("state = %s, want purged", s.State)
+	}
+	if sf.users.marked != "" || sf.tokens.revoked != 0 || sf.purger.calls != 0 {
+		t.Fatal("the account was touched by a service unlink")
+	}
+	if len(unlinks.added) != 1 || unlinks.added[0] != "poker" {
+		t.Fatalf("unlinked = %v", unlinks.added)
+	}
+	var types []erasure.Type
+	var eraseAt time.Time
+	for _, m := range sf.pub.msgs {
+		if m.Scope != erasure.ScopeService || len(m.Services) != 1 || m.Services[0] != "poker" || len(m.Workspaces) != 0 {
+			t.Fatalf("message %+v must be service scope, poker only, no workspaces", m)
+		}
+		types = append(types, m.Type)
+		if m.Type == erasure.TypeErase {
+			eraseAt = m.IssuedAt
+		}
+	}
+	if len(types) < 2 || types[0] != erasure.TypeLocked || types[len(types)-1] != erasure.TypeErase {
+		t.Fatalf("messages = %v, want locked ... erase", types)
+	}
+
+	// The person signs in to poker again, a day later.
+	back := NewRelinker(sf.pub, &recordingForget{}, func(string) []string { return []string{"poker-web"} })
+	back.now = func() time.Time { return sf.now.Add(24 * time.Hour) }
+	if err := back.Relink(ctx, &user.User{PK: "USER_u1", UnlinkedServices: unlinks.added}, "poker-web"); err != nil {
+		t.Fatal(err)
+	}
+	last := sf.pub.msgs[len(sf.pub.msgs)-1]
+	if last.Type != erasure.TypeRelinked || last.Services[0] != "poker" || !last.IssuedAt.After(eraseAt) {
+		t.Fatalf("last message = %+v; want user.relinked for poker issued after the erase (%s), or the participant ignores it as stale", last, eraseAt)
+	}
+}
+
+type recordingForget struct{ removed []string }
+
+func (r *recordingForget) RemoveUnlinkedService(_ context.Context, _, service string) error {
+	r.removed = append(r.removed, service)
+	return nil
 }
