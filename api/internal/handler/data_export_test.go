@@ -14,39 +14,9 @@ import (
 	consentDomain "gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/scopes"
+	wire "gopkg.aoctech.app/api-commons/dataexport"
 )
-
-type memExportRepo struct {
-	mu sync.Mutex
-	m  map[string]dataexport.Export
-}
-
-func (r *memExportRepo) Get(_ context.Context, id string) (*dataexport.Export, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	e, ok := r.m[id]
-	if !ok {
-		return nil, dataexport.ErrNotFound
-	}
-	return &e, nil
-}
-
-func (r *memExportRepo) Save(_ context.Context, e *dataexport.Export, prev string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if cur, ok := r.m[e.UserID]; (ok && cur.ID != prev) || (!ok && prev != "") {
-		return dataexport.ErrBuilding
-	}
-	r.m[e.UserID] = *e
-	return nil
-}
-
-func (r *memExportRepo) Delete(_ context.Context, id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.m, id)
-	return nil
-}
 
 type memExportStore struct{}
 
@@ -54,18 +24,54 @@ func (memExportStore) PutObject(context.Context, string, string, []byte) error {
 func (memExportStore) PresignGet(_ context.Context, k string, _ time.Duration) (string, error) {
 	return "https://exports.test/" + k, nil
 }
-func (memExportStore) DeleteObject(context.Context, string) error { return nil }
+func (memExportStore) PresignPut(_ context.Context, k string, _ string, _ time.Duration) (string, error) {
+	return "https://exports.test/put/" + k, nil
+}
+func (memExportStore) Size(context.Context, string) (int64, error) { return 42, nil }
+func (memExportStore) DeleteObject(context.Context, string) error  { return nil }
+
+type recordingDispatcher struct{}
+
+func (recordingDispatcher) Publish(_ context.Context, m wire.Message) error {
+	exportMu.Lock()
+	defer exportMu.Unlock()
+	exportDispatched = append(exportDispatched, m)
+	return nil
+}
+
+// dispatched waits for the background dispatch of the request and returns it.
+func dispatched(t *testing.T) []wire.Message {
+	t.Helper()
+	for range 100 {
+		exportMu.Lock()
+		got := append([]wire.Message(nil), exportDispatched...)
+		exportMu.Unlock()
+		if len(got) > 0 {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("nothing was dispatched")
+	return nil
+}
 
 type silentExportMail struct{}
 
 func (silentExportMail) SendExportRequested(context.Context, string, string) error { return nil }
 func (silentExportMail) SendExportReady(context.Context, string, string) error     { return nil }
 
+// exportDispatched records what the test app asked its (fake) participant, dfe, for.
+var (
+	exportMu         sync.Mutex
+	exportDispatched []wire.Message
+)
+
 func newTestExportService(users *user.Service, sessions *sessionDomain.Service, keys *apikey.Service, consents *consentDomain.Service, auditSvc *audit.Service) *dataexport.Service {
-	return dataexport.NewService(&memExportRepo{m: map[string]dataexport.Export{}}, memExportStore{},
+	return dataexport.NewService(dataexport.NewMemoryRepository(), memExportStore{},
 		dataexport.NewZipBuilder(dataexport.AccountSections(dataexport.Sources{
 			Users: users, Sessions: sessions, Keys: keys, Consents: consents, Audit: auditSvc})...),
-		dataexport.UserContacts{Users: users}, silentExportMail{}, dataexport.AuditRecorder{Audit: auditSvc})
+		dataexport.UserContacts{Users: users}, silentExportMail{}, dataexport.AuditRecorder{Audit: auditSvc}).
+		WithParticipants([]string{"dfe"}, recordingDispatcher{})
 }
 
 func TestExport_RequestThenDownloadLink(t *testing.T) {
@@ -127,5 +133,48 @@ func TestExport_RequiresSelfClient(t *testing.T) {
 	}
 	if resp := ta.doWithToken("GET", "/v1.0/account/export", nil, token); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("third-party: %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestExportAck_ParticipantPartBecomesDownloadable(t *testing.T) {
+	ta := newTestApp(t)
+	u := ta.registerUser(t, "me4@example.com", "Sup3rSecret!", "Ana")
+	token := ta.issueToken(t, u.ID())
+	exportMu.Lock()
+	exportDispatched = nil
+	exportMu.Unlock()
+	if resp := ta.doWithToken("POST", "/v1.0/account/export", map[string]string{}, token); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("request: %d", resp.StatusCode)
+	}
+	msgs := dispatched(t)
+	if len(msgs) != 1 || msgs[0].Service != "dfe" {
+		t.Fatalf("dispatched=%+v", msgs)
+	}
+	svc := ta.issueServiceToken(t, []string{scopes.InternalAccountExportAck})
+	ack := map[string]any{"request_id": msgs[0].RequestID, "sub": u.ID(), "service": "dfe", "result": "done", "size": 42}
+
+	if resp := ta.doWithToken("POST", "/v1.0/internal/export/ack", ack, token); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("user token: %d, want 403", resp.StatusCode)
+	}
+	if resp := ta.doWithToken("POST", "/v1.0/internal/export/ack", map[string]any{"request_id": "x", "sub": u.ID(), "service": "wallet"}, svc); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("ack for another participant: %d, want 403", resp.StatusCode)
+	}
+	// An ack naming a replaced export is dropped with a 2xx so the participant stops retrying.
+	if resp := ta.doWithToken("POST", "/v1.0/internal/export/ack", map[string]any{"request_id": "old", "sub": u.ID(), "result": "done"}, svc); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("stale ack: %d, want 204", resp.StatusCode)
+	}
+	if resp := ta.doWithToken("POST", "/v1.0/internal/export/ack", ack, svc); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("ack: %d %s", resp.StatusCode, bodyString(resp))
+	}
+	var body string
+	for range 50 {
+		body = bodyString(ta.doWithToken("GET", "/v1.0/account/export", nil, token))
+		if strings.Contains(body, "/dfe.zip") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(body, "/dfe.zip") || !strings.Contains(body, "/account.zip") {
+		t.Fatalf("both parts should be downloadable: %s", body)
 	}
 }

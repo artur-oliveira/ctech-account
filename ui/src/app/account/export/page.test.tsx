@@ -33,6 +33,17 @@ describe('DataExportPage', () => {
     await waitFor(() => expect(requestDataExportAPI).toHaveBeenCalledWith('pw'))
   })
 
+  it('says which products are still preparing their part or failed', async () => {
+    vi.mocked(fetchDataExport).mockResolvedValue({
+      id: 'e1', state: 'ready', expires_at: '2026-10-24T12:00:00Z',
+      parts: [{service: 'account', status: 'ready', size: 1}, {service: 'poker', status: 'dispatched', size: 0}, {service: 'dfe', status: 'failed', size: 0}],
+      links: [{service: 'account', url: 'https://s3.test/a.zip', size: 1}],
+    })
+    renderPage()
+    expect(await screen.findByText('CTech Poker: still being prepared')).toBeInTheDocument()
+    expect(screen.getByText(/CTech DF-e: could not be prepared/)).toBeInTheDocument()
+  })
+
   it('offers the download links of a ready copy and can discard it', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchDataExport).mockResolvedValue({

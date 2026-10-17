@@ -10,6 +10,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	wire "gopkg.aoctech.app/api-commons/dataexport"
 )
 
 // DataExportHandler is the personal-data export (docs/specs/2026-10-17-data-export.md).
@@ -33,6 +34,39 @@ func (h *DataExportHandler) Register(account fiber.Router, selfOnly fiber.Handle
 	account.Post("/export", middleware.RequireScope(scopes.AccountExportWrite), append(post, h.request)...)
 	account.Get("/export", middleware.RequireScope(scopes.AccountExportWrite), selfOnly, h.status)
 	account.Delete("/export", middleware.RequireScope(scopes.AccountExportWrite), selfOnly, h.discard)
+}
+
+// RegisterInternal mounts the participants' ack (service tokens only).
+// serviceForClient maps the caller's azp to its participant name.
+func (h *DataExportHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.Handler, serviceForClient func(string) (string, bool)) {
+	v1.Post("/internal/export/ack", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountExportAck),
+		func(c fiber.Ctx) error { return h.ack(c, serviceForClient) })
+}
+
+func (h *DataExportHandler) ack(c fiber.Ctx, serviceForClient func(string) (string, bool)) error {
+	service, ok := serviceForClient(middleware.GetClientID(c))
+	if !ok {
+		return apierror.Forbidden("This client is not an export participant.", c.Path())
+	}
+	var ack wire.Ack
+	if err := c.Bind().JSON(&ack); err != nil || ack.RequestID == "" || ack.Sub == "" {
+		return apierror.InvalidRequest("Body must be an export ack with request_id and sub.", c.Path())
+	}
+	if ack.Service != "" && ack.Service != service {
+		return apierror.Forbidden("A participant may only ack for itself.", c.Path())
+	}
+	switch err := h.svc.Ack(c.Context(), service, ack); {
+	case err == nil, errors.Is(err, dataexport.ErrStale):
+		// A stale ack (replaced, expired or discarded export) is dropped with a
+		// 2xx so the participant stops retrying.
+		return c.SendStatus(fiber.StatusNoContent)
+	case errors.Is(err, dataexport.ErrUnknownPart):
+		return apierror.Forbidden("This service was not asked for a part of this export.", c.Path())
+	case errors.Is(err, dataexport.ErrNotUploaded):
+		return apierror.Conflict("The part is not in the bucket yet; upload it and ack again.", c.Path())
+	default:
+		return apierror.ServerError(c.Path()).WithCause(err)
+	}
 }
 
 type exportRequestBody struct {

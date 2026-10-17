@@ -31,7 +31,7 @@ export default function DataExportPage() {
   const current = useQuery({
     queryKey: ['data-export'],
     queryFn: fetchDataExport,
-    refetchInterval: (q) => (q.state.data?.state === 'building' ? POLL_MS : false),
+    refetchInterval: (q) => (q.state.data?.state === 'building' || q.state.data?.parts.some((p) => p.status === 'dispatched') ? POLL_MS : false),
   })
   const refresh = () => queryClient.invalidateQueries({queryKey: ['data-export']})
   const request = useMutation({
@@ -54,6 +54,7 @@ export default function DataExportPage() {
           : status === 409 ? t('dataExport.errors.conflict')
             : t('errors.network')
     : ''
+  const serviceName = (service: string) => t(`dataExport.services.${service}`, {defaultValue: service})
   const data = current.data
   const canRequest = !data || data.state === 'failed' || data.state === 'expired' || data.state === 'ready'
 
@@ -81,10 +82,15 @@ export default function DataExportPage() {
           <CardHeader><CardTitle>{t('dataExport.ready')}</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {data.expires_at && <p className="text-muted-foreground">{t('dataExport.expiresAt', {date: formatDate(data.expires_at)})}</p>}
+            {data.parts.filter((p) => p.status === 'dispatched' || p.status === 'failed').map((p) => (
+              <p key={p.service} className={p.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}>
+                {t(p.status === 'failed' ? 'dataExport.partFailed' : 'dataExport.partPending', {service: serviceName(p.service)})}
+              </p>
+            ))}
             <div className="flex flex-wrap gap-2">
               {data.links.map((l) => (
                 <Button key={l.service} render={<a href={l.url} download/>}>
-                  {t('dataExport.download', {service: t(`dataExport.services.${l.service}`, {defaultValue: l.service}), size: size(l.size)})}
+                  {t('dataExport.download', {service: serviceName(l.service), size: size(l.size)})}
                 </Button>
               ))}
               <Button variant="outline" disabled={discard.isPending} onClick={() => discard.mutate()}>
