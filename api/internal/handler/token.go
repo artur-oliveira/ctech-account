@@ -344,15 +344,6 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		return apierror.InvalidGrant(pendingDeletionDetail, c.Path()).Send(c)
 	}
 
-	// A person who left this product signs in to it again: tell it before any
-	// token is minted. If that fails the sign-in fails (the product still refuses
-	// them) and the person simply signs in again.
-	if h.relinker != nil && len(u.UnlinkedServices) > 0 {
-		if err := h.relinker.Relink(c.Context(), u, clientID); err != nil {
-			return apierror.ServiceUnavailable("Could not reconnect this product to your account. Please try again.", c.Path()).WithCause(err).Send(c)
-		}
-	}
-
 	sess, err := h.sessionSvc.Get(c.Context(), ac.UserID, ac.SessionID)
 	if err != nil {
 		// Only reachable with a real, just-issued single-use code — never
@@ -360,6 +351,15 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		// not brute-force traffic. Don't burn the shared /token rate-limit budget.
 		middleware.SkipRateLimitCount(c)
 		return apierror.InvalidGrant("Session no longer exists.", c.Path()).WithCause(err).Send(c)
+	}
+
+	// A person who left this product signs in to it again: tell it before any
+	// token is minted. If that fails the sign-in fails (the product still refuses
+	// them) and the person simply signs in again.
+	if h.relinker != nil && len(u.UnlinkedServices) > 0 {
+		if err := h.relinker.Relink(c.Context(), u, clientID); err != nil {
+			return apierror.ServiceUnavailable("Could not reconnect this product to your account. Please try again.", c.Path()).WithCause(err).Send(c)
+		}
 	}
 
 	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycClaimFor(u, ac.Scopes))

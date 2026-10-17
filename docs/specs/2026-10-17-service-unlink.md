@@ -115,6 +115,7 @@ for each S in user.UnlinkedServices where client ∈ S.login_clients:
   `Store.Clear` is a no-op on a record that is not erased.
 - Until the participant's consumer processes the message the product answers 403 `account-locked`; the UI of each
   product already shows that state. The delay is SQS latency (seconds).
+- Relink happens only on a **complete** exchange: the one-time code, PKCE or client secret, and the live session have all checked out. A hostile page can make the browser authorize at the product's client, but the code goes to the product's registered redirect URI and only the product's own client can redeem it, so relinking by force needs a login-CSRF at the product itself, which the product's `state`/PKCE already stops. Re-asking the person (a "reconnect?" screen) was considered and left out: first-party clients have no consent screen by design.
 - A late duplicate of the old `user.erase` after `Clear` is recognised as stale by the existing consumer logic
   (`apply`: active record newer than the erase). `TestStaleEraseAfterClear` in go-common pins it.
 
