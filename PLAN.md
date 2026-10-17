@@ -280,5 +280,6 @@ Spec: `docs/specs/2026-10-17-data-export.md`.
 
 - [x] Step 1 — account part: `dataexport` domain, `POST/GET/DELETE /v1.0/account/export`, `account:export:write`, zip of JSON sections + README, presigned links minted per read, CDK `ExportsStack` + `account_data_exports`, UI `/account/export`. Dark until `EXPORTS_BUCKET` is deployed.
 - [x] Step 2a — `api-commons/dataexport` protocol (go-common v1.29.1), account orchestration (`export-ack`, per-part status, lazy redispatch), participants marked `"export": true`.
-- [ ] Step 2b — product parts: poker (done) → billing (done) → dfe (done) → wallet (one plan each).
+- [ ] Step 2b — product parts: poker (done) → billing (done) → dfe (done) → wallet (done) (one plan each).
+- [ ] Step 2c — enable wallet (operator grant + `"export": true`), purge of the export on account deletion.
 - [ ] Step 3 — link the export from the deletion and leave-a-product screens.
