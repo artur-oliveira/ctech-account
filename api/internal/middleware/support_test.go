@@ -24,6 +24,8 @@ func (supportUserRepo) GetByEmail(context.Context, string) (*user.User, error) {
 func (supportUserRepo) Create(context.Context, *user.User) error                     { return nil }
 func (supportUserRepo) Update(context.Context, string, map[string]any) error         { return nil }
 func (supportUserRepo) ClearDeletionIfRequest(context.Context, string, string) error { return nil }
+func (supportUserRepo) AddUnlinkedService(context.Context, string, string) error     { return nil }
+func (supportUserRepo) RemoveUnlinkedService(context.Context, string, string) error  { return nil }
 func (supportUserRepo) Purge(context.Context, *user.Tombstone, *user.KYCRetention, []string) error {
 	return nil
 }

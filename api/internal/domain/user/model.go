@@ -73,8 +73,12 @@ type User struct {
 	// path refuses a non-empty value.
 	DeletionState     string `dynamodbav:"deletion_state,omitempty"`
 	DeletionRequestID string `dynamodbav:"deletion_request_id,omitempty"`
-	PurgedAt          string `dynamodbav:"purged_at,omitempty"` // RFC3339, set on the tombstone
-	CPFHMAC           string `dynamodbav:"cpf_hmac,omitempty"`  // keyed hash kept for fraud prevention (D10)
+	// UnlinkedServices are the products the person left on their own (service
+	// unlink). The next sign-in to one of their login clients tells that product
+	// the person is back (docs/specs/2026-10-17-service-unlink.md § 7).
+	UnlinkedServices []string `dynamodbav:"unlinked_services,stringset,omitempty"`
+	PurgedAt         string   `dynamodbav:"purged_at,omitempty"` // RFC3339, set on the tombstone
+	CPFHMAC          string   `dynamodbav:"cpf_hmac,omitempty"`  // keyed hash kept for fraud prevention (D10)
 }
 
 // Address is the residential address collected during Basic KYC. It lives

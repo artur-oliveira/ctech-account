@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -673,6 +674,20 @@ func (m *memUserRepo) Create(_ context.Context, u *userDomain.User) error {
 	}
 	m.byID[u.ID()] = u
 	m.byEmail[u.Email] = u
+	return nil
+}
+
+func (m *memUserRepo) AddUnlinkedService(_ context.Context, userID, service string) error {
+	if u, ok := m.byID[userID]; ok && !slices.Contains(u.UnlinkedServices, service) {
+		u.UnlinkedServices = append(u.UnlinkedServices, service)
+	}
+	return nil
+}
+
+func (m *memUserRepo) RemoveUnlinkedService(_ context.Context, userID, service string) error {
+	if u, ok := m.byID[userID]; ok {
+		u.UnlinkedServices = slices.DeleteFunc(u.UnlinkedServices, func(s string) bool { return s == service })
+	}
 	return nil
 }
 
