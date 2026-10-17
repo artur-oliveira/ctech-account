@@ -34,9 +34,10 @@ export function DeletionLinkPage({kind, requestID, token, service, action}: Prop
   const product = service ? productName(service) : ''
   const run = useMutation({
     mutationFn: () => action(requestID, token),
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Confirming an account deletion revokes every session; leaving one product revokes none.
-      if (kind === 'confirm' && !service) useAuthStore.getState().clearAuth()
+      // The response says which it was; the URL's `service` only chose the copy before the click.
+      if (kind === 'confirm' && data.scope !== 'service') useAuthStore.getState().clearAuth()
     },
   })
   const status = run.error && isAxiosError(run.error) ? (run.error as {response?: {status?: number}}).response?.status : undefined

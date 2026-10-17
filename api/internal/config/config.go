@@ -389,9 +389,17 @@ func parseErasureParticipants() ([]ErasureParticipant, error) {
 	if err := json.Unmarshal([]byte(raw), &ps); err != nil {
 		return nil, fmt.Errorf("ERASURE_PARTICIPANTS: %w", err)
 	}
+	loginOwner := map[string]string{}
 	for _, p := range ps {
 		if p.Service == "" || p.URL == "" || p.Audience == "" || p.ClientID == "" {
 			return nil, fmt.Errorf("ERASURE_PARTICIPANTS: %q needs service, url, audience and client_id", p.Service)
+		}
+		// A login client shared by two products would relink both on one sign-in.
+		for _, lc := range p.LoginClients {
+			if other, dup := loginOwner[lc]; dup {
+				return nil, fmt.Errorf("ERASURE_PARTICIPANTS: login client %q is listed under both %q and %q", lc, other, p.Service)
+			}
+			loginOwner[lc] = p.Service
 		}
 	}
 	return ps, nil

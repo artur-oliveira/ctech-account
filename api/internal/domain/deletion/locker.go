@@ -165,17 +165,27 @@ func (l *AccountLocker) lockService(ctx context.Context, r *Request) error {
 	if err := l.clientTokens.RevokeClients(ctx, r.UserID, l.serviceClients(r.Service), r.Service); err != nil {
 		return fmt.Errorf("revoking product refresh tokens: %w", err)
 	}
-	keys, err := l.keys.List(ctx, r.UserID)
+	if err := revokeServiceKeys(ctx, l.keys, r.UserID, r.Service); err != nil {
+		return err
+	}
+	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil, nil)
+}
+
+// revokeServiceKeys revokes every API key holding one of the product's scopes.
+// A key that also holds another product's scopes goes too (it cannot be
+// narrowed: its secret is not recoverable), so the person recreates it.
+func revokeServiceKeys(ctx context.Context, keys APIKeys, userID, service string) error {
+	all, err := keys.List(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("listing api keys: %w", err)
 	}
-	for _, k := range keys {
-		if !slices.ContainsFunc(k.Scopes, func(sc string) bool { return scopes.BelongsToService(sc, r.Service) }) {
+	for _, k := range all {
+		if !slices.ContainsFunc(k.Scopes, func(sc string) bool { return scopes.BelongsToService(sc, service) }) {
 			continue
 		}
-		if err := l.keys.Revoke(ctx, r.UserID, k.ID()); err != nil {
+		if err := keys.Revoke(ctx, userID, k.ID()); err != nil {
 			return fmt.Errorf("revoking api key: %w", err)
 		}
 	}
-	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil, nil)
+	return nil
 }

@@ -238,7 +238,7 @@ func TestABlockerAtTheEndOfGraceBlocksAServiceRequestToo(t *testing.T) {
 func TestAServiceUnlinkAndComingBackEndToEnd(t *testing.T) {
 	sf := newServiceFixture(t)
 	unlinks := &recordingUnlinks{}
-	sf.svc = sf.svc.WithServiceUnlinker(NewServiceUnlinker(&recordingConsents{}, sf.sessions, unlinks,
+	sf.svc = sf.svc.WithServiceUnlinker(NewServiceUnlinker(&recordingConsents{}, sf.sessions, &fakeKeys{}, unlinks,
 		fakeUsers{u: &user.User{Email: "ana@example.com", FirstName: "Ana"}}, &recordingAudit{}, sf.mail,
 		func(string) []string { return []string{"poker-web"} }))
 	r := sf.confirmed(t)

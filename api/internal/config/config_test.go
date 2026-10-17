@@ -215,3 +215,10 @@ func TestLeavableServiceNeedsALoginClient(t *testing.T) {
 		}
 	}
 }
+
+func TestASharedLoginClientIsRejected(t *testing.T) {
+	t.Setenv("ERASURE_PARTICIPANTS", `[{"service":"poker","url":"https://p","audience":"a","client_id":"p","login_clients":["sso"]},{"service":"dfe","url":"https://d","audience":"a","client_id":"d","login_clients":["sso"]}]`)
+	if _, err := parseErasureParticipants(); err == nil {
+		t.Fatal("one login client under two products would relink both on a single sign-in")
+	}
+}
