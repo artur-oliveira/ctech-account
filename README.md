@@ -104,7 +104,8 @@ mantendo neste repositório a fonte pública de verdade dos textos.
 | `PUT`    | `/v1.0/account/profile`                             | `account:profile:write`                 | Update profile                                                                                                                                                                                      |
 | `POST`   | `/v1.0/account/terms/accept`                        | `account:terms:write`                   | Re-accept the documents whose version moved (`accept_tos` / `accept_privacy`); returns the cleared `terms_pending`                                                                                  |
 | `POST`   | `/v1.0/account/deletion`                            | `account:deletion:write` + MFA or password | Request account deletion (LGPD); sends the e-mail confirmation link. See *Account deletion* below                                                                                          |
-| `GET`    | `/v1.0/account/deletion`                            | `account:profile:read`                  | Current deletion request, if any                                                                                                                                                                    |
+| `GET`    | `/v1.0/account/deletion/services`                   | `account:profile:read`                  | Products the person may leave on their own: `[{"service","can_leave"}]` (`can_leave` is false while any request is open). Only participants with `login_clients` appear. See *Leaving one product* below |
+| `GET`    | `/v1.0/account/deletion`                            | `account:profile:read`                  | Current deletion request, if any (`scope`, `service`)                                                                                                                                                                    |
 | `POST`   | `/v1.0/auth/deletion/confirm`                       | e-mail link token                      | Confirm the deletion: account locked, 7-day grace starts                                                                                                                                            |
 | `POST`   | `/v1.0/auth/deletion/cancel`                        | e-mail link token                      | Cancel during grace                                                                                                                                                                                 |
 | `PUT`    | `/v1.0/account/password`                            | `account:security:write` + step-up      | Change password (revokes all other sessions)                                                                                                                                                        |
@@ -611,6 +612,25 @@ Backup restore: after restoring any participant table from PITR, `Scan`
 Every state change is a conditional write to `{env}_account_deletion_requests` made before
 its side effects; the worker (`deletion.RunWorker`, one instance per tick via a Valkey lock)
 retries side effects through the sparse `gsi_state_due` index until they are recorded.
+
+#### Leaving one product (`scope: service`)
+
+Spec `docs/specs/2026-10-17-service-unlink.md`. `POST /v1.0/account/deletion` also takes
+`{"scope":"service","service":"poker","confirmation_phrase":"SAIR DO POKER"}` (the phrase is `SAIR DO ` and the product id in capitals).
+Same lifecycle (e-mail confirmation, 7-day cancelable grace), with these differences:
+
+- Only that participant is asked for blockers and gets `user.locked` / `user.erase` (`scope: service`, one service, no workspaces).
+  An unknown product, or one without `login_clients`, is `422 unknown-service`.
+- The account is **not** locked: no sign-in block, no session or `jwtverify` revocation. At the start of grace account
+  revokes the refresh tokens of that product's login clients (and of any client holding one of its scopes) and the API keys
+  with one of its scopes; the product's own lock does the cut-off.
+- At `purged` account deletes the consent grants for the product's clients and adds it to `unlinked_services` on the user.
+  Account data is not purged.
+- Coming back: the next code exchange through one of the product's login clients publishes `user.relinked` (the shared
+  consumer clears the tombstone) and then forgets the product. If the publish fails the exchange answers `503` and mints
+  nothing; the person signs in again.
+- `ERASURE_PARTICIPANTS[].login_clients` turns it on per product; leave it empty to keep a product out (wallet, until the
+  Asaas sub-account question is ruled).
 
 ### Account deletion: every new feature ships its erasure path
 

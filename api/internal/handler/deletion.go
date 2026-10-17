@@ -37,6 +37,7 @@ func (h *DeletionHandler) Register(account, auth fiber.Router, selfOnly fiber.Ha
 	}
 	account.Post("/deletion", middleware.RequireScope(scopes.AccountDeletionWrite), append(chain, h.request)...)
 	account.Get("/deletion", middleware.RequireScope(scopes.AccountProfileRead), h.status)
+	account.Get("/deletion/services", middleware.RequireScope(scopes.AccountProfileRead), h.services)
 	auth.Post("/deletion/confirm", h.confirm)
 	auth.Post("/deletion/cancel", h.cancel)
 }
@@ -44,6 +45,10 @@ func (h *DeletionHandler) Register(account, auth fiber.Router, selfOnly fiber.Ha
 type deletionRequestBody struct {
 	ConfirmationPhrase string `json:"confirmation_phrase" validate:"required"`
 	Password           string `json:"password"`
+	// Scope is "account" (default) or "service" (leave one product, which needs
+	// Service). docs/specs/2026-10-17-service-unlink.md.
+	Scope   string `json:"scope"   validate:"omitempty,oneof=account service"`
+	Service string `json:"service" validate:"required_if=Scope service"`
 }
 
 type deletionLinkBody struct {
@@ -56,8 +61,13 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	if err := parseBody(c, &req); err != nil {
 		return err
 	}
-	if req.ConfirmationPhrase != deletion.ConfirmationPhrase {
-		return apierror.InvalidRequest(`confirmation_phrase must be exactly "`+deletion.ConfirmationPhrase+`".`, c.Path())
+	scope := deletion.ScopeAccount
+	phrase := deletion.ConfirmationPhrase
+	if req.Scope == deletion.ScopeService {
+		scope, phrase = deletion.ScopeService, deletion.ServicePhrase(req.Service)
+	}
+	if req.ConfirmationPhrase != phrase {
+		return apierror.InvalidRequest(`confirmation_phrase must be exactly "`+phrase+`".`, c.Path())
 	}
 	userID := middleware.GetUserID(c)
 	if err := h.verifyIdentity(c, userID, req.Password); err != nil {
@@ -67,7 +77,16 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 		}
 		return err
 	}
-	r, err := h.svc.Request(c.Context(), userID)
+	var r *deletion.Request
+	var err error
+	if scope == deletion.ScopeService {
+		r, err = h.svc.RequestService(c.Context(), userID, req.Service)
+	} else {
+		r, err = h.svc.Request(c.Context(), userID)
+	}
+	if errors.Is(err, deletion.ErrUnknownService) {
+		return apierror.UnknownService("This product cannot be left on its own.", c.Path())
+	}
 	var blocked *deletion.BlockedError
 	if errors.As(err, &blocked) {
 		return apierror.DeletionBlocked(blocked.Blockers, c.Path()).Send(c)
@@ -81,7 +100,7 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 	if err != nil {
 		return apierror.ServerError(c.Path()).WithCause(err)
 	}
-	recordAudit(c, h.audit, userID, audit.EventDeletionRequested, map[string]string{"request_id": r.ID})
+	recordAudit(c, h.audit, userID, audit.EventDeletionRequested, map[string]string{"request_id": r.ID, "scope": r.Scope, "service": r.Service})
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"request_id": r.ID, "state": r.State, "confirm_by": r.ConfirmBy})
 }
 
@@ -121,7 +140,17 @@ func (h *DeletionHandler) status(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"request_id": r.ID, "state": r.State, "requested_at": r.RequestedAt,
 		"confirm_by": r.ConfirmBy, "grace_until": r.GraceUntil, "legal_hold": r.LegalHold,
+		"scope": r.Scope, "service": r.Service,
 	})
+}
+
+// services lists the products the person may leave on their own.
+func (h *DeletionHandler) services(c fiber.Ctx) error {
+	opts, err := h.svc.Services(c.Context(), middleware.GetUserID(c))
+	if err != nil {
+		return apierror.ServerError(c.Path()).WithCause(err)
+	}
+	return c.JSON(opts)
 }
 
 func (h *DeletionHandler) confirm(c fiber.Ctx) error {

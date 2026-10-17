@@ -199,7 +199,7 @@ Specs: `docs/specs/2026-10-06-account-deletion-*.md`. Phase 1 plan:
 - [x] Phase 2a — local blockers, `blocked`, frozen workspaces, own purge (memberships, company edges, consents, sessions, API keys, MFA, passkeys), tombstone, KYC retention item (`docs/plans/2026-10-07-account-deletion-phase2a-purge-core.md`)
 - [x] Phase 2b — erase the frozen workspaces, anonymize support and audit, KYC documents to `retention/`, `KYCRET#` TTL (`docs/plans/2026-10-07-account-deletion-phase2b-purge-data.md`)
 - [x] Phase 3 — participants: eligibility fan-out, ack endpoint, reconciler, `stalled`, legal hold / support cancel / redrive (`docs/plans/2026-10-07-account-deletion-phase3-participants.md`)
-- [ ] Single-service unlink (`scope: service`), pending
+- [ ] Single-service unlink (`scope: service`): spec `docs/specs/2026-10-17-service-unlink.md`, plan `docs/plans/2026-10-17-service-unlink.md`. Account api done (this branch); ui and participants' `api-commons` bump pending
 - [x] Phase 4 — UI: delete-account page, `/account-deletion/confirm` and `/account-deletion/cancel`, login messages (`docs/plans/2026-10-07-account-deletion-phase4-ui.md`)
 - [x] Phase 4 Task 6 — privacy policy 3.3 (approved by the owner 2026-10-13; `CurrentPrivacyVersion = "3.3"`, so every user re-accepts; 3.2 frozen at `/privacy/v3`)
 

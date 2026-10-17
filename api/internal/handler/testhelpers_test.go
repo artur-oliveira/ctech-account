@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"gopkg.aoctech.app/account/api/internal/domain/deletion"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/erasure"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -244,7 +245,11 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	deletionMail := &fakeDeletionMailer{}
 	deletionSvc := deletion.NewService(newMemDeletionRepo(), userSvc,
 		deletion.NewAccountLocker(userSvc, sessionSvc, apiKeySvc, deletion.NewJWTRevoker(revocation), nil, nil),
-		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo))
+		deletionMail).WithOwnership(deletion.NewAccountOwnership(noOrgs{}, sharedClientRepo)).
+		WithServices(func(name string) (deletion.ServiceTarget, bool) {
+			return deletion.ServiceTarget{Service: name, LoginClients: []string{name + "-web"}}, name == "poker"
+		}, fakeServiceEligibility{}).
+		WithServiceList(func() []string { return []string{"poker"} })
 	deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
 	deletionH.Register(account, v1.Group("/auth"),
 		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
@@ -1281,4 +1286,11 @@ func (m *memDeletionRepo) SaveService(_ context.Context, st *deletion.ServiceSta
 	}
 	m.services[k] = *st
 	return nil
+}
+
+// fakeServiceEligibility finds nothing blocking a service unlink.
+type fakeServiceEligibility struct{}
+
+func (fakeServiceEligibility) CheckService(context.Context, string, string) ([]erasure.Blocker, error) {
+	return nil, nil
 }

@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"strings"
 	"context"
 	"crypto/subtle"
 	"errors"
@@ -83,7 +84,43 @@ type Service struct {
 	leavable    func(name string) (ServiceTarget, bool)
 	serviceElig ServiceEligibility
 	unlinker    ServiceUnlinker
+	serviceList func() []string
 }
+
+// WithServiceList sets which products are offered for leaving, in display order.
+func (s *Service) WithServiceList(list func() []string) *Service {
+	s.serviceList = list
+	return s
+}
+
+// ServiceOption is one product a person may be offered to leave.
+type ServiceOption struct {
+	Service  string `json:"service"`
+	CanLeave bool   `json:"can_leave"`
+}
+
+// Services lists the products that can be left. CanLeave is false while the
+// person has any open request (one open request per user).
+func (s *Service) Services(ctx context.Context, userID string) ([]ServiceOption, error) {
+	if s.serviceList == nil {
+		return []ServiceOption{}, nil
+	}
+	open, err := s.repo.GetOpen(ctx, userID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	busy := err == nil && open != nil
+	out := []ServiceOption{}
+	for _, name := range s.serviceList() {
+		out = append(out, ServiceOption{Service: name, CanLeave: !busy})
+	}
+	return out, nil
+}
+
+// ServicePhrase is what the person types to leave a product: "SAIR DO " and the
+// product id in capitals. It differs from the account phrase on purpose, so one
+// learned for account deletion cannot be replayed into a service unlink.
+func ServicePhrase(service string) string { return "SAIR DO " + strings.ToUpper(service) }
 
 // ServiceUnlinker records the end of a service unlink on the account side.
 // Idempotent: the worker may run it again after a crash.
