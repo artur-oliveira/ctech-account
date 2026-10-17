@@ -149,6 +149,11 @@ type oauthTestApp struct {
 
 func newOAuthTestApp(t *testing.T) *oauthTestApp {
 	t.Helper()
+	return newOAuthTestAppWithRelinker(t, nil)
+}
+
+func newOAuthTestAppWithRelinker(t *testing.T, relinker handler.Relinker) *oauthTestApp {
+	t.Helper()
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("rsa key: %v", err)
@@ -182,7 +187,11 @@ func newOAuthTestApp(t *testing.T) *oauthTestApp {
 	v1 := app.Group("/v1.0")
 	handler.NewAuthorizeHandler(clientRepo, codeRepo, sessionSvc, consentSvc, userSvc, inMem, "http://app.localhost", cfg.BaseURL, "", nil).Register(v1)
 	apiKeySvc := apikeyDomain.NewService(newMemAPIKeyRepo())
-	handler.NewTokenHandler(clientRepo, codeRepo, sessionSvc, userSvc, apiKeySvc, newTestCatalogService(), jwtSvc, cfg.BaseURL, cfg, nil).Register(v1)
+	tokenH := handler.NewTokenHandler(clientRepo, codeRepo, sessionSvc, userSvc, apiKeySvc, newTestCatalogService(), jwtSvc, cfg.BaseURL, cfg, nil)
+	if relinker != nil {
+		tokenH.WithRelinker(relinker)
+	}
+	tokenH.Register(v1)
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
 
 	return &oauthTestApp{app: app, clientRepo: clientRepo, sessionSvc: sessionSvc, consentSvc: consentSvc, userRepo: userRepo, apiKeySvc: apiKeySvc, cache: inMem, cfg: cfg}

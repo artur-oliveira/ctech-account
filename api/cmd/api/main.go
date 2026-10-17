@@ -528,6 +528,9 @@ func main() {
 					kycDocs, userSvc).
 				WithOwnerData(orgDomain.NewEraser(db, cfg.TablePrefix), planlimit.NewEraser(db, cfg.TablePrefix))).
 			WithParticipants(cfg.ErasureServiceNames())
+		// A person who left a product tells it they are back on their next sign-in
+		// through one of its login clients (service unlink, spec § 7).
+		tokenH.WithRelinker(deletion.NewRelinker(publisher, userSvc, loginClients))
 		deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
 		deletionH.Register(account, v1.Group("/auth"),
 			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
