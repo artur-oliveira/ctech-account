@@ -537,7 +537,14 @@ func TestRevokeClientsDeletesOnlyThoseClientsRefreshTokens(t *testing.T) {
 		}
 	}
 
-	if err := svc.RevokeClients(ctx, "user9", []string{"poker-web"}); err != nil {
+	// A third-party app the person authorized for poker data holds a poker scope.
+	for _, sess := range []*session.Session{s1, s2} {
+		if _, err := svc.IssueClientToken(ctx, "user9", sess.ID(), "third-party", []string{"poker:tables:read"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.RevokeClients(ctx, "user9", []string{"poker-web"}, "poker"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -545,12 +552,12 @@ func TestRevokeClientsDeletesOnlyThoseClientsRefreshTokens(t *testing.T) {
 		t.Fatalf("sessions = %d, want both kept: only the product's tokens go", len(sessions))
 	}
 	for _, sess := range []*session.Session{s1, s2} {
-		if err := svc.RevokeClients(ctx, "user9", nil); err != nil { // empty set is a no-op
+		if err := svc.RevokeClients(ctx, "user9", nil, ""); err != nil { // nothing to match is a no-op
 			t.Fatal(err)
 		}
 		left, _ := repo.ListRefreshTokensBySession(ctx, "user9", sess.ID())
 		if len(left) != 1 || left[0].ClientID != "wallet-web" {
-			t.Fatalf("session %s tokens = %+v, want only wallet-web", sess.ID(), left)
+			t.Fatalf("session %s tokens = %+v, want only wallet-web (poker-web and the poker-scoped third-party client go)", sess.ID(), left)
 		}
 	}
 }

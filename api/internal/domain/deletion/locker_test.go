@@ -29,7 +29,7 @@ type fakeSessions struct {
 }
 
 func (f *fakeSessions) RevokeAll(context.Context, string, string) error { f.revokedAll++; return nil }
-func (f *fakeSessions) RevokeClients(_ context.Context, _ string, c []string) error {
+func (f *fakeSessions) RevokeClients(_ context.Context, _ string, c []string, _ string) error {
 	f.clients = append(f.clients, c)
 	return nil
 }

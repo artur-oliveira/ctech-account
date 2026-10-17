@@ -3,10 +3,11 @@ package deletion
 import (
 	"context"
 	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	"gopkg.aoctech.app/account/api/internal/domain/apikey"
+	"gopkg.aoctech.app/account/api/internal/scopes"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/jwtverify"
@@ -22,9 +23,9 @@ type SessionRevoker interface {
 }
 
 // ClientTokenRevoker drops the refresh tokens of the given OAuth clients only
-// (service unlink); sessions stay.
+// holding one of the product's scopes (service unlink); sessions stay.
 type ClientTokenRevoker interface {
-	RevokeClients(ctx context.Context, userID string, clientIDs []string) error
+	RevokeClients(ctx context.Context, userID string, clientIDs []string, service string) error
 }
 
 type APIKeys interface {
@@ -161,7 +162,7 @@ func (l *AccountLocker) lockService(ctx context.Context, r *Request) error {
 	if l.serviceClients == nil || l.clientTokens == nil {
 		return fmt.Errorf("deletion: scope service is not configured")
 	}
-	if err := l.clientTokens.RevokeClients(ctx, r.UserID, l.serviceClients(r.Service)); err != nil {
+	if err := l.clientTokens.RevokeClients(ctx, r.UserID, l.serviceClients(r.Service), r.Service); err != nil {
 		return fmt.Errorf("revoking product refresh tokens: %w", err)
 	}
 	keys, err := l.keys.List(ctx, r.UserID)
@@ -169,7 +170,7 @@ func (l *AccountLocker) lockService(ctx context.Context, r *Request) error {
 		return fmt.Errorf("listing api keys: %w", err)
 	}
 	for _, k := range keys {
-		if !keyHoldsServiceScope(k.Scopes, r.Service) {
+		if !slices.ContainsFunc(k.Scopes, func(sc string) bool { return scopes.BelongsToService(sc, r.Service) }) {
 			continue
 		}
 		if err := l.keys.Revoke(ctx, r.UserID, k.ID()); err != nil {
@@ -177,15 +178,4 @@ func (l *AccountLocker) lockService(ctx context.Context, r *Request) error {
 		}
 	}
 	return l.publish(ctx, r, erasure.TypeLocked, parseTime(r.ConfirmedAt), nil, nil, nil)
-}
-
-// keyHoldsServiceScope reports a scope of the product: "<service>:..." or the
-// internal form "internal:<service>:...".
-func keyHoldsServiceScope(scopes []string, service string) bool {
-	for _, sc := range scopes {
-		if strings.HasPrefix(sc, service+":") || strings.HasPrefix(sc, "internal:"+service+":") {
-			return true
-		}
-	}
-	return false
 }

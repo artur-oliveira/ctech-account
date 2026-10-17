@@ -8,7 +8,10 @@
 //     grammar and grantability; the named service enforces the semantics.
 package scopes
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // OIDC scopes understood natively by this identity provider.
 const (
@@ -62,4 +65,11 @@ func Validate(ss []string) string {
 		}
 	}
 	return ""
+}
+
+// BelongsToService reports a scope of the named product: "<service>:..." or the
+// internal form "internal:<service>:...". Used to cut everything that grants
+// access to one product (service unlink).
+func BelongsToService(scope, service string) bool {
+	return service != "" && (strings.HasPrefix(scope, service+":") || strings.HasPrefix(scope, "internal:"+service+":"))
 }

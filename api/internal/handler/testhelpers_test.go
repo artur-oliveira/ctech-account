@@ -1219,23 +1219,27 @@ func (m *memDeletionRepo) ListDue(_ context.Context, st deletion.State, now time
 
 type fakeDeletionMailer struct{ confirmToken, cancelToken string }
 
-func (f *fakeDeletionMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token string) error {
+func (f *fakeDeletionMailer) SendDeletionConfirmEmail(_ context.Context, _, _, _, token, _ string) error {
 	f.confirmToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeDeletionMailer) SendDeletionScheduledEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time) error {
+func (f *fakeDeletionMailer) SendDeletionReminderEmail(_ context.Context, _, _, _, token string, _ time.Time, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string) error {
+func (f *fakeDeletionMailer) SendDeletionBlockedEmail(_ context.Context, _, _, _, token string, _ []string, _ string) error {
 	f.cancelToken = token
 	return nil
 }
-func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string) error {
+func (f *fakeDeletionMailer) SendServiceUnlinkedEmail(context.Context, string, string, string) error {
+	return nil
+}
+
+func (f *fakeDeletionMailer) SendDeletionCancelledEmail(context.Context, string, string, string) error {
 	return nil
 }
 

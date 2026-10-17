@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/api-commons/erasure"
 )
@@ -98,5 +99,134 @@ func TestAnOpenServiceRequestBlocksANewRequest(t *testing.T) {
 	}
 	if _, err := f.svc.Request(ctx, "u1"); !errors.Is(err, ErrOpenRequest) {
 		t.Fatalf("an account request: %v, want ErrOpenRequest", err)
+	}
+}
+
+type fakeUnlinker struct{ calls []string }
+
+func (f *fakeUnlinker) Finish(_ context.Context, r *Request) error {
+	f.calls = append(f.calls, r.Service)
+	return nil
+}
+
+// serviceFixture is a confirmed service request over the real AccountLocker,
+// so what the person keeps and loses is visible end to end.
+type serviceFixture struct {
+	*fixture
+	pub      *fakePub
+	users    *fakeBlocker
+	tokens   *fakeTokens
+	sessions *fakeSessions
+	purger   *fakePurger
+	unlinker *fakeUnlinker
+	elig     *fakeServiceElig
+}
+
+func newServiceFixture(t *testing.T) *serviceFixture {
+	t.Helper()
+	f := newFixture(t)
+	sf := &serviceFixture{fixture: f, pub: &fakePub{}, users: &fakeBlocker{}, tokens: &fakeTokens{}, sessions: &fakeSessions{},
+		purger: &fakePurger{}, unlinker: &fakeUnlinker{}, elig: &fakeServiceElig{}}
+	clients := func(string) []string { return []string{"poker-web"} }
+	locker := NewAccountLocker(sf.users, sf.sessions, &fakeKeys{}, sf.tokens, sf.pub, []string{"wallet", "poker"}).
+		WithServiceClients(clients, sf.sessions)
+	f.svc = NewService(f.repo, fakeUsers{u: f.svc.users.(fakeUsers).u}, locker, f.mail).
+		WithOwnership(&countingOwnership{}).WithPurger(sf.purger).WithParticipants([]string{"wallet", "poker"}).
+		WithServiceUnlinker(sf.unlinker)
+	f.svc.now = func() time.Time { return f.now }
+	f.withServices(sf.elig)
+	return sf
+}
+
+func (sf *serviceFixture) confirmed(t *testing.T) *Request {
+	t.Helper()
+	if _, err := sf.svc.RequestService(ctx, "u1", "poker"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := sf.svc.Status(ctx, "u1")
+	r, err := sf.svc.Confirm(ctx, r.ID, sf.mail.confirmToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestAServiceRequestDispatchesAndWaitsForOneAck(t *testing.T) {
+	sf := newServiceFixture(t)
+	r := sf.confirmed(t)
+	sf.now = sf.now.Add(GracePeriod)
+	sf.svc.ProcessDue(ctx)
+
+	if s := sf.stored(t, r.ID); s.State != StatePurging || len(s.Workspaces) != 0 {
+		t.Fatalf("after grace: %+v", s)
+	}
+	rows, _ := sf.repo.ListServices(ctx, r.ID)
+	if len(rows) != 1 || rows[0].Service != "poker" {
+		t.Fatalf("status rows = %+v, want only poker (wallet is a participant too, and must not be asked)", rows)
+	}
+	var erases []erasure.Message
+	for _, m := range sf.pub.msgs {
+		if m.Type == erasure.TypeErase {
+			erases = append(erases, m)
+		}
+	}
+	if len(erases) != 1 || erases[0].Scope != erasure.ScopeService || len(erases[0].Services) != 1 || erases[0].Services[0] != "poker" {
+		t.Fatalf("erase messages = %+v", erases)
+	}
+	if len(sf.unlinker.calls) != 0 {
+		t.Fatal("must wait for the ack before finishing")
+	}
+
+	if err := sf.svc.Ack(ctx, "poker", erasure.Ack{RequestID: r.ID, Result: erasure.ResultDone}); err != nil {
+		t.Fatal(err)
+	}
+	sf.svc.ProcessDue(ctx)
+	if s := sf.stored(t, r.ID); s.State != StatePurged {
+		t.Fatalf("state = %s, want purged", s.State)
+	}
+	if len(sf.unlinker.calls) != 1 || sf.unlinker.calls[0] != "poker" {
+		t.Fatalf("unlinker calls = %v", sf.unlinker.calls)
+	}
+	if sf.purger.calls != 0 {
+		t.Fatal("a service unlink must never purge the account's own data")
+	}
+}
+
+// Review Focus 2.
+func TestCancelingAServiceRequestUnlocksOnlyThatService(t *testing.T) {
+	sf := newServiceFixture(t)
+	r := sf.confirmed(t)
+	if _, err := sf.svc.Cancel(ctx, r.ID, sf.mail.cancelToken); err != nil {
+		// the scheduled e-mail goes out on the first worker tick
+		sf.svc.ProcessDue(ctx)
+		if _, err := sf.svc.Cancel(ctx, r.ID, sf.mail.cancelToken); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sf.svc.ProcessDue(ctx)
+
+	if sf.users.cleared != "" || sf.users.marked != "" || sf.tokens.revoked != 0 {
+		t.Fatalf("the account was touched: marked=%q cleared=%q jwt=%d", sf.users.marked, sf.users.cleared, sf.tokens.revoked)
+	}
+	var types []erasure.Type
+	for _, m := range sf.pub.msgs {
+		if m.Scope != erasure.ScopeService || len(m.Services) != 1 || m.Services[0] != "poker" {
+			t.Fatalf("message %+v must address poker only", m)
+		}
+		types = append(types, m.Type)
+	}
+	if len(types) != 2 || types[0] != erasure.TypeLocked || types[1] != erasure.TypeUnlocked {
+		t.Fatalf("messages = %v, want locked then unlocked", types)
+	}
+}
+
+func TestABlockerAtTheEndOfGraceBlocksAServiceRequestToo(t *testing.T) {
+	sf := newServiceFixture(t)
+	r := sf.confirmed(t)
+	sf.elig.blockers = []erasure.Blocker{{Code: "poker.chips_held"}}
+	sf.now = sf.now.Add(GracePeriod)
+	sf.svc.ProcessDue(ctx)
+	if s := sf.stored(t, r.ID); s.State != StateBlocked || len(s.Blockers) != 1 || s.Blockers[0] != "poker.chips_held" {
+		t.Fatalf("request = %+v, want blocked by poker.chips_held", s)
 	}
 }

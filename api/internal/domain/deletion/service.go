@@ -28,11 +28,13 @@ type Locker interface {
 }
 
 type Mailer interface {
-	SendDeletionConfirmEmail(ctx context.Context, to, firstName, requestID, token string) error
-	SendDeletionScheduledEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error
-	SendDeletionReminderEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time) error
-	SendDeletionCancelledEmail(ctx context.Context, to, firstName string) error
-	SendDeletionBlockedEmail(ctx context.Context, to, firstName, requestID, cancelToken string, blockers []string) error
+	SendDeletionConfirmEmail(ctx context.Context, to, firstName, requestID, token, product string) error
+	SendDeletionScheduledEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time, product string) error
+	SendDeletionReminderEmail(ctx context.Context, to, firstName, requestID, cancelToken string, graceUntil time.Time, product string) error
+	SendDeletionCancelledEmail(ctx context.Context, to, firstName, product string) error
+	SendDeletionBlockedEmail(ctx context.Context, to, firstName, requestID, cancelToken string, blockers []string, product string) error
+	// SendServiceUnlinkedEmail confirms the person left a product (service unlink).
+	SendServiceUnlinkedEmail(ctx context.Context, to, firstName, product string) error
 }
 
 // Ownership finds what stops a user's deletion and which organizations go
@@ -80,6 +82,41 @@ type Service struct {
 	// what blocks leaving one of them.
 	leavable    func(name string) (ServiceTarget, bool)
 	serviceElig ServiceEligibility
+	unlinker    ServiceUnlinker
+}
+
+// ServiceUnlinker records the end of a service unlink on the account side.
+// Idempotent: the worker may run it again after a crash.
+type ServiceUnlinker interface {
+	Finish(ctx context.Context, r *Request) error
+}
+
+// WithServiceUnlinker sets what happens when a service request reaches purged.
+func (s *Service) WithServiceUnlinker(u ServiceUnlinker) *Service {
+	s.unlinker = u
+	return s
+}
+
+// participantsFor is who must ack r: every participant for an account
+// deletion, only the product being left for a service unlink.
+func (s *Service) participantsFor(r *Request) []string {
+	if r.Scope == ScopeService {
+		return []string{r.Service}
+	}
+	return s.participants
+}
+
+// assess asks what blocks r at the end of grace, and which workspaces are erased
+// with it. A service unlink has neither ownership blockers nor workspaces.
+func (s *Service) assess(ctx context.Context, r *Request) ([]Workspace, []erasure.Blocker, error) {
+	if r.Scope == ScopeService {
+		if s.serviceElig == nil {
+			return nil, nil, ErrUnknownService
+		}
+		blockers, err := s.serviceElig.CheckService(ctx, r.UserID, r.Service)
+		return nil, blockers, err
+	}
+	return s.ownership.Assess(ctx, r.UserID)
 }
 
 // ServiceTarget is a product a person can leave on its own.
@@ -180,7 +217,7 @@ func (s *Service) open(ctx context.Context, userID, scope, service string) (*Req
 	if err != nil {
 		return nil, err
 	}
-	if err := s.mail.SendDeletionConfirmEmail(ctx, u.Email, u.FirstName, r.ID, raw); err != nil {
+	if err := s.mail.SendDeletionConfirmEmail(ctx, u.Email, u.FirstName, r.ID, raw, service); err != nil {
 		// Without the e-mail the request can never be confirmed: release it now.
 		s.expire(r)
 		if saveErr := s.repo.Save(ctx, r, StateAwaitingConfirmation); saveErr != nil {
@@ -285,11 +322,11 @@ func (s *Service) sendCancelLink(ctx context.Context, r *Request, kind linkKind)
 	}
 	switch kind {
 	case linkScheduled:
-		err = s.mail.SendDeletionScheduledEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil))
+		err = s.mail.SendDeletionScheduledEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil), r.Service)
 	case linkReminder:
-		err = s.mail.SendDeletionReminderEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil))
+		err = s.mail.SendDeletionReminderEmail(ctx, u.Email, u.FirstName, r.ID, raw, parseTime(r.GraceUntil), r.Service)
 	case linkBlocked:
-		err = s.mail.SendDeletionBlockedEmail(ctx, u.Email, u.FirstName, r.ID, raw, r.Blockers)
+		err = s.mail.SendDeletionBlockedEmail(ctx, u.Email, u.FirstName, r.ID, raw, r.Blockers, r.Service)
 	}
 	if err != nil {
 		return err
@@ -391,7 +428,7 @@ func (s *Service) finishCancel(ctx context.Context, r *Request) error {
 		return err
 	}
 	if u, err := s.users.GetByID(ctx, r.UserID); err == nil {
-		if mErr := s.mail.SendDeletionCancelledEmail(ctx, u.Email, u.FirstName); mErr != nil {
+		if mErr := s.mail.SendDeletionCancelledEmail(ctx, u.Email, u.FirstName, r.Service); mErr != nil {
 			observability.Error(ctx, "deletion: cancelled e-mail failed", mErr, "request_id", r.ID)
 		}
 	}
@@ -445,7 +482,7 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 				r.setDue(now.Add(legalHoldRecheck))
 				return s.repo.Save(ctx, r, StatePending)
 			}
-			sole, blockers, err := s.ownership.Assess(ctx, r.UserID)
+			sole, blockers, err := s.assess(ctx, r)
 			if err != nil {
 				return err
 			}
@@ -477,9 +514,10 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 		if err := s.locker.Erase(ctx, r, nil); err != nil {
 			return err
 		}
-		if len(s.participants) > 0 {
-			rows := make([]*ServiceStatus, 0, len(s.participants))
-			for _, svc := range s.participants {
+		participants := s.participantsFor(r)
+		if len(participants) > 0 {
+			rows := make([]*ServiceStatus, 0, len(participants))
+			for _, svc := range participants {
 				rows = append(rows, &ServiceStatus{PK: BuildPK(r.ID), SK: serviceSK(svc), RequestID: r.ID, Service: svc,
 					Status: ServiceDispatched, Attempts: 1, FirstDispatchAt: ts(now), LastDispatchAt: ts(now)})
 			}
@@ -488,7 +526,7 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 			}
 		}
 		r.State, r.UpdatedAt = StatePurging, ts(now)
-		if s.purger != nil || len(s.participants) > 0 {
+		if s.purger != nil || len(participants) > 0 {
 			r.setDue(now)
 		} else {
 			r.clearDue() // nothing to wait for and nothing to purge yet
@@ -499,18 +537,29 @@ func (s *Service) step(ctx context.Context, r *Request, now time.Time) error {
 			r.setDue(now.Add(legalHoldRecheck))
 			return s.repo.Save(ctx, r, StatePurging)
 		}
-		if len(s.participants) > 0 {
+		if len(s.participantsFor(r)) > 0 {
 			done, err := s.reconcile(ctx, r, now)
 			if err != nil || !done {
 				return err
 			}
 		}
-		if s.purger == nil {
-			r.clearDue()
-			return s.repo.Save(ctx, r, StatePurging)
-		}
-		if err := s.purger.Purge(ctx, r); err != nil {
-			return err
+		if r.Scope == ScopeService {
+			// The account stays: only the product's side is recorded (spec § 6).
+			if s.unlinker == nil {
+				r.clearDue()
+				return s.repo.Save(ctx, r, StatePurging)
+			}
+			if err := s.unlinker.Finish(ctx, r); err != nil {
+				return err
+			}
+		} else {
+			if s.purger == nil {
+				r.clearDue()
+				return s.repo.Save(ctx, r, StatePurging)
+			}
+			if err := s.purger.Purge(ctx, r); err != nil {
+				return err
+			}
 		}
 		r.State, r.PurgedAt, r.UpdatedAt = StatePurged, ts(now), ts(now)
 		r.clearDue()
