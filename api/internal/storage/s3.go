@@ -4,6 +4,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -113,6 +114,17 @@ func (s *S3) DeleteObject(ctx context.Context, key string) error {
 		Key:    aws.String(key),
 	}); err != nil {
 		return fmt.Errorf("deleting object %s: %w", key, err)
+	}
+	return nil
+}
+
+// PutObject uploads data from the server (used by the personal-data export,
+// whose zip the API builds itself).
+func (s *S3) PutObject(ctx context.Context, key, contentType string, data []byte) error {
+	in := buildPutObjectInput(s.bucket, key, contentType)
+	in.Body = bytes.NewReader(data)
+	if _, err := s.client.PutObject(ctx, in); err != nil {
+		return fmt.Errorf("putting object %s: %w", key, err)
 	}
 	return nil
 }

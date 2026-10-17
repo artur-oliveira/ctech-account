@@ -69,6 +69,16 @@ purge), so a new table cannot be added without choosing.
 2. Participants one at a time: poker → billing → dfe → wallet (simplest to hardest), each as its own plan.
 3. The deletion and leave-a-product screens link to the export once at least the account part exists.
 
+## 8.1 Status
+
+Step 1 (account part) is implemented: `api/internal/domain/dataexport` (model, service, repository, zip
+builder with the section registry), routes `POST/GET/DELETE /v1.0/account/export`, scope
+`account:export:write`, e-mails without links, UI `/account/export`, CDK `ExportsStack` (bucket, 8-day
+lifecycle, no versioning, no CORS) and `{env}_account_data_exports`. The defaults proposed below were taken:
+JSON per product plus a README, 1 export per 24 h (a failed one retries at once), no export while the
+account is locked or pending deletion. The `api-commons/dataexport` protocol and the product parts are
+still to do (step 2).
+
 ## 9. Open questions
 
 1. **Format:** JSON + CSV per product is proposed. Is a single standard schema across products wanted (more work, easier for the person), or per-product schemas with a README each?

@@ -5,6 +5,7 @@ import {DynamoDBStack} from '../lib/dynamodb-stack';
 import {ApiStack} from '../lib/api-stack';
 import {IAMStack} from '../lib/iam-stack';
 import {KYCStack} from '../lib/kyc-stack';
+import {ExportsStack} from '../lib/exports-stack';
 import {OidcStack} from '../lib/oidc-stack';
 import {Environment} from '../lib/types';
 
@@ -26,6 +27,8 @@ const CTECH_DEPLOYMENTS_BUCKET = process.env.CTECH_DEPLOYMENTS_BUCKET || `${ENVI
 const CTECH_LOGS_BUCKET = process.env.CTECH_LOGS_BUCKET || `${ENVIRONMENT}-ctech-application-logs`;
 // KYC identity documents — owned by this repo (unlike the shared buckets above).
 const KYC_DOCUMENTS_BUCKET = `${ENVIRONMENT}-ctech-account-kyc-documents`;
+// Personal-data export zips (short-lived, presigned downloads).
+const EXPORTS_BUCKET = `${ENVIRONMENT}-ctech-account-data-exports`;
 // Session Manager on the API instances. **On**: CI deploys over SSM RunCommand
 // (/opt/app/deploy.sh), which needs the agent running; it also gets a shell
 // back onto the box for debugging. Costs ~70 MiB of RSS on a t4g.nano.
@@ -84,6 +87,16 @@ const kycStack = new KYCStack(app, id('KYC'), {
 });
 
 // =====================
+// Personal-data export (private S3 bucket, presigned downloads)
+// =====================
+const exportsStack = new ExportsStack(app, id('Exports'), {
+  env,
+  environment: ENVIRONMENT,
+  bucketName: EXPORTS_BUCKET,
+  description: `ctech-account personal data exports bucket - ${ENVIRONMENT}`,
+});
+
+// =====================
 // IAM (instance profile for EC2)
 // Shared S3 bucket ARNs are derived from the bucket names read via env vars.
 // =====================
@@ -94,10 +107,12 @@ const iamStack = new IAMStack(app, id('IAM'), {
   deploymentsBucketArn: `arn:aws:s3:::${CTECH_DEPLOYMENTS_BUCKET}`,
   logsBucketArn: `arn:aws:s3:::${CTECH_LOGS_BUCKET}`,
   kycDocumentsBucketArn: `arn:aws:s3:::${KYC_DOCUMENTS_BUCKET}`,
+  exportsBucketArn: `arn:aws:s3:::${EXPORTS_BUCKET}`,
   description: `ctech-account IAM - ${ENVIRONMENT}`,
 });
 iamStack.addStackDependency(dynamodbStack);
 iamStack.addStackDependency(kycStack);
+iamStack.addStackDependency(exportsStack);
 
 // =====================
 // Compute (EC2 + ASG, routed by ctech-lbalancer HAProxy)
@@ -110,6 +125,7 @@ const apiStack = new ApiStack(app, id('Api'), {
   deploymentsBucketName: CTECH_DEPLOYMENTS_BUCKET,
   logsBucketName: CTECH_LOGS_BUCKET,
   kycDocumentsBucketName: KYC_DOCUMENTS_BUCKET,
+  exportsBucketName: EXPORTS_BUCKET,
   valkeyUrlSsmPath: `/ctech/${ENVIRONMENT}/valkey/url`,
   enableSsmAgent: ENABLE_SSM_AGENT,
   // Alpine/ARM is the default since the prod pilot went healthy; OS_FAMILY=al2023

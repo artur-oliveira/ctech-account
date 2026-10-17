@@ -16,6 +16,7 @@ test('user-erasure topic denies publish to every principal but the app role', ()
     deploymentsBucketArn: 'arn:aws:s3:::deployments',
     logsBucketArn: 'arn:aws:s3:::logs',
     kycDocumentsBucketArn: 'arn:aws:s3:::kyc',
+    exportsBucketArn: 'arn:aws:s3:::exports',
   })
   const template = Template.fromStack(stack)
   template.hasResourceProperties('AWS::SNS::TopicPolicy', {
@@ -40,6 +41,7 @@ test('app role may list KYC objects and move them to retention', () => {
     env, environment: 'prod', dynamoDBTables: tables,
     deploymentsBucketArn: 'arn:aws:s3:::deployments', logsBucketArn: 'arn:aws:s3:::logs',
     kycDocumentsBucketArn: 'arn:aws:s3:::kyc',
+    exportsBucketArn: 'arn:aws:s3:::exports',
   })
   Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
     PolicyDocument: {Statement: Match.arrayWith([
@@ -48,5 +50,30 @@ test('app role may list KYC objects and move them to retention', () => {
       Match.objectLike({Action: 's3:PutObject', Resource: 'arn:aws:s3:::kyc/retention/*'}),
       Match.objectLike({Action: 's3:DeleteObject', Resource: 'arn:aws:s3:::kyc/kyc/*'}),
     ])},
+  })
+})
+
+test('app role may write, read and delete data export objects only under exports/', () => {
+  const app = new cdk.App()
+  const env = {account: '868899309401', region: 'us-east-1'}
+  const tables = new DynamoDBStack(app, 'TestExportTables', {env, environment: 'prod'}).tables
+  const stack = new IAMStack(app, 'TestExportIAM', {
+    env,
+    environment: 'prod',
+    dynamoDBTables: tables,
+    deploymentsBucketArn: 'arn:aws:s3:::deployments',
+    logsBucketArn: 'arn:aws:s3:::logs',
+    kycDocumentsBucketArn: 'arn:aws:s3:::kyc',
+    exportsBucketArn: 'arn:aws:s3:::exports',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
+          Resource: 'arn:aws:s3:::exports/exports/*',
+        }),
+      ]),
+    },
   })
 })

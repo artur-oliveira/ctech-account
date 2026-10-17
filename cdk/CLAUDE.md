@@ -39,6 +39,7 @@ cdk/
 │   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
 │   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app) — retired, see README §6
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
+│   ├── exports-stack.ts        # Private S3 bucket for personal-data export zips (8-day lifecycle)
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
 │   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
 │   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets used instead)

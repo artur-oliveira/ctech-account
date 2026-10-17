@@ -257,6 +257,8 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		func(clientID string) (string, bool) { return "dfe", clientID == "dfe" }, []string{"dfe"})
 	deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
 		middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
+	handler.NewDataExportHandler(newTestExportService(userSvc, sessionSvc, apiKeySvc, consentDomain.NewService(newMemConsentRepo()), auditSvc), userSvc).
+		Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(cache.NewInMemory())...)
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)

@@ -21,7 +21,8 @@
     "accountNavigation": "Account navigation",
     "organizations": "Organizations",
     "spaces": "Spaces",
-    "admin": "Admin workspace"
+    "admin": "Admin workspace",
+    "myData": "My data"
   },
   "common": {
     "loading": "Loading…",
@@ -1170,6 +1171,34 @@
         "tooLate": "This can no longer be cancelled.",
         "invalid": "This link is invalid or has expired."
       }
+    }
+  },
+  "dataExport": {
+    "title": "My data",
+    "subtitle": "Download a copy of the personal data CTech holds about you (LGPD, art. 18). The copy is a zip of JSON files, kept for 7 days.",
+    "request": "Request a copy",
+    "requesting": "Requesting…",
+    "passwordLabel": "Your password",
+    "noPasswordHint": "Your sign-in has no password: the copy is released with your signed-in session.",
+    "building": "We are preparing your copy. This page updates by itself, and we will e-mail you when it is ready.",
+    "ready": "Your copy is ready. The links below work for a few minutes; reload the page for new ones.",
+    "expiresAt": "Available until {{date}}",
+    "failed": "We could not prepare your copy. You can ask again now.",
+    "expired": "Your last copy expired. You can ask for a new one.",
+    "download": "Download {{service}} ({{size}})",
+    "discard": "Delete this copy",
+    "discarding": "Deleting…",
+    "scope": "This copy has your CTech Account data: profile, devices, API keys, authorized apps and security activity. Data held by other CTech products will be added to the same download as each one joins.",
+    "notIncluded": "Not included: passwords, API key secrets and session tokens.",
+    "errors": {
+      "password": "Wrong password.",
+      "stepUp": "Confirm your identity to continue.",
+      "tooSoon": "You can request one copy every 24 hours.",
+      "conflict": "A copy is already being prepared, or this account cannot export right now.",
+      "tooMany": "Too many attempts. Try again later."
+    },
+    "services": {
+      "account": "Account"
     }
   }
 }

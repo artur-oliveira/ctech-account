@@ -177,3 +177,15 @@ func DeletionRequestLimiters(c *cache.Client) []fiber.Handler {
 		}),
 	}
 }
+
+// DataExportLimiters guards the identity check of the export request against
+// password guessing (failures only). The one-export-per-24h rule lives in the
+// service, where a failed build can be retried at once.
+func DataExportLimiters(c *cache.Client) []fiber.Handler {
+	return []fiber.Handler{
+		RateLimit(RateLimitConfig{
+			Cache: c, Prefix: "export_pw", Max: FailedLoginMax, Window: FailedLoginWindow,
+			KeyFunc: GetUserID, CountOnlyFailures: true, FailClosed: true,
+		}),
+	}
+}

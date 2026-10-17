@@ -18,6 +18,7 @@ function synth(): Template {
     deploymentsBucketName: 'prod-ctech-deployments',
     logsBucketName: 'prod-ctech-application-logs',
     kycDocumentsBucketName: 'prod-ctech-account-kyc',
+    exportsBucketName: 'prod-ctech-account-exports',
     valkeyUrlSsmPath: '/ctech/prod/valkey/url',
     billingApiUrl: 'https://billing-api.aoctech.app',
   })

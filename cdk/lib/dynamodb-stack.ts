@@ -277,6 +277,23 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_deletion_requests', deletionRequestsTable);
 
+    // Personal-data export (docs/specs/2026-10-17-data-export.md): one
+    // pk=SUB#{user_id} sk=CURRENT row per person, replaced by each new request.
+    const dataExportsTable = new dynamodb.TableV2(this, 'DataExportsTableV2', {
+      tableName: `${environment}_account_data_exports`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: pitr,
+      },
+      removalPolicy,
+    });
+    this.tables.set('account_data_exports', dataExportsTable);
+
     // Platform-wide scope catalog — shared by every ctech service, hence the
     // {env}_ctech_scopes name instead of the {env}_account_* convention.
     // Single partition (pk=SERVICE, sk=<service code>) so one Query loads it all.

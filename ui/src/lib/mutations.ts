@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { api } from './axios'
-import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationKind, OrganizationMember, OrganizationRole, Company, DeletionRequest } from './types'
+import type { AdminKYCDocument, KYCBasicSubmission, KYCDocumentType, KYCRejectionCode, KYCReviewDecision, KYCStatus, OAuthClient, PresignedUpload, TermsPending, Organization, OrganizationKind, OrganizationMember, OrganizationRole, Company, DeletionRequest, DataExport } from './types'
 
 export async function loginAPI(email: string, password: string) {
   const { data } = await api.post<{
@@ -413,4 +413,13 @@ export async function confirmDeletionAPI(requestID: string, token: string): Prom
 export async function cancelDeletionAPI(requestID: string, token: string): Promise<DeletionRequest> {
   const { data } = await api.post<DeletionRequest>('/v1.0/auth/deletion/cancel', { request_id: requestID, token })
   return data
+}
+
+export async function requestDataExportAPI(password?: string): Promise<DataExport> {
+  const { data } = await api.post<DataExport>('/v1.0/account/export', password ? { password } : {})
+  return data
+}
+
+export async function discardDataExportAPI(): Promise<void> {
+  await api.delete('/v1.0/account/export')
 }

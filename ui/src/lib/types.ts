@@ -433,3 +433,15 @@ export type DeletionBlocker = {
   detail?: Record<string, unknown>
   action_url?: string
 }
+
+/** GET/POST /account/export — the person's personal-data export. */
+export type DataExport = {
+  id: string
+  state: 'building' | 'ready' | 'failed' | 'expired'
+  requested_at?: string
+  ready_at?: string
+  expires_at?: string
+  parts: { service: string; status: string; size: number }[]
+  /** Short-lived download links, present only on a ready export. */
+  links: { service: string; url: string; size: number }[]
+}

@@ -49,3 +49,14 @@ test('users table expires KYC retention items via TTL', () => {
     TimeToLiveSpecification: {AttributeName: 'expires_at', Enabled: true},
   })
 })
+
+test('data exports table keeps one CURRENT row per person', () => {
+  const stack = new DynamoDBStack(new cdk.App(), 'TestExportsTable', {
+    env: {account: '868899309401', region: 'us-east-1'},
+    environment: 'prod',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::DynamoDB::GlobalTable', {
+    TableName: 'prod_account_data_exports',
+    KeySchema: [{AttributeName: 'pk', KeyType: 'HASH'}, {AttributeName: 'sk', KeyType: 'RANGE'}],
+  })
+})

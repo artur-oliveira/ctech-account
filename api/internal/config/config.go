@@ -77,6 +77,9 @@ type Config struct {
 	// manual review (KYC_DOCUMENTS_BUCKET env var). When empty, the document
 	// verification path is disabled and only PIX-match verification is offered.
 	KYCDocumentsBucket string
+	// ExportsBucket holds the personal-data export zips (docs/specs/2026-10-17-data-export.md).
+	// Empty disables the export routes.
+	ExportsBucket string
 
 	// Reverse proxy
 	// TrustedProxies is a list of IPs/CIDRs whose X-Forwarded-For header is trusted.
@@ -217,6 +220,7 @@ func Load() (*Config, error) {
 		MaxMindLicenseKey:      os.Getenv("MAXMIND_LICENSE_KEY"),
 		MaxMindDBPath:          getEnv("MAXMIND_DB_PATH", "/var/lib/ctech-account/GeoLite2-City.mmdb"),
 		KYCDocumentsBucket:     os.Getenv("KYC_DOCUMENTS_BUCKET"),
+		ExportsBucket:          os.Getenv("EXPORTS_BUCKET"),
 		TrustedProxies:         trustedProxies,
 		TOTPIssuer:             TOTPIssuer,
 		SelfClientID:           getEnv("SELF_CLIENT_ID", "accounts"),

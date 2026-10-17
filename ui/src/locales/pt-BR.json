@@ -21,7 +21,8 @@
     "accountNavigation": "Navegação da conta",
     "organizations": "Organizações",
     "spaces": "Espaços",
-    "admin": "Área administrativa"
+    "admin": "Área administrativa",
+    "myData": "Meus dados"
   },
   "common": {
     "loading": "Carregando…",
@@ -1170,6 +1171,34 @@
         "tooLate": "Já não é possível cancelar.",
         "invalid": "Este link é inválido ou expirou."
       }
+    }
+  },
+  "dataExport": {
+    "title": "Meus dados",
+    "subtitle": "Baixe uma cópia dos dados pessoais que a CTech guarda sobre você (LGPD, art. 18). A cópia é um zip de arquivos JSON, disponível por 7 dias.",
+    "request": "Solicitar cópia",
+    "requesting": "Solicitando…",
+    "passwordLabel": "Sua senha",
+    "noPasswordHint": "Seu acesso não tem senha: a cópia é liberada com a sua sessão conectada.",
+    "building": "Estamos preparando a sua cópia. Esta página atualiza sozinha e avisaremos por e-mail quando estiver pronta.",
+    "ready": "Sua cópia está pronta. Os links abaixo funcionam por alguns minutos; recarregue a página para gerar novos.",
+    "expiresAt": "Disponível até {{date}}",
+    "failed": "Não conseguimos preparar a sua cópia. Você pode pedir de novo agora.",
+    "expired": "Sua última cópia expirou. Você pode pedir uma nova.",
+    "download": "Baixar {{service}} ({{size}})",
+    "discard": "Apagar esta cópia",
+    "discarding": "Apagando…",
+    "scope": "Esta cópia traz os dados da sua Conta CTech: perfil, dispositivos, chaves de API, apps autorizados e atividade de segurança. Os dados guardados pelos outros produtos CTech entram no mesmo download conforme cada um aderir.",
+    "notIncluded": "Não incluído: senhas, segredos de chaves de API e tokens de sessão.",
+    "errors": {
+      "password": "Senha incorreta.",
+      "stepUp": "Confirme sua identidade para continuar.",
+      "tooSoon": "Você pode pedir uma cópia a cada 24 horas.",
+      "conflict": "Já há uma cópia sendo preparada, ou esta conta não pode exportar agora.",
+      "tooMany": "Muitas tentativas. Tente novamente mais tarde."
+    },
+    "services": {
+      "account": "Conta"
     }
   }
 }
