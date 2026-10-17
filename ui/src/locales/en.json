@@ -1105,7 +1105,8 @@
       "poker.pending_cashout": "A CTech Poker cash-out is being processed. Wait for it to finish.",
       "poker.pending_fee_debit": "A CTech Poker charge is being processed. Wait for it to finish.",
       "billing.invoice_open": "You have an open CTech invoice. Pay it before deleting the account.",
-      "billing.tenant_owner": "You are responsible for a billing account. Contact support.",
+      "billing.invoice_uncollectible": "You have a CTech invoice written off as uncollectible. Contact support to settle it.",
+      "billing.merchant_tenant": "One of your organizations has a billing account in CTech Billing. Contact support to close it.",
       "unknown": "A CTech product reported a pending item ({{code}}). Contact support."
     },
     "blockerAction": "Resolve",
