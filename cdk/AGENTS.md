@@ -8,11 +8,10 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: **fourteen**
-DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**, S3 + CloudFront
-(frontend, retired — see README §6), IAM roles, GitHub Actions OIDC, a private KYC documents
-bucket, and the shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
-`README.md`; this file is the quick reference.
+Defines and deploys all AWS infrastructure for the ctech-account service: **sixteen**
+DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**, IAM roles, GitHub Actions OIDC, a private KYC documents
+bucket, a private personal-data export bucket, and the shared deployment/logs buckets. **No Lambda / API Gateway.** Authoritative layout in
+`README.md`; this file is the quick reference. Family infra rules (CDK frozen, Terraform for new infra, no NAT/ALB/custom metrics/alarms, CI gate without `|| true`) live in the `ctech-dev-standards` skill; this file only covers what is specific to ctech-account.
 
 ---
 
@@ -21,17 +20,17 @@ bucket, and the shared deployment/logs buckets. **No Lambda / API Gateway.** Aut
 ```
 cdk/
 ├── bin/
-│   └── ctech-account.ts        # CDK app entry — instantiates the 7 stacks
+│   └── ctech-account.ts        # CDK app entry — instantiates the 6 stacks (Oidc, DynamoDB, KYC, Exports, IAM, Api)
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
-│   ├── dynamodb-stack.ts       # FOURTEEN DynamoDB tables + GSIs (OnDemand)
+│   ├── dynamodb-stack.ts       # SIXTEEN DynamoDB tables + GSIs (OnDemand)
 │   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
-│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app) — retired
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
+│   ├── exports-stack.ts        # Private S3 bucket for personal-data export zips
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
 │   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
 │   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets instead)
-└── test/                       # compute-stack.test.ts, dynamodb-stack.test.ts, oidc-stack.test.ts
+└── test/                       # compute-stack, dynamodb-stack, exports-stack, iam-stack, oidc-stack (*.test.ts)
 ```
 
 ---
@@ -50,7 +49,7 @@ cdk/
 
 ## Non-Negotiable Rules
 
-1. **`RemovalPolicy.DESTROY` is development-only** — never staging or production.
+1. **`RemovalPolicy.DESTROY` is non-prod only** — never production.
 2. **Never run `cdk destroy` without explicit environment confirmation from the user.**
 3. **IAM least privilege** — no wildcard resource ARNs on sensitive permissions.
 4. **All resource names derive from `ENVIRONMENT`** — never hardcoded full names.
@@ -60,11 +59,11 @@ cdk/
 
 ## Environment Rules
 
-| Environment | Removal Policy    | PITR   | Tables                          |
-|-------------|-------------------|--------|---------------------------------|
-| development | `DESTROY`         | No     | 14 × `{env}_account_*` / `_ctech_scopes` |
-| staging     | `RETAIN`          | No     | 14 × `{env}_account_*` / `_ctech_scopes` |
-| production  | `RETAIN`          | Yes    | 14 × `{env}_account_*` / `_ctech_scopes` |
+| Environment | Removal Policy | PITR | Tables                                   |
+|-------------|----------------|------|------------------------------------------|
+| dev         | `DESTROY`      | No   | 16 x `{env}_account_*` / `_ctech_scopes` |
+| stage       | `DESTROY`      | No   | 16 x `{env}_account_*` / `_ctech_scopes` |
+| prod        | `RETAIN`       | Yes  | 16 x `{env}_account_*` / `_ctech_scopes` |
 
 Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no single
 `ctech-account-{environment}` table.
@@ -75,7 +74,7 @@ Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no
 
 | Mistake                                     | Correct approach                              |
 |---------------------------------------------|-----------------------------------------------|
-| `RemovalPolicy.DESTROY` in any stack        | Only in development environment block         |
+| `RemovalPolicy.DESTROY` in any stack        | Only for non-prod (see `isProd`)              |
 | Hardcoded ARN in cross-stack reference      | Use CDK export/import (`Fn.importValue`)      |
 | Wildcard `*` in IAM resource ARN            | Scope to the specific table/bucket ARN        |
 | Adding IAM policy inline in compute stack   | Define in `iam-stack.ts`, pass role as prop   |
@@ -90,7 +89,7 @@ Table names derive from `ENVIRONMENT` in `lib/dynamodb-stack.ts` — there is no
 cd cdk && npm install
 cdk synth                                    # Always run first
 cdk deploy --all                             # Dev
-ENVIRONMENT=production cdk deploy StackName  # Prod (specific stack)
+ENVIRONMENT=prod cdk deploy StackName  # Prod (specific stack)
 ```
 
 ---
@@ -104,10 +103,13 @@ cdk synth  # CloudFormation synthesis — must succeed cleanly
 
 ---
 
+> **CI divergence (documented, not fixed):** `.github/workflows/ci.yml` runs `npx cdk synth --quiet 2>&1 | head -5 || true`,
+> so a synth failure does not fail the PR check; only `npx tsc --noEmit` and the UI job gate. The skill requires
+> synth failures to fail CI. Run `cdk synth` and `npm test` locally.
+
 ## Known Constraints
 
 - SSM parameters must exist before deploying compute stack.
-- ACM certificate for CloudFront must be in `us-east-1` regardless of deploy region.
 - Go binary on EC2 must be named `ctech-account`.
 - `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy.
 
@@ -118,7 +120,7 @@ cdk synth  # CloudFormation synthesis — must succeed cleanly
 - [ ] `cdk synth` succeeds cleanly
 - [ ] `npm test` passes
 - [ ] No magic strings — all names from environment variable
-- [ ] `RemovalPolicy.DESTROY` only in development
+- [ ] `RemovalPolicy.DESTROY` never in prod
 - [ ] IAM permissions are least-privilege
 - [ ] New resources documented in `../README.md`
 - [ ] Cost impact assessed
