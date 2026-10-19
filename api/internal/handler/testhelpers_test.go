@@ -632,7 +632,7 @@ func (memScopesRepo) LoadResources(_ context.Context) ([]scopesPkg.ResourceServe
 		// A stand-in for ctech-billing's published manifest: integration scopes
 		// marked m2m, a user scope not.
 		{
-			SK: "billing", DisplayName: "CTech Cobranças (test)", Audience: "https://billing.example.test",
+			SK: "billing", DisplayName: "CTech Billing (test)", Audience: "https://billing.example.test",
 			Scopes: []scopesPkg.ScopeDefinition{
 				scope("billing:invoices:write", true),
 				scope("billing:customers:read", true),
