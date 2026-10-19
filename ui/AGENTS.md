@@ -4,6 +4,11 @@ Next.js 16 + React 19 + ShadCN 4 + Tailwind v4 — accounts.aoctech.app frontend
 
 **Before any task:** Read `GUIDELINES.md` (Next.js 16 / React 19 / ShadCN 4 specifics), `../README.md` (API surface).
 
+**Family standard:** the `ctech-dev-standards` skill (`references/frontend.md`) wins over this file. Known divergences
+today (verified 2026-10-19): `@aoctech/ui` is not a dependency (primitives are local ShadCN copies in
+`src/components/ui`); `npm run lint` is plain `eslint` with no `--max-warnings 0`, so CI does not fail on warnings
+(the standard requires zero warnings, check locally). New generic components belong upstream in ctech-ui.
+
 ---
 
 ## Role
