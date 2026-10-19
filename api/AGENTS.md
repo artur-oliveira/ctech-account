@@ -1,6 +1,6 @@
 # AGENTS.md — api (ctech-account)
 
-Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.26, Fiber v3, DynamoDB, Valkey.
+Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`), Fiber v3, DynamoDB, Valkey.
 
 **Before any task:** Read `../README.md` and `../PLAN.md`.
 
@@ -13,11 +13,27 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.26, Fiber v3, Dyna
 | `cmd/api/main.go`                      | App bootstrap — Fiber config, route registration, error handler, health check |
 | `internal/apierror/problem.go`         | RFC 7807 engine — all error constructors live here                            |
 | `internal/validate/validate.go`        | Validator singleton — use `validate.Struct()`, never instantiate your own     |
-| `internal/crypto/jwt.go`               | JWT signing/verification (RS256)                                              |
+| `internal/crypto/jwt.go`               | JWT signing/verification (RS256/ES256)                                              |
 | `internal/domain/*/repository.go`      | Repository interfaces + DynamoDB implementations                              |
 | `internal/domain/*/service.go`         | Business logic — only layer that calls repositories                           |
 | `internal/handler/*.go`                | HTTP handlers — only layer that calls services                                |
 | `internal/handler/testhelpers_test.go` | In-memory repos + test app builder shared by all handler tests                |
+
+---
+
+## Divergences from `ctech-dev-standards` (verified 2026-10-19)
+
+The skill is the target; this repo still differs in these places. Do not copy the old variant into new code,
+and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
+
+- Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
+- Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
+- Rate limit and step-up guards: local `internal/middleware` copies instead of go-common.
+- Idempotency: no inbound `Idempotency-Key` middleware (only `internal/billingclient` sends one).
+- DynamoDB: local `internal/database/conditional.go`; `domain/kyc/repository.go` still has a `Scan` call.
+- go-common pinned at v1.29.1 (check `go.mod`; the family target is a single shared minor).
+- CI (`.github/workflows/ci.yml`) runs `go vet`, arm64 build and `go test ./... -count=1` without `-race`,
+  staticcheck or govulncheck. Run `go test -race ./...` locally.
 
 ---
 
@@ -31,7 +47,7 @@ internal/
   apierror/       RFC 7807 Problem types — ALL errors must use this package
   cache/          Valkey client (disabled when VALKEY_URL is absent)
   config/         Env-driven Config struct
-  crypto/         JWTService (RS256), bcrypt helpers, PKCE
+  crypto/         JWTService (RS256/ES256), Argon2id helpers, PKCE
   database/       DynamoDB client wrapper
   domain/         Business logic only — no HTTP, no AWS SDK in service layer
     apikey/
@@ -137,7 +153,7 @@ internal/
 | `c.UserContext()`                                            | `c.Context()`                                             |
 | `c.Status(302).Redirect(url)`                                | `c.Redirect().Status(302).To(url)`                        |
 | Adding a method to concrete repo without adding to interface | Add to interface first, then implement                    |
-| Calling `session.Rotate` on first code exchange              | Use `session.ReplaceRefreshToken` — no prior token exists |
+| Calling `RotateClientToken` on first code exchange           | Use `IssueClientToken` — no prior token exists            |
 
 ---
 
@@ -147,6 +163,7 @@ internal/
 go test ./internal/domain/...  # unit tests only
 go test ./internal/handler/... # integration tests only
 go test ./... -v -count=1      # all tests verbose
+go test -race ./...            # family standard; CI does not run it yet
 ```
 
 No real AWS resources needed. All integration tests run against in-memory implementations.
@@ -162,9 +179,9 @@ No real AWS resources needed. All integration tests run against in-memory implem
 
 ## Known Constraints
 
-- `errors.AsType[*T]` requires Go 1.26 — do not downgrade.
+- `errors.AsType[*T]` requires Go 1.26+ (module is on 1.27) — do not downgrade.
 - Valkey is **required in non-dev**: the API refuses to boot without `VALKEY_URL` outside `dev`/`development` (OAuth codes, MFA/passkey challenges, recovery tokens and rate limiting have no DynamoDB fallback). In `dev` only it is optional (cache operations become no-ops).
-- RS256 only — no HS256, no `SECRET_KEY`.
+- RS256 or ES256 (per the active key) — no HS256, no `SECRET_KEY`.
 - `GET /v1.0/health-check` returns `application/health+json` — not `application/json`.
 - KID rotation affects all downstream JWT consumers (ctech-dfe) — coordinate carefully.
 

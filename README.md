@@ -2,7 +2,7 @@
 
 Centralized OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 
-Built with **Go 1.26** and **Fiber v3**. Runs on an EC2 Auto Scaling Group routed by
+Built with **Go 1.27** and **Fiber v3**. Runs on an EC2 Auto Scaling Group routed by
 the CTech HAProxy edge load balancer; the frontend is a static export on **Cloudflare
 Workers Static Assets**, which calls the API cross-origin. There is no Lambda or API
 Gateway.
@@ -45,7 +45,7 @@ ctech-account/
 │       ├── apierror/     # RFC 7807 Problem Details types + constructors
 │       ├── cache/        # Valkey client wrapper
 │       ├── config/       # Environment-driven configuration
-│       ├── crypto/       # JWT signing (RS256), bcrypt, PKCE helpers
+│       ├── crypto/       # JWT signing (RS256/ES256), Argon2id, PKCE helpers
 │       ├── database/     # DynamoDB client wrapper
 │       ├── domain/       # Core business logic
 │       │   ├── apikey/   # API key entity, repository interface, service

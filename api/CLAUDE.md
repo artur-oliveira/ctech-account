@@ -1,8 +1,24 @@
 # CLAUDE.md — api (ctech-account)
 
-Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.26, Fiber v3, DynamoDB, Valkey.
+Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`), Fiber v3, DynamoDB, Valkey.
 
 **Before any task:** Read `../README.md` and `../PLAN.md`.
+
+---
+
+## Divergences from `ctech-dev-standards` (verified 2026-10-19)
+
+The skill is the target; this repo still differs in these places. Do not copy the old variant into new code,
+and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
+
+- Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
+- Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
+- Rate limit and step-up guards: local `internal/middleware` copies instead of go-common.
+- Idempotency: no inbound `Idempotency-Key` middleware (only `internal/billingclient` sends one).
+- DynamoDB: local `internal/database/conditional.go`; `domain/kyc/repository.go` still has a `Scan` call.
+- go-common pinned at v1.29.1 (check `go.mod`; the family target is a single shared minor).
+- CI (`.github/workflows/ci.yml`) runs `go vet`, arm64 build and `go test ./... -count=1` without `-race`,
+  staticcheck or govulncheck. Run `go test -race ./...` locally.
 
 ---
 
@@ -15,7 +31,7 @@ internal/
   apierror/       RFC 7807 Problem types — ALL errors must use this package
   cache/          Valkey client (disabled when VALKEY_URL is absent)
   config/         Env-driven Config struct
-  crypto/         JWTService (RS256/ES256), bcrypt helpers, PKCE
+  crypto/         JWTService (RS256/ES256), Argon2id helpers, PKCE
   database/       DynamoDB client wrapper
   domain/         Business logic only — no HTTP, no AWS SDK in service layer
     apikey/
@@ -110,13 +126,13 @@ Implement only what was requested. No opportunistic refactors, no added abstract
 - Use `c.Context()` — never `c.UserContext()` (breaks in this environment).
 - Redirect: `c.Redirect().Status(fiber.StatusFound).To(location)` — not `c.Status(...).Redirect()`.
 - `c.BodyParser(&req)` returns a parse error on empty body — check before validating.
-- Error handler uses `errors.AsType[*T]` (Go 1.26 generic errors) — do not downgrade.
+- Error handler uses `errors.AsType[*T]` (Go generic errors) — do not downgrade.
 
 ### Session Handling
 
-- `session.Service.ReplaceRefreshToken` — use on first OAuth code exchange (no prior token exists).
-- `session.Service.Rotate` — validates presented token before replacing; use on all subsequent refresh grants.
-- Token-reuse detection triggers `Delete` + returns `apierror.TokenReuse`.
+- `session.Service.IssueClientToken` — use on first OAuth code exchange (issues, or replaces, the per-client refresh token).
+- `session.Service.RotateClientToken` — validates the presented token before replacing; use on all subsequent refresh grants.
+- Token-reuse detection returns `ErrTokenReuse` / `apierror.TokenReuse`.
 
 ### DynamoDB
 
@@ -129,7 +145,7 @@ Implement only what was requested. No opportunistic refactors, no added abstract
   uniqueness, TOTP/backup-code single-use, CPF uniqueness). Never do a blind
   `PutItem`/`UpdateItem` where a concurrent writer could clobber state.
 - **Valkey is mandatory outside `dev`/`development`.** The binary refuses to boot
-  without `VALKEY_URL` (`cmd/api/main.go:70`): OAuth codes, MFA/passkey challenges,
+  without `VALKEY_URL` (`cmd/api/main.go`): OAuth codes, MFA/passkey challenges,
   account-recovery tokens, and all rate limiting live in Valkey with **no DynamoDB
   fallback**. When `VALKEY_URL` is absent the cache client is in disabled mode
   (no-ops), which is only acceptable in dev.
@@ -158,13 +174,14 @@ Integration tests use in-memory repo implementations — no real AWS needed.
 go test ./internal/domain/...  # unit tests
 go test ./internal/handler/... # integration tests
 go test ./...                  # all tests
+go test -race ./...            # family standard; CI does not run it yet
 ```
 
 ---
 
 ## Known Constraints
 
-- `errors.AsType[*T]` requires Go 1.26 — do not downgrade.
+- `errors.AsType[*T]` requires Go 1.26+ (module is on 1.27) — do not downgrade.
 - Fiber v3 `c.JSON()` sets `Content-Type: application/json` unconditionally; use `c.Send(b)` + `c.Set()` for non-JSON
   content types (e.g. `application/health+json`, `application/problem+json`).
 - Valkey client: when `VALKEY_URL` is absent or invalid, client is in disabled mode — operations are no-ops, not errors.
