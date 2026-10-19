@@ -388,7 +388,7 @@ func planLimitProblem(c fiber.Ctx, le *organization.PlanLimitError) *apierror.Pr
 	if le.Resource == organization.ResourcePeople {
 		detail = fmt.Sprintf("This space already has %d of %d people on your plan.", le.Used, le.Limit)
 	}
-	return apierror.PlanLimit(le.Resource, detail, c.Path()).WithPlanUsage(le.Limit, le.Used, le.Plan)
+	return apierror.WithPlanUsage(apierror.PlanLimit(le.Resource, detail, c.Path()), le.Limit, le.Used, le.Plan)
 }
 
 func (h *OrganizationHandler) planUsage(c fiber.Ctx) error {
