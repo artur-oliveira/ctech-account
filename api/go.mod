@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.3
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.75.1
 	github.com/fasthttp/websocket v1.5.12
-	github.com/go-playground/validator/v10 v10.30.3
+	github.com/go-playground/validator/v10 v10.30.5
 	github.com/go-webauthn/webauthn v0.18.0
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -25,7 +25,7 @@ require (
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.29.1
+	gopkg.aoctech.app/api-commons v1.38.0
 )
 
 require (
