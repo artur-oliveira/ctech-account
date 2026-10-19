@@ -3,6 +3,7 @@ package kyc
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -158,7 +159,14 @@ type testPresigner interface {
 
 type memDeleterPresigner struct {
 	*memPresigner
+	mu      sync.Mutex // DeleteObject runs on the service's background goroutine
 	deleted []string
+}
+
+func (p *memDeleterPresigner) deletedCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.deleted)
 }
 
 func newMemDeleterPresigner() *memDeleterPresigner {
@@ -166,6 +174,8 @@ func newMemDeleterPresigner() *memDeleterPresigner {
 }
 
 func (p *memDeleterPresigner) DeleteObject(_ context.Context, key string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.deleted = append(p.deleted, key)
 	return nil
 }
@@ -473,13 +483,13 @@ func TestReviewRejectPurgesS3Objects(t *testing.T) {
 
 	want := len(RequiredDocTypes)
 	for i := 0; i < 200; i++ {
-		if len(presigner.deleted) == want {
+		if presigner.deletedCount() == want {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if len(presigner.deleted) != want {
-		t.Fatalf("deleted = %d, want %d", len(presigner.deleted), want)
+	if presigner.deletedCount() != want {
+		t.Fatalf("deleted = %d, want %d", presigner.deletedCount(), want)
 	}
 }
 
