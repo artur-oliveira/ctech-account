@@ -203,8 +203,8 @@ func TestStartupDegradesGeoWhenNoFileAndDownloadFails(t *testing.T) {
 
 	dir := t.TempDir()
 	Startup(context.Background(), Config{
-		DBPath:      filepath.Join(dir, "GeoLite2-City.mmdb"),
-		AccountID:   "bad", LicenseKey: "bad",
+		DBPath:    filepath.Join(dir, "GeoLite2-City.mmdb"),
+		AccountID: "bad", LicenseKey: "bad",
 		downloadURL: srv.URL, HTTPClient: srv.Client(),
 	})
 
