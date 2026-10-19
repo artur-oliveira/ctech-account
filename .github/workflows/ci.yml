@@ -33,9 +33,29 @@ jobs:
         working-directory: api
         run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null ./cmd/api
 
-      - name: Test
+      - name: Test (race)
         working-directory: api
-        run: go test ./... -v -count=1
+        run: go test ./... -race -count=1
+
+      # Pinned, so a new release cannot turn CI red on a day nobody changed code;
+      # bump deliberately. Built against a pinned x/tools too: staticcheck's own
+      # x/tools cannot read the export data of a newer Go patch.
+      - name: Build staticcheck
+        run: |
+          dir=$(mktemp -d)
+          (cd "$dir" && go mod init staticcheck >/dev/null 2>&1 \
+            && go get honnef.co/go/tools/cmd/staticcheck@v0.8.2 golang.org/x/tools@v0.52.0 \
+            && go build -o "$RUNNER_TEMP/staticcheck" honnef.co/go/tools/cmd/staticcheck)
+
+      - name: Staticcheck
+        working-directory: api
+        run: $RUNNER_TEMP/staticcheck ./...
+
+      # Reports only vulnerabilities this code can reach, so a finding is always
+      # a call path with something concrete to do about it.
+      - name: Vulnerability scan
+        working-directory: api
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   cdk:
     name: CDK Synth
@@ -89,7 +109,7 @@ jobs:
       - run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint -- --max-warnings 0
 
       - name: Type check
         run: npx tsc --noEmit
