@@ -1,7 +1,7 @@
 # api/ — ctech-account Go backend (OAuth 2.0 + OIDC)
 
-The identity-provider API for the aoctech.app platform. **Go 1.26, Fiber v3, uber/fx
-DI, layered `handler → service → repository`, DynamoDB, Valkey, JWKS/OIDC.**
+The identity-provider API for the aoctech.app platform. **Go 1.27, Fiber v3, manual
+DI in `cmd/api/main.go`, layered `handler → service → repository`, DynamoDB, Valkey, JWKS/OIDC.**
 
 > The implementation is the source of truth. Cross-check against code before trusting
 > any doc. Endpoint-level detail (method, path, auth, request/response shapes, business
@@ -34,7 +34,7 @@ api/
     ├── apierror/       # RFC 7807 Problem types — ALL errors use this package
     ├── cache/          # Valkey client (disabled no-op when VALKEY_URL absent)
     ├── config/         # Env-driven Config (cmd/api/main.go:47 loads it)
-    ├── crypto/         # JWTService (RS256), bcrypt, PKCE
+    ├── crypto/         # JWTService (RS256/ES256), Argon2id, PKCE
     ├── database/       # DynamoDB wrapper + ConditionalUpdate (conditional.go)
     ├── domain/         # Business logic (services + repository interfaces)
     │   ├── apikey/  audit/  kyc/  mfa/  oauth/  session/  user/
@@ -49,11 +49,11 @@ api/
 ## Hard rules (see [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md))
 
 - **Valkey is mandatory outside `dev`/`development`** — the binary refuses to boot
-  without `VALKEY_URL` (`cmd/api/main.go:70`). OAuth codes, MFA/passkey challenges,
+  without `VALKEY_URL` (`cmd/api/main.go`). OAuth codes, MFA/passkey challenges,
   recovery tokens, and all rate limiting live in Valkey with no DynamoDB fallback.
-- **Fourteen DynamoDB tables** (`{env}_account_users`, `_account_sessions`,
+- **Sixteen DynamoDB tables** (`{env}_account_users`, `_account_sessions`,
   `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`, `_account_passkeys`,
-  `_account_audit`, `_account_support_tickets`, `_account_support_metrics`, `_ctech_scopes`,
+  `_account_audit`, `_account_support_tickets`, `_account_support_metrics`, `_account_deletion_requests`, `_account_data_exports`, `_ctech_scopes`,
   `_account_organizations`, `_account_memberships`, `_account_invitations`,
   `_account_companies`), all OnDemand — see `cdk/lib/dynamodb-stack.ts`.
 - **Conditional writes** (`internal/database.ConditionalUpdate`) for every

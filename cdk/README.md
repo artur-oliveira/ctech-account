@@ -13,7 +13,7 @@ before trusting any doc.**
 Entry point: `bin/ctech-account.ts`. App: `CtechAccount-{ENV}-<Stack>`.
 
 > **Divergence vs older CLAUDE.md/AGENTS.md (now fixed):** this repo does **not**
-> use a single-table design. It provisions **fourteen separate DynamoDB tables** (see
+> use a single-table design. It provisions **sixteen separate DynamoDB tables** (see
 > §Tables). There is **no Lambda and no API Gateway** anywhere in this CDK — the API
 > runs on an **EC2 Auto Scaling Group routed by the CTech HAProxy edge load balancer**, and
 > the SSM signing-key path is `/ctech-account/{env}/jwk/*` (not `rsa-private-key`).
@@ -29,11 +29,11 @@ All stacks are instantiated in `bin/ctech-account.ts`. `Environment` ∈
 | Stack | File | Resources |
 |-------|------|-----------|
 | `OidcStack` (global, deployed once) | `lib/oidc-stack.ts` | GitHub Actions OIDC deploy role + infra role (`AdministratorAccess`) |
-| `DynamoDBStack` | `lib/dynamodb-stack.ts` | 14 DynamoDB tables + GSIs (OnDemand) |
+| `DynamoDBStack` | `lib/dynamodb-stack.ts` | 16 DynamoDB tables + GSIs (OnDemand) |
 | `KYCStack` | `lib/kyc-stack.ts` | 1 private S3 bucket for KYC identity documents |
+| `ExportsStack` | `lib/exports-stack.ts` | 1 private S3 bucket for personal-data export zips (8-day lifecycle in prod, 2 days elsewhere) |
 | `IAMStack` | `lib/iam-stack.ts` | EC2 instance profile + least-privilege inline policies |
 | `ApiStack` | `lib/api-stack.ts` | EC2 ASG + Launch Template + nginx, registered with **HAProxy** |
-| `FrontendStack` | `lib/frontend-stack.ts` | S3 (static export) + CloudFront + URL-rewrite function — **retired**, see § 6 |
 
 **`lib/s3-stack.ts` (`S3Stack`) is NOT instantiated** in `bin/ctech-account.ts`. The
 deployment/logs buckets are instead the shared `ctech-cdk` buckets passed in as env
@@ -41,8 +41,8 @@ vars (`CTECH_DEPLOYMENTS_BUCKET`, `CTECH_LOGS_BUCKET`, `bin/ctech-account.ts:28`
 Treat `S3Stack` as dead code unless/until it is wired in. (Hypothesis: kept as a
 template or leftover from a single-repo-buckets design.)
 
-Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
-`Compute → IAM`.
+Stack dependencies are wired in `bin/ctech-account.ts` (`IAM` takes the DynamoDB/KYC/Exports outputs,
+`Api` takes IAM). There is no frontend stack: it was removed (commit 746c42a), see § 6.
 
 ---
 
@@ -60,10 +60,10 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 - The retained `/ctech/{env}/network/alb-sg-id` parameter now identifies the shared
   edge SG trusted by service instances. Its historical name is intentionally kept
   until every service has migrated without downtime.
-- The service permits `t4g.nano` and `t4g.micro` Spot capacity, uses an encrypted
+- The service runs `t4g.nano` On-Demand (`onDemand: true` in `api-stack.ts`), uses an encrypted
   3-GiB gp3 root volume, private IPv4,
   and IPv6 egress (no NAT gateway). Account-specific nginx, bootstrap/deploy
-  scripts and alarms remain local.
+  scripts remain local.
 - **Capacity:** min 1, max **2** in every environment (`api-stack.ts:279-283`) — the
   extra instance gives `CapacityRebalance` headroom to launch a replacement before
   terminating a spot-interrupted instance, not prod-specific scaling.
@@ -77,11 +77,11 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   `:8000`, then a `start.sh` that (a) pulls secrets from SSM and (b) execs
   `/opt/app/current/bootstrap` (the Go binary). `deploy.sh` pulls a release zip from
   the deployments bucket and restarts the `app` systemd service
-  (`compute-stack.ts:261`).
-- `buildCloudWatchAgentConfig` publishes four bounded 60-second host series under
-  `CtechAccount/<env>/Host`: memory %, swap %, root-disk %, and application RSS.
+  (`api-stack.ts`).
+- Logs only: no local code passes a `metricNamespace`, so no custom CloudWatch metrics are configured here.
   EC2's native `CPUUtilization`/`CPUCreditBalance` remain the CPU source.
-- **Runtime config is read from SSM inside `start.sh`** (`compute-stack.ts:229`) and
+  EC2's native `CPUUtilization`/`CPUCreditBalance` remain the CPU source.
+- **Runtime config is read from SSM inside `start.sh`** (see `api-stack.ts`) and
   exported as environment variables — the Go API itself reads plain env vars (see
   `api/internal/config/config.go`). SSM paths resolved at boot:
   - `/ctech-account/{env}/internal-token`
@@ -95,7 +95,7 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
   - `/ctech-account/{env}/from-email`
   - Valkey URL from `valkeyUrlSsmPath` = **`/ctech/{env}/valkey/url`**
     (`bin/ctech-account.ts:107`); only fetched when that path is provided.
-- **nginx rate limiting** (`compute-stack.ts:134`): `limit_req_zone` 20 r/s per
+- **nginx rate limiting** (UNVERIFIED, not found in local `lib/`; may live in the shared `@aoctech/cdk` construct): `limit_req_zone` 20 r/s per
   `$binary_remote_addr` (real viewer IP, rewritten by the realip module from HAProxy),
   `burst=200`, plus `limit_conn_zone` 100 conn/IP. Applies to all non-health routes.
 - **Valkey required in non-dev** is enforced by the **Go API at boot**
@@ -103,7 +103,7 @@ Stack dependencies (`bin/ctech-account.ts:92`): `IAM → {DynamoDB, KYC}`,
 
 ---
 
-## 3. DynamoDB — fourteen tables (`lib/dynamodb-stack.ts`)
+## 3. DynamoDB — sixteen tables (`lib/dynamodb-stack.ts`)
 
 All `TableV2`, **OnDemand billing** with warm throughput caps
 (`maxReadRequestUnits`/`maxWriteRequestUnits` = 1000 each). PITR + `RETAIN` **only in
@@ -119,6 +119,8 @@ prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}
 | `account_support_metrics` | `{env}_account_support_metrics` | `pk` / `sk` | — | — (transactional daily/monthly/yearly/all-time aggregates) |
 | `account_mfa` | `{env}_account_mfa` | `pk` / `sk` | — | — (TOTP `sk=TOTP_default`, passkey `sk=PASSKEY_{id}`) |
 | `account_passkeys` | `{env}_account_passkeys` | `pk` / `sk` | — | — |
+| `account_deletion_requests` | `{env}_account_deletion_requests` | see `lib/dynamodb-stack.ts` | see code | see code |
+| `account_data_exports` | `{env}_account_data_exports` | see `lib/dynamodb-stack.ts` | see code | see code |
 | `account_audit` | `{env}_account_audit` | `pk` / `sk` | `expires_at` (400-day) | — (append-only; `pk=USER_{id}|ANON_{ip}`, `sk=EVT_{ts}_{rand}`) |
 | `ctech_scopes` | `{env}_ctech_scopes` | `pk` / `sk` | — | — (`SERVICE` legacy/built-ins, `RESOURCE_SERVER` current manifests, immutable `RESOURCE_SERVER_HISTORY#{id}` revisions) |
 | `account_organizations` | `{env}_account_organizations` | `pk` / `sk` | — | `lookup-index` (pk=`lookup_pk`, sparse — only rows imported via `SOURCE#{system}#{ref}`) |
@@ -173,37 +175,13 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 
 ---
 
-## 6. Frontend — retired (`lib/frontend-stack.ts`)
+## 6. Frontend — removed
 
-> **Nothing routes through this stack.** `accounts.aoctech.app` is served by **Cloudflare Workers
-> Static Assets**, deployed by `.github/workflows/frontend.yml` calling `ctech-cdk`'s reusable
-> `frontend-cloudflare.yml`. The browser calls `accounts-api.aoctech.app` directly and CORS applies;
-> `/.well-known/*` is reachable on the API host only. The stack is still deployed because the
-> teardown has not run — that is Phase 4 of
-> `ctech-cdk/docs/plans/2026-08-20-frontend-cloudflare-migration.md`. What follows describes what it
-> used to do.
-
-- `createNextjsStaticFrontend` from `@aoctech/cdk` creates the private S3 bucket,
-  OAC, route KVS, rewrite function, security headers and distribution. Static
-  export comes from `ui/` (no server); this stack only supplies account-specific
-  API behaviors and CSP additions.
-- CloudFront distribution `accounts.aoctech.app` (prod) with cert `us-east-1`
-  (`bin/ctech-account.ts:20`, `frontend-stack.ts:179`). `PriceClass_100`, TLS 1.2 2021.
-- **Path routing** (`frontend-stack.ts:22`):
-  - Default behavior → S3 (static site), with a **URL-rewrite CloudFront Function**
-    (`frontend-stack.ts:76`) that maps clean URLs to `.html` using a **KeyValueStore**
-    (`{env}-ctech-account-routes`) populated by the frontend CI after sync. Unknown
-    routes → `/404.html`.
-  - `/v1.0/*` and `/.well-known/*` → API origin `accounts-api.aoctech.app` (HAProxy),
-    `CACHING_DISABLED`, `ALL_VIEWER_EXCEPT_HOST_HEADER` (forwards cookies,
-    Authorization, body), `ALLOW_ALL` methods. Service-to-service callers use
-    `accounts-api.aoctech.app` directly (no edge round trip).
-- **Security headers policy** (`frontend-stack.ts:115`): HSTS (preload, include
-  subdomains), X-Frame-Options DENY, X-Content-Type-Options nosniff,
-  Referrer-Policy strict-origin-when-cross-origin, and a CSP with `script-src
-  'self' 'unsafe-inline'` / `style-src 'self' 'unsafe-inline'` (temporary debt — no
-  nonce/hash pipeline yet) and `connect-src 'self'` + optional extra origins via the
-  `securityExtraConnectSrc` CDK context (e.g. `viacep` address lookup).
+`lib/frontend-stack.ts` (S3 + CloudFront) was deleted from this repo (commit 746c42a) and `bin/ctech-account.ts`
+no longer instantiates it. `accounts.aoctech.app` is served by **Cloudflare Workers Static Assets**, deployed by
+`.github/workflows/frontend.yml` calling `ctech-cdk`'s reusable `frontend-cloudflare.yml`. The browser calls
+`accounts-api.aoctech.app` directly and CORS applies; `/.well-known/*` is reachable on the API host only.
+Whether a previously deployed CloudFront/S3 stack still exists in AWS is not verifiable from this repo.
 
 ---
 
@@ -228,14 +206,14 @@ policies `AmazonSSMManagedInstanceCore` + `CloudWatchAgentServerPolicy`
 cd cdk && npm install
 cdk synth                                   # ALWAYS verify first
 ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
-# or per-stack: ENVIRONMENT=prod npx cdk deploy CtechAccount-prod-Compute
+# or per-stack: ENVIRONMENT=prod npx cdk deploy CtechAccount-prod-Api
 ```
 
 - `ENVIRONMENT` selects table/bucket prefixes and `RemovalPolicy`/PITR.
 - **Bootstrap once:** `cdk bootstrap aws://868899309401/us-east-1`
   (`bin/ctech-account.ts:17`).
-- Order matters: deploy `DynamoDB` + `KYC` first, then `IAM`, then `Compute`
-  (depends on IAM), then `Frontend`. `OidcStack` is global (deploy once).
+- Order matters: deploy `DynamoDB` + `KYC` first, then `IAM`, then `Api`
+  (depends on IAM). `OidcStack` is global (deploy once).
 - The infrastructure workflow deploys `CtechAccount-Global-OIDC` before the environment-scoped stacks, using the
   separate `ctech-account-gha-infra` role. After a CI-role policy fix, rerun the API stage only after this infrastructure
   stage succeeds. For manual recovery, use
@@ -245,13 +223,10 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
   **SSM Run Command** on each InService instance; the SSM agent is enabled. ASG instance refresh
   permissions remain available as an operational fallback.
   If that fallback is used, `MinHealthyPercentage: 0` means the service is down while the refresh runs.
-- **Daytime-only schedule is currently disabled.** `api-stack.ts:288` has the
-  `schedule: {enableCron: '55 11 * * *', disableCron: '15 13 * * *'}` line commented out,
-  so the ASG runs continuously — it does **not** currently go up at 11:55 / down at
-  13:15 America/Sao_Paulo. Treat any doc/comment describing that window as the intended
-  behavior if re-enabled, not the current one; verify against the live line before relying
-  on it either way.
-- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `oidc-stack`) —
+- **Daytime-only schedule is disabled.** `api-stack.ts` has the `schedule: {enableCron: '55 11 * * *',
+  disableCron: '15 13 * * *'}` line commented out, so the ASG runs continuously (min 1, max 2). Re-enabling it would
+  stop the service outside 11:55-13:15 America/Sao_Paulo.
+- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `exports-stack`, `iam-stack`, `oidc-stack`) —
   run `npm test` in addition to `cdk synth`.
 
 ### First-deploy prerequisites (outside CDK)
@@ -282,11 +257,11 @@ ENVIRONMENT=prod npx cdk deploy --all --profile ctech --require-approval never
 
 | Resource | Driver | Est. monthly |
 |----------|--------|--------------|
-| EC2 ASG (1–3 × t4g.micro) | always-on, prod max 3 | ~$6–$20 |
+| EC2 ASG (1–2 × t4g.nano, on-demand) | always-on (`maxCapacity: 2`) | ~$6–$12 |
 | HAProxy edge | shared EC2 + request traffic | owned by `ctech-lbalancer` |
 | ~~CloudFront (PriceClass_100, S3 + API passthrough)~~ | retired — the frontend is on Cloudflare | $0 after teardown |
-| S3 (frontend + deployments + logs + KYC docs) | storage + GETs | ~$1–$10 |
-| DynamoDB OnDemand (8 tables, warm cap 1000 RU/WU each) | request units | ~$5–$40 at low volume |
+| S3 (deployments + logs + KYC docs + exports) | storage + GETs | ~$1–$10 |
+| DynamoDB OnDemand (16 tables, warm cap 1000 RU/WU each) | request units | ~$5–$40 at low volume |
 | Data transfer / NAT (no NAT GW — dual-stack) | egress | ~$1–$10 |
 | **Total (single env, low traffic)** | | **~$40–$185 / mo** |
 

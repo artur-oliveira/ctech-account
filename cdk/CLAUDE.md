@@ -8,21 +8,18 @@ AWS CDK infrastructure — TypeScript. Provisions all AWS resources for ctech-ac
 
 ## Role
 
-Defines and deploys all AWS infrastructure for the ctech-account service: **fourteen**
+Defines and deploys all AWS infrastructure for the ctech-account service: **sixteen**
 DynamoDB tables, an EC2 ASG (Go API) routed by the **CTech HAProxy edge**,
-S3 + CloudFront (frontend, retired — see `README.md` §6, replaced by Cloudflare
-Workers Static Assets), IAM roles, GitHub Actions OIDC, a private KYC documents
-bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
+IAM roles, GitHub Actions OIDC, a private KYC documents
+bucket, a private personal-data export bucket, and the shared deployment/logs buckets (owned by `ctech-cdk`).
 
 There is **no Lambda and no API Gateway** — the API is a long-running Go binary on the
 ASG. KYC review normally runs through manager-only API/UI routes backed by the
 `kyc-level-index`; `api/cmd/kyc` remains the break-glass fallback. See `README.md`
 (§Tables, §Compute) for the authoritative layout.
 
-> **Stale-doc correction:** older text here said "single-table design /
-> `ctech-account-{environment}`" and referenced `/rsa-private-key` + "Lambda + SQS".
-> All three are wrong — verify against `lib/dynamodb-stack.ts`, `lib/api-stack.ts`,
-> and `bin/ctech-account.ts`.
+Family infra rules (CDK frozen, Terraform for new infra, no NAT/ALB/custom metrics/alarms, CI gate without
+`|| true`) live in the `ctech-dev-standards` skill; this file only covers what is specific to ctech-account.
 
 ---
 
@@ -31,19 +28,18 @@ ASG. KYC review normally runs through manager-only API/UI routes backed by the
 ```
 cdk/
 ├── bin/
-│   └── ctech-account.ts        # CDK app entry point — instantiates the 7 stacks
+│   └── ctech-account.ts        # CDK app entry point — instantiates the 6 stacks (Oidc, DynamoDB, KYC, Exports, IAM, Api)
 ├── lib/
 │   ├── types.ts                # `Environment = 'dev'|'stage'|'prod'`
-│   ├── dynamodb-stack.ts       # FOURTEEN DynamoDB tables + GSIs (OnDemand), incl. platform
+│   ├── dynamodb-stack.ts       # SIXTEEN DynamoDB tables + GSIs (OnDemand), incl. platform
 │   │                           #   organizations/memberships/invitations/companies
 │   ├── api-stack.ts        # EC2 ASG + Launch Template registered with HAProxy
-│   ├── frontend-stack.ts       # S3 + CloudFront (accounts.aoctech.app) — retired, see README §6
 │   ├── kyc-stack.ts            # Private S3 bucket for KYC identity documents
-│   ├── exports-stack.ts        # Private S3 bucket for personal-data export zips (8-day lifecycle)
+│   ├── exports-stack.ts        # Private S3 bucket for personal-data export zips (8-day lifecycle in prod, 2 days elsewhere)
 │   ├── iam-stack.ts            # Instance profile + least-privilege inline policies
 │   ├── oidc-stack.ts           # GitHub Actions OIDC deploy + infra roles
 │   └── s3-stack.ts             # S3Stack — UNUSED (shared ctech-cdk buckets used instead)
-└── test/                       # compute-stack.test.ts, dynamodb-stack.test.ts, oidc-stack.test.ts
+└── test/                       # compute-stack, dynamodb-stack, exports-stack, iam-stack, oidc-stack (*.test.ts)
 ```
 
 > `S3Stack` (`lib/s3-stack.ts`) is defined but **not instantiated** in
@@ -88,7 +84,7 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 
 ### Constants — no magic strings
 
-- Environment name (`development`, `staging`, `production`) flows from a single context/env variable.
+- Environment name (`dev`, `stage`, `prod`) flows from a single context/env variable.
 - All resource names derived from that prefix — never hardcoded full names.
 - SSM parameter paths follow a consistent pattern (`/ctech-account/{env}/...`).
 
@@ -96,13 +92,16 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 
 | Environment | Removal Policy    | PITR   |
 |-------------|-------------------|--------|
-| development | `DESTROY`         | No     |
-| staging     | `RETAIN`          | No     |
-| production  | `RETAIN`          | Yes    |
+| dev         | `DESTROY`         | No     |
+| stage       | `DESTROY`         | No     |
+| prod        | `RETAIN`          | Yes    |
 
-- `RemovalPolicy.DESTROY` is **development-only**. Never set it for staging or production.
+(`Environment = 'dev'|'stage'|'prod'`; `isProd` drives both in `dynamodb-stack.ts`, `kyc-stack.ts` and the log
+groups in `api-stack.ts`. `exports-stack.ts` is `DESTROY` in every environment.)
+
+- `RemovalPolicy.DESTROY` only for non-prod. Never set it for production.
 - **Never run `cdk destroy` without explicit environment confirmation from the user.**
-- PITR enabled only in staging/production.
+- PITR enabled only in prod.
 
 ### IAM — least privilege
 
@@ -112,23 +111,21 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 
 ### DynamoDB
 
-- **Fourteen separate tables**, one per environment prefix (`{env}_account_users`,
-  `_account_sessions`, `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`,
+- **Sixteen separate tables**, one per environment prefix (`{env}` + `_account_users`, `_account_sessions`, `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`,
   `_account_passkeys`, `_account_audit`, `_account_support_tickets`, `_account_support_metrics`,
-  `_ctech_scopes`, `_account_organizations`, `_account_memberships`, `_account_invitations`,
-  `_account_companies`). See `lib/dynamodb-stack.ts`.
+  `_account_deletion_requests`, `_account_data_exports`, `_ctech_scopes`, `_account_organizations`,
+  `_account_memberships`, `_account_invitations`, `_account_companies`). See `lib/dynamodb-stack.ts`.
 - All tables are **OnDemand** with warm-throughput caps (1000 RU/WU each).
 - GSIs are justified by access patterns in `lib/dynamodb-stack.ts` (email lookup,
   refresh-token hash, owner index, API-key hash).
-- PITR only in **production**.
+- PITR only in **prod**.
 
-### EC2 / ASG (compute-stack)
+### EC2 / ASG (`api-stack.ts`)
 
 - Native EC2 ASG + launch template, registered in `ctech-lbalancer`'s account route.
-- EC2 health checks with `gracePeriod: 120s`; HAProxy performs application health
+- HAProxy performs application health
   checks and requests replacement through its `autoHeal` route policy.
 - Go binary deployed as `ctech-account` (systemd service, auto-bootstrap from S3).
-- `AutoRollback: true` on instance refresh.
 - **No custom CloudWatch metrics.** The CloudWatch agent config is logs-only and there are
   no `logs.MetricFilter`s — EC2 already publishes CPUUtilization/CPUCreditBalance for free.
   Don't reintroduce `buildCloudWatchAgentConfig`'s `metricNamespace` here.
@@ -142,22 +139,17 @@ live in `../api/CLAUDE.md` and do **not** apply here directly. The CDK equivalen
 - **SSM agent is on**: `bin/ctech-account.ts` hardcodes `ENABLE_SSM_AGENT = true` (overriding
   `ApiStack.enableSsmAgent`'s own `false` default) because the deploy mechanism above depends
   on RunCommand reaching every instance. Don't disable it without replacing the deploy path.
-- **Daytime-only schedule is currently disabled.** `api-stack.ts` has the
-  `schedule: {enableCron: '55 11 * * *', disableCron: '15 13 * * *'}` line commented out, so
-  the ASG runs continuously today. The rest of this bullet describes the schedule as designed,
-  not as currently wired — verify the live line before relying on either behavior: Scheduled
-  actions would bring the ASG up at **11:55** and take it
-  down at **13:15** America/Sao_Paulo. Outside that window the service is off: nothing is
-  reachable and inbound webhooks fail. A deploy that lands outside it exits early — the
-  next scheduled instance boots the artifact from S3.
+- **Daytime-only schedule is disabled.** `api-stack.ts` has the `schedule: {enableCron: '55 11 * * *',
+  disableCron: '15 13 * * *'}` line commented out, so the ASG runs continuously (min 1, max 2). Nothing is
+  scheduled today; re-enabling it would turn the service off outside 11:55-13:15 America/Sao_Paulo and make
+  deploys outside that window exit early.
 
-### CloudFront (frontend-stack) — retired
+### Frontend / CloudFront — removed
 
-- **Nothing routes through this stack** — `accounts.aoctech.app` is served by Cloudflare
-  Workers Static Assets instead. See `README.md` §6. Kept deployed pending teardown
-  (Phase 4 of `ctech-cdk/docs/plans/2026-08-20-frontend-cloudflare-migration.md`).
-- S3 origin with OAC (Origin Access Control) — bucket not publicly accessible.
-- Custom domain: `accounts.aoctech.app`.
+`lib/frontend-stack.ts` no longer exists and `bin/ctech-account.ts` does not instantiate a frontend stack
+(removed in commit 746c42a). `accounts.aoctech.app` is served by Cloudflare Workers Static Assets via
+`.github/workflows/frontend.yml` (calls `ctech-cdk`'s reusable workflow). Whether a previously deployed
+CloudFront/S3 stack still exists in AWS is not verifiable from this repo; check the console before assuming it.
 
 ### Cost Awareness
 
@@ -181,7 +173,12 @@ Never commit: AWS credentials, RSA private keys, real account IDs not already in
 | IAM change          | Manual review of synthesized policy   |
 | Deploy              | `cdk synth` must succeed cleanly      |
 
+
 Run: `npm test` from `cdk/`. Always run `cdk synth` before proposing a deploy.
+
+- **CI divergence (documented, not fixed):** `.github/workflows/ci.yml` runs `npx cdk synth --quiet 2>&1 | head -5 || true`,
+  so a synth failure does not fail the PR check; only `npx tsc --noEmit` and the UI job gate. The skill requires
+  synth failures to fail CI. Run `cdk synth` and `npm test` locally.
 
 ---
 
@@ -191,7 +188,7 @@ Run: `npm test` from `cdk/`. Always run `cdk synth` before proposing a deploy.
 cd cdk && npm install
 cdk synth                                          # Always verify first
 cdk deploy --all                                   # All stacks (dev)
-ENVIRONMENT=production cdk deploy StackName        # Specific stack (prod)
+ENVIRONMENT=prod cdk deploy StackName        # Specific stack (prod)
 ```
 
 **Bootstrap (once per account/region):**
@@ -213,9 +210,8 @@ See `../README.md` §First Deploy for the full ordered checklist.
   params under `/ctech/{env}/*`; the Valkey URL under `/ctech/{env}/valkey/url`.
 - `accounts` OAuth client (SPA default client id) must be seeded in DynamoDB after first deploy (see `../README.md`).
 - Go binary must be named `ctech-account` on EC2 (systemd service name matches).
-- CloudFront distribution requires ACM certificate in `us-east-1` regardless of deploy region.
 - `S3Stack` is unused; deployments/logs buckets are shared `ctech-cdk` buckets.
-- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `oidc-stack`) — run `npm test` in addition to `cdk synth`.
+- Jest snapshot tests exist under `test/` (`compute-stack`, `dynamodb-stack`, `exports-stack`, `iam-stack`, `oidc-stack`) — run `npm test` in addition to `cdk synth`.
 
 ---
 
@@ -225,7 +221,6 @@ See `../README.md` §First Deploy for the full ordered checklist.
 - IAM instance profile (least privilege — over-permissioning is a security risk)
 - ASG / HAProxy health check config (rolling deploy safety)
 - `RemovalPolicy` on any resource
-- CloudFront + S3 OAC config
 
 Before touching: identify blast radius, verify environment, confirm with user for production.
 
@@ -236,7 +231,7 @@ Before touching: identify blast radius, verify environment, confirm with user fo
 - [ ] `cdk synth` succeeds cleanly
 - [ ] `npm test` passes (snapshot tests)
 - [ ] No magic strings — all names derived from environment
-- [ ] `RemovalPolicy.DESTROY` only in development
+- [ ] `RemovalPolicy.DESTROY` never in prod
 - [ ] IAM permissions are least-privilege
 - [ ] New resources documented in `../README.md`
 - [ ] Cost impact assessed
