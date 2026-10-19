@@ -1,11 +1,13 @@
 # ctech-account — Implementation Plan
 
 > Persist-tolerant checklist. Mark items with `[x]` as you complete them.
-> Last updated: 2026-06-08
+> Last updated: 2026-06-08 (checklist body is historical; items below were verified against the repo on 2026-10-19)
+> and annotated where the code has since moved. Current behavior lives in `README.md`, `cdk/README.md`, `docs/specs/`
+> and `docs/plans/`; when they disagree with an unchecked or old item here, the code wins.
 
 ---
 
-## Sprint 1 — Core Auth + OIDC (current)
+## Sprint 1 — Core Auth + OIDC
 
 ### Go Backend
 
@@ -37,9 +39,9 @@
 ### Infrastructure
 
 - [x] `cdk/lib/types.ts`
-- [x] `cdk/lib/dynamodb-stack.ts` — 5 ctech_* tables + GSIs
-- [x] `cdk/lib/compute-stack.ts` — ASG + EC2 t4g.micro (clone of ApiStackV2, Go binary)
-- [x] `cdk/lib/frontend-stack.ts` — S3 + CloudFront (accounts.aoctech.app)
+- [x] `cdk/lib/dynamodb-stack.ts` — tables + GSIs (16 tables today; see `cdk/README.md` §3)
+- [x] ASG + EC2 for the Go binary (today `cdk/lib/api-stack.ts`, t4g.nano, routed by HAProxy; was `compute-stack.ts`)
+- [x] ~~`cdk/lib/frontend-stack.ts` — S3 + CloudFront~~ removed (commit 746c42a); frontend is on Cloudflare Workers Static Assets
 - [x] `cdk/lib/iam-stack.ts` — instance profile + DynamoDB/SSM/S3 permissions
 - [x] `cdk/lib/oidc-stack.ts` — GitHub Actions OIDC role
 - [x] `cdk/bin/ctech-account.ts` — CDK app entry point
@@ -47,15 +49,12 @@
 
 ### CI/CD
 
-- [x] `.github/workflows/ci.yml` — go test, go vet, go build (on PR)
-- [x] `.github/workflows/deploy-backend.yml` — build arm64 → S3 → SSM rolling deploy
-- [x] `.github/workflows/deploy-frontend.yml` — next build → S3 sync → CF invalidate
+- [x] `.github/workflows/ci.yml` — go vet, arm64 build, go test, cdk synth (non-blocking) + tsc, UI lint/types/tests (on PR)
+- [x] `.github/workflows/deploy.yml` orchestrates `infra.yml` → `api.yml` (build arm64 → S3 → SSM rolling deploy) → `frontend.yml` (Cloudflare)
 
 ### First Deploy Steps
 
-- [ ] Generate RSA key pair: `openssl genrsa -out private.pem 2048`
-- [ ] Store in SSM:
-  `aws ssm put-parameter --name "/ctech-account/prod/rsa-private-key" --type SecureString --value "$(cat private.pem)"`
+- [ ] Signing keys: historical step used `/ctech-account/prod/rsa-private-key`; the live paths are `/ctech-account/{env}/jwk/active` (+ `/jwk/previous`), auto-rotated (see README §Signing key rotation)
 - [ ] `cd cdk && npm install && cdk deploy --all`
 - [ ] Register py-dfe as OAuth client via POST /v1.0/account/oauth-clients (after first admin login)
 - [ ] Run `go mod tidy` to generate go.sum
@@ -100,9 +99,8 @@
 - [x] `/account/api-keys` — list, create (with scopes + expiry), revoke
 - [x] `/account/oauth-clients` — placeholder (admin-only provisioning)
 - [x] OAuth redirect flow: `/login` reads `?continue=` param, redirects back after auth
-- [x] `src/proxy.ts` — protects `/account/*`, redirects to `/login?continue=` if no token
-- [x] BFF auth Route Handlers: login (server-side PKCE OAuth dance), register, logout, MFA, refresh
-- [x] Server Actions for all account mutations (profile, sessions, API keys, TOTP, passkeys)
+- [x] ~~`src/proxy.ts`~~ no longer exists; route protection is client-side in the auth context
+- [x] ~~BFF auth Route Handlers and Server Actions~~ superseded: the UI is a static export (`output: 'export'`, no `ui/src/app/api`); the browser calls the API directly (PKCE via the auth client)
 - [x] Persistent session: client-side silent refresh via `/v1.0/token` (AuthInitializer in query-provider.tsx)
 - [x] `/forgot-password` — email form, calls POST /v1.0/auth/forgot-password, always 200 (no enumeration)
 - [x] `/reset-password` — reads `?token=`, validates password match, calls POST /v1.0/auth/reset-password
@@ -122,7 +120,7 @@
 
 ## Sprint 4 — py-dfe-api Migration
 
-See `PYDFE_MIGRATION.md` for the full plan.
+(`PYDFE_MIGRATION.md` is no longer in the repo.)
 
 - [x] Phase 0: py-dfe-api dual-auth — verify_rs256 fallback in security.py + get_current_token; HS256 path unchanged
 - [x] Phase 1: ctech-account POST /internal/v1.0/users/migrate (X-Internal-Token auth, idempotent); py-dfe-api get_user_by_ctech_id + ctech-user-id-index GSI in CDK; migration script at py-dfe-api/scripts/migrate_users_to_ctech.py
@@ -231,7 +229,7 @@ Spec: `ctech-billing/docs/specs/2026-10-10-console-self-service.md` § 6.3. Plan
 
 | Decision                         | Options                                              | Status                                         |
 |----------------------------------|------------------------------------------------------|------------------------------------------------|
-| Domain routing for accounts UI   | Single CloudFront (multi-origin) vs separate domains | Decided: single CF (see CDK)                   |
+| Domain routing for accounts UI   | Single CloudFront (multi-origin) vs separate domains | Superseded: Cloudflare Workers Static Assets, API on `accounts-api.aoctech.app` |
 | Refresh token storage on client  | httpOnly cookie vs localStorage                      | httpOnly cookie on accounts.aoctech.app |
 | Email verification provider      | AWS SES                                              | Implemented: SESv2, verify + password reset    |
 | Google OAuth                     | google-oauth2 via /v1.0/auth/google                  | Implemented: state in Valkey (gs:, 10min TTL)  |
@@ -244,7 +242,7 @@ Spec: `ctech-billing/docs/specs/2026-10-10-console-self-service.md` § 6.3. Plan
 
 | Path                                        | Type         | Description                                               |
 |---------------------------------------------|--------------|-----------------------------------------------------------|
-| `/ctech-account/{env}/rsa-private-key`      | SecureString | RSA 2048 PEM private key                                  |
+| `/ctech-account/{env}/jwk/active` (+ `jwk/previous`) | SecureString | Active/previous signing key (rotated; `rsa-private-key` is the legacy fallback) |
 | `/ctech/{env}/valkey/url`                   | String       | Valkey connection URL (existing, from ctech-cdk)          |
 | `/ctech-account/{env}/from-email`           | String       | SES verified sender address (FROM_EMAIL)                  |
 | `/ctech-account/{env}/turnstile-secret-key` | SecureString | Cloudflare Turnstile Siteverify secret (TURNSTILE_SECRET_KEY); empty disables verification (dev only) |
