@@ -26,8 +26,8 @@ exchange or refresh.
 - **WebAuthn / Passkeys** — Passwordless authentication (Sprint 2)
 - **RFC 7807 Problem Details** — All error responses use `application/problem+json`
 - **RFC Health Check** — `GET /v1.0/health-check` responds with `application/health+json`
-- **DynamoDB** — Fourteen tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
-  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `account_support_metrics`, `ctech_scopes`,
+- **DynamoDB** — Sixteen tables: `account_users`, `account_sessions`, `account_oauth_clients`, `account_api_keys`,
+  `account_mfa`, `account_passkeys`, `account_audit`, `account_support_tickets`, `account_support_metrics`, `account_deletion_requests`, `account_data_exports`, `ctech_scopes`,
   `account_organizations`, `account_memberships`, `account_invitations`, `account_companies` (platform organizations/companies,
   added in the membership-unification / platform-organizations work — see `cdk/lib/dynamodb-stack.ts`)
 - **Valkey** — Required in non-dev (see §Configuration): OAuth codes, MFA/passkey challenges, recovery tokens and rate

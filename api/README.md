@@ -51,9 +51,9 @@ api/
 - **Valkey is mandatory outside `dev`/`development`** — the binary refuses to boot
   without `VALKEY_URL` (`cmd/api/main.go`). OAuth codes, MFA/passkey challenges,
   recovery tokens, and all rate limiting live in Valkey with no DynamoDB fallback.
-- **Fourteen DynamoDB tables** (`{env}_account_users`, `_account_sessions`,
+- **Sixteen DynamoDB tables** (`{env}_account_users`, `_account_sessions`,
   `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`, `_account_passkeys`,
-  `_account_audit`, `_account_support_tickets`, `_account_support_metrics`, `_ctech_scopes`,
+  `_account_audit`, `_account_support_tickets`, `_account_support_metrics`, `_account_deletion_requests`, `_account_data_exports`, `_ctech_scopes`,
   `_account_organizations`, `_account_memberships`, `_account_invitations`,
   `_account_companies`), all OnDemand — see `cdk/lib/dynamodb-stack.ts`.
 - **Conditional writes** (`internal/database.ConditionalUpdate`) for every
