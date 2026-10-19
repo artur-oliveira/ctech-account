@@ -75,15 +75,20 @@ func (n *noopTOTPService) RegenerateBackupCodes(_ context.Context, _ string) ([]
 // memAuditRepo is an in-memory audit.Repository with real limit/cursor
 // semantics (cursor = sk of the last returned event, base64url like prod).
 type memAuditRepo struct {
+	mu     sync.Mutex // handlers record audit events from concurrent requests
 	events []*audit.Event
 }
 
 func (m *memAuditRepo) Put(_ context.Context, e *audit.Event) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.events = append(m.events, e)
 	return nil
 }
 
 func (m *memAuditRepo) QueryByUser(_ context.Context, userID, cursor string, limit int32) ([]*audit.Event, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var mine []*audit.Event
 	for _, e := range m.events {
 		if e.PK == audit.BuildPK(userID) {
