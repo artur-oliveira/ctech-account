@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -65,24 +64,30 @@ import (
 // user (dfe e-CPF certificates are keyed by CPF).
 const erasureSubjectReader = "dfe"
 
+// fatal logs through slog (JSON, like every other line) and exits.
+func fatal(msg string, args ...any) {
+	slog.Error(msg, args...)
+	os.Exit(1)
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("loading config: %v", err)
+		fatal("loading config", "error", err)
 	}
 
 	ctx := context.Background()
 
 	db, err := database.New(ctx, cfg.AWSRegion)
 	if err != nil {
-		log.Fatalf("connecting to DynamoDB: %v", err)
+		fatal("connecting to DynamoDB", "error", err)
 	}
 
 	valkeyClient, err := cache.New(cfg.ValkeyURL)
 	if err != nil {
-		log.Fatalf("connecting to Valkey: %v", err)
+		fatal("connecting to Valkey", "error", err)
 	}
 	defer valkeyClient.Close()
 
@@ -91,7 +96,7 @@ func main() {
 	// there with no DynamoDB fallback. Refuse to boot without it in non-dev
 	// environments so a misconfigured instance never enters rotation (§1.1).
 	if !valkeyClient.Enabled() && cfg.Environment != "dev" && cfg.Environment != "development" {
-		log.Fatalf("VALKEY_URL is required in environment %q: OAuth codes, MFA tokens and rate limiting depend on Valkey", cfg.Environment)
+		fatal("VALKEY_URL is required: OAuth codes, MFA tokens and rate limiting depend on Valkey", "environment", cfg.Environment)
 	}
 	valkeyRequired := cfg.Environment != "dev" && cfg.Environment != "development"
 	var supportWSRegistry commonws.Registry
@@ -101,14 +106,14 @@ func main() {
 		supportWSRegistry = commonws.NewMemoryRegistry()
 	}
 	if err := supportWSRegistry.Start(ctx); err != nil {
-		log.Fatalf("starting support websocket registry: %v", err)
+		fatal("starting support websocket registry", "error", err)
 	}
 	defer supportWSRegistry.Stop(context.Background())
 
 	sealer, err := crypto.NewSealer(cfg)
 
 	if err != nil {
-		log.Fatalf("creating sealer: %v", err)
+		fatal("creating sealer", "error", err)
 	}
 
 	// Signing keys: RSA_PRIVATE_KEY env = dev mode (single key, no rotation);
@@ -120,17 +125,17 @@ func main() {
 	} else {
 		awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
 		if awsErr != nil {
-			log.Fatalf("loading AWS config for SSM: %v", awsErr)
+			fatal("loading AWS config for SSM", "error", awsErr)
 		}
 		keyStore = keystore.NewStore(ssm.NewFromConfig(awsCfg), cfg.Environment)
 		active, previous, loadErr := keyStore.Load(ctx)
 		if loadErr != nil {
-			log.Fatalf("loading signing keys from SSM: %v", loadErr)
+			fatal("loading signing keys from SSM", "error", loadErr)
 		}
 		jwtSvc, err = crypto.NewJWTServiceWithKeys(cfg, active, previous)
 	}
 	if err != nil {
-		log.Fatalf("initializing JWT service: %v", err)
+		fatal("initializing JWT service", "error", err)
 	}
 
 	// Auto-rotation: hourly reload from SSM; rotate at 90 days under a Valkey
@@ -175,7 +180,7 @@ func main() {
 		geoupdater.Startup(ctx, geoCfg)
 		go geoupdater.Run(ctx, geoCfg)
 	} else {
-		log.Println("MAXMIND_ACCOUNT_ID/MAXMIND_LICENSE_KEY not set — GeoIP lookups disabled")
+		slog.Info("MAXMIND_ACCOUNT_ID/MAXMIND_LICENSE_KEY not set — GeoIP lookups disabled")
 	}
 
 	// Repositories
@@ -195,7 +200,7 @@ func main() {
 		RPOrigins:     cfg.RPOrigins,
 	})
 	if err != nil {
-		log.Fatalf("initializing WebAuthn: %v", err)
+		fatal("initializing WebAuthn", "error", err)
 	}
 
 	// Repositories
@@ -248,13 +253,13 @@ func main() {
 			return valkeyClient.SetNX(ctx, planLockKey, "1", planlimit.WorkerInterval-5*time.Second)
 		}, planlimit.WorkerInterval)
 	} else {
-		log.Println("BILLING_API_URL not set — plan limits on personal spaces disabled")
+		slog.Info("BILLING_API_URL not set — plan limits on personal spaces disabled")
 	}
 	accountResource, accountResourceChanged, err := scopeRegistrySvc.BootstrapAccount(ctx, cfg.Audience, cfg.AppVersion)
 	if err != nil {
-		log.Fatalf("bootstrapping Account Resource Server: %v", err)
+		fatal("bootstrapping Account Resource Server", "error", err)
 	}
-	log.Printf("Account Resource Server ready (revision=%d changed=%v audience=%s)", accountResource.Revision, accountResourceChanged, accountResource.Audience)
+	slog.Info("Account Resource Server ready", "revision", accountResource.Revision, "changed", accountResourceChanged, "audience", accountResource.Audience)
 
 	selfScopes := append([]string{scopesPkg.OpenID, scopesPkg.Profile, scopesPkg.Email}, scopesPkg.AccountUserScopes()...)
 	selfClient, selfClientChanged, err := oauthClientOperator.EnsureFirstPartyPublicClient(
@@ -266,9 +271,9 @@ func main() {
 		nil, // the Account SPA never calls another service's API; its own audience is always prepended
 	)
 	if err != nil {
-		log.Fatalf("bootstrapping Account frontend OAuth client: %v", err)
+		fatal("bootstrapping Account frontend OAuth client", "error", err)
 	}
-	log.Printf("Account frontend OAuth client ready (client_id=%s changed=%v scopes=%d)", selfClient.ID(), selfClientChanged, len(selfClient.AllowedScopes))
+	slog.Info("Account frontend OAuth client ready", "client_id", selfClient.ID(), "changed", selfClientChanged, "scopes", len(selfClient.AllowedScopes))
 	consentSvc := consentDomain.NewService(consentRepo)
 	totpSvc := totpDomain.NewService(db, sealer, cfg.TablePrefix)
 	apiKeySvc := apikeyDomain.NewService(apiKeyRepo)
@@ -278,11 +283,11 @@ func main() {
 	if cfg.KYCDocumentsBucket != "" {
 		s3Cli, err := storage.NewS3(context.Background(), cfg.AWSRegion, cfg.KYCDocumentsBucket)
 		if err != nil {
-			log.Fatalf("initializing KYC document storage: %v", err)
+			fatal("initializing KYC document storage", "error", err)
 		}
 		kycPresigner = s3Cli
 	} else {
-		log.Println("KYC_DOCUMENTS_BUCKET not set — Enhanced document verification disabled")
+		slog.Info("KYC_DOCUMENTS_BUCKET not set — Enhanced document verification disabled")
 	}
 
 	kycSvc := kycDomain.NewService(kycRepo, kycPresigner, risk.NoopEvaluator{})
@@ -293,7 +298,7 @@ func main() {
 	if cfg.FromEmail != "" {
 		emailCli, err = email.New(ctx, cfg.AWSRegion, cfg.FromEmail, cfg.AppURL)
 		if err != nil {
-			log.Printf("warning: email client init failed: %v (email sending disabled)", err)
+			slog.Warn("email client init failed (email sending disabled)", "error", err)
 			emailCli = nil
 		}
 	}
@@ -362,14 +367,14 @@ func main() {
 			if !slices.Contains(allowedOrigins, o) {
 				allowedOrigins = append(allowedOrigins, o)
 			} else {
-				log.Printf("WARN: origins %s already present", o)
+				slog.Warn("origin already present", "origin", o)
 			}
 		} else {
-			log.Printf("WARN: skipping invalid CORS origin %q (missing http/https scheme)", o)
+			slog.Warn("skipping invalid CORS origin (missing http/https scheme)", "origin", o)
 		}
 	}
 	if len(allowedOrigins) == 0 {
-		log.Fatal("FATAL: no valid CORS origins configured — check BASE_URL and ALLOWED_ORIGINS SSM parameters")
+		fatal("no valid CORS origins configured — check BASE_URL and ALLOWED_ORIGINS SSM parameters")
 	}
 
 	app.Use(cors.New(cors.Config{
@@ -475,7 +480,7 @@ func main() {
 	if cfg.ExportsBucket != "" && emailCli != nil {
 		exportStore, err := storage.NewS3(ctx, cfg.AWSRegion, cfg.ExportsBucket)
 		if err != nil {
-			log.Fatalf("initializing export storage: %v", err)
+			fatal("initializing export storage", "error", err)
 		}
 		exportSvc = dataexport.NewService(
 			dataexport.NewRepository(db, cfg.TablePrefix), exportStore,
@@ -486,11 +491,11 @@ func main() {
 		// attribute); only those marked "export" in ERASURE_PARTICIPANTS are asked.
 		if services := cfg.ExportServices(); len(services) > 0 {
 			if cfg.ErasureTopicARN == "" {
-				log.Fatal("ERASURE_PARTICIPANTS has export participants but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+				fatal("ERASURE_PARTICIPANTS has export participants but ACCOUNT_ERASURE_TOPIC_ARN is empty")
 			}
 			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
 			if awsErr != nil {
-				log.Fatalf("loading AWS config for SNS: %v", awsErr)
+				fatal("loading AWS config for SNS", "error", awsErr)
 			}
 			exportSvc = exportSvc.WithParticipants(services,
 				erasurepub.ExportPublisher{SNS: erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)})
@@ -499,28 +504,28 @@ func main() {
 		exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
 		exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient)
 	} else {
-		log.Println("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
+		slog.Info("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
 	}
 	if cfg.AccountDeletionEnabled {
 		if emailCli == nil {
-			log.Fatal("ACCOUNT_DELETION_ENABLED requires the e-mail client (FROM_EMAIL / SES)")
+			fatal("ACCOUNT_DELETION_ENABLED requires the e-mail client (FROM_EMAIL / SES)")
 		}
 		var revocation commoncache.Backend = commoncache.NewMemoryBackend(10000)
 		if cfg.ValkeyURL != "" {
 			// DB 0 = the base URL, where every service reads revocations.
 			if revocation, err = commoncache.NewRedisBackend(cfg.ValkeyURL); err != nil {
-				log.Fatalf("connecting revocation backend: %v", err)
+				fatal("connecting revocation backend", "error", err)
 			}
 		}
 		jwtSvc.SetRevocation(revocation)
 		var publisher deletion.Publisher
 		if len(cfg.ErasureServiceNames()) > 0 {
 			if cfg.ErasureTopicARN == "" {
-				log.Fatal("ERASURE_PARTICIPANTS is set but ACCOUNT_ERASURE_TOPIC_ARN is empty")
+				fatal("ERASURE_PARTICIPANTS is set but ACCOUNT_ERASURE_TOPIC_ARN is empty")
 			}
 			awsCfg, awsErr := awsconfig.Load(ctx, cfg.AWSRegion)
 			if awsErr != nil {
-				log.Fatalf("loading AWS config for SNS: %v", awsErr)
+				fatal("loading AWS config for SNS", "error", awsErr)
 			}
 			publisher = erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)
 		}
@@ -625,23 +630,23 @@ func main() {
 	)
 
 	port := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("ctech-account starting on %s (env=%s)", port, cfg.Environment)
+	slog.Info("ctech-account starting", "port", port, "env", cfg.Environment)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		if err := app.Listen(port); err != nil {
-			log.Printf("server error: %v", err)
+			slog.Error("server error", "error", err)
 		}
 	}()
 
 	<-quit
-	log.Println("shutting down gracefully...")
+	slog.Info("shutting down gracefully...")
 	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
-		log.Printf("shutdown error: %v", err)
+		slog.Error("shutdown error", "error", err)
 	}
-	log.Println("server stopped")
+	slog.Info("server stopped")
 }
 
 // exportEraser is the export's part of a purge, or nothing when the export is off.

@@ -10,7 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"gopkg.aoctech.app/account/api/internal/config"
@@ -35,7 +35,8 @@ func NewSealer(cfg *config.Config) (*Sealer, error) {
 	// unsafe for production. Refuse to boot without it in non-dev environments.
 	raw := os.Getenv("SECRET_ENC_KEY")
 	if raw == "" && cfg.Environment != "dev" && cfg.Environment != "development" {
-		log.Fatalf("SECRET_ENC_KEY must be set in environment %q to avoid using hardcoded development encryption key", cfg.Environment)
+		slog.Error("SECRET_ENC_KEY must be set to avoid using hardcoded development encryption key", "environment", cfg.Environment)
+		os.Exit(1)
 	}
 	key, err := loadEncryptionKey(raw)
 	if err != nil {
