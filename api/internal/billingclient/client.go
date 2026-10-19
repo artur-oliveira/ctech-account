@@ -2,9 +2,7 @@
 // entitlement read behind plan limits and the level reports behind on-demand
 // billing (docs/specs/2026-10-10-space-plan-limits.md §§ 1, 4).
 //
-// api-commons has no retrying HTTP client (only oauth2client, which fetches a
-// token), so the one retry the read needs lives here (decision P5). ctech-dfe
-// has its own billingclient; a shared one belongs in ctech-go-common later.
+// The retry (decision P5) and the circuit breaker live in api-commons/resilient.
 package billingclient
 
 import (
@@ -18,6 +16,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"gopkg.aoctech.app/api-commons/resilient"
 )
 
 const (
@@ -25,9 +25,10 @@ const (
 	// retries included: a person is waiting on the create or invite.
 	EntitlementsTimeout = 2 * time.Second
 	// reportTimeout bounds one level report.
-	reportTimeout       = 2 * time.Second
-	entitlementAttempts = 2
-	maxBody             = 1 << 20
+	reportTimeout = 2 * time.Second
+	// maxAttempts is the first try plus one retry, as before.
+	maxAttempts = 2
+	maxBody     = 1 << 20
 
 	entitlementsPath = "/v1.0/entitlements"
 	levelsPath       = "/v1.0/usage/levels"
@@ -36,7 +37,7 @@ const (
 	MeterSpaces     = "finance_spaces"
 	MeterPeople     = "finance_people"
 
-	headerIdempotencyKey = "Idempotency-Key"
+	headerIdempotencyKey = resilient.HeaderIdempotencyKey
 )
 
 // ErrUnavailable is billing unreachable, slow, or answering anything but a
@@ -56,7 +57,12 @@ type Client struct {
 
 func New(baseURL string, tokens TokenSource) *Client {
 	return &Client{
-		http:    &http.Client{Timeout: EntitlementsTimeout},
+		// Retries only idempotent calls (GET, or a request with an
+		// Idempotency-Key), one breaker per host, EntitlementsTimeout in total.
+		http: resilient.NewHTTPClient(
+			resilient.WithTimeout(EntitlementsTimeout),
+			resilient.WithMaxAttempts(maxAttempts),
+		),
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		tokens:  tokens,
 	}
@@ -105,24 +111,16 @@ type LevelReport struct {
 }
 
 // Entitlements reads a person's standing for one owner's products. One retry
-// on a transport error or 5xx, inside EntitlementsTimeout; a 4xx is final.
+// on a transport error or 5xx (resilient), inside EntitlementsTimeout; a 4xx is final.
 func (c *Client) Entitlements(ctx context.Context, customerRef, ownerKey string) (*Entitlements, error) {
 	ctx, cancel := context.WithTimeout(ctx, EntitlementsTimeout)
 	defer cancel()
 	q := url.Values{"customer_ref": {customerRef}, "owner_key": {ownerKey}}
-	var lastErr error
-	for attempt := 0; attempt < entitlementAttempts; attempt++ {
-		var out Entitlements
-		status, err := c.do(ctx, http.MethodGet, entitlementsPath+"?"+q.Encode(), "", nil, &out)
-		if err == nil {
-			return &out, nil
-		}
-		lastErr = err
-		if (status != 0 && status < 500) || ctx.Err() != nil {
-			break
-		}
+	var out Entitlements
+	if _, err := c.do(ctx, http.MethodGet, entitlementsPath+"?"+q.Encode(), "", nil, &out); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	return nil, fmt.Errorf("%w: %v", ErrUnavailable, lastErr)
+	return &out, nil
 }
 
 // ReportLevel sends one level. A 409 idempotency_key_reused (same key, already

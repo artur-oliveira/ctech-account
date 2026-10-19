@@ -164,3 +164,18 @@ func TestOnlyAReusedKeyIsADeliveredConflict(t *testing.T) {
 		}
 	}
 }
+
+// Fails closed: a billing that keeps answering 5xx is unavailable after the
+// one retry, never read as "no plan".
+func TestEntitlementsFailsClosedOnPersistent5xx(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	e, err := New(srv.URL, staticToken("t")).Entitlements(context.Background(), "USER_u", OwnerKeyFinance)
+	if e != nil || !errors.Is(err, ErrUnavailable) || calls.Load() != maxAttempts {
+		t.Fatalf("e = %v, err = %v, calls = %d", e, err, calls.Load())
+	}
+}
