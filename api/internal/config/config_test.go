@@ -8,7 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"log"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -67,9 +67,9 @@ func TestLoadWebAuthnWarnsForMismatchedRPID(t *testing.T) {
 	t.Setenv("WEBAUTHN_RPID", "example.net")
 
 	var logs bytes.Buffer
-	previous := log.Writer()
-	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(previous) })
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	if _, err := Load(); err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -149,9 +149,9 @@ func Load() (*Config, error) {
 		if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
 			accessTokenTTL = time.Duration(secs) * time.Second
 		} else if err != nil {
-			log.Printf("config: invalid ACCESS_TOKEN_TTL, using default: %v", err)
+			slog.Warn("config: invalid ACCESS_TOKEN_TTL, using default", "error", err)
 		} else {
-			log.Printf("config: ACCESS_TOKEN_TTL must be positive, using default")
+			slog.Warn("config: ACCESS_TOKEN_TTL must be positive, using default")
 		}
 	}
 
@@ -175,7 +175,7 @@ func Load() (*Config, error) {
 		if parsed, err := url.Parse(appURL); err == nil {
 			rpid = parsed.Hostname()
 		} else {
-			log.Printf("config: failed to parse APP_URL for WebAuthn RP ID: %v", err)
+			slog.Warn("config: failed to parse APP_URL for WebAuthn RP ID", "error", err)
 		}
 	}
 
@@ -185,7 +185,7 @@ func Load() (*Config, error) {
 	}
 
 	if rpid != "" && !isRegistrableMatch(rpid, rpOrigins) {
-		log.Printf("config: WEBAUTHN_RPID %q does not match any RPOrigins entry %v — WebAuthn ceremonies will fail with a SecurityError", rpid, rpOrigins)
+		slog.Warn("config: WEBAUTHN_RPID does not match any RPOrigins entry — WebAuthn ceremonies will fail with a SecurityError", "rpid", rpid, "rp_origins", rpOrigins)
 	}
 
 	erasureParticipants, err := parseErasureParticipants()
@@ -243,11 +243,11 @@ func positiveIntEnv(name string, fallback int) int {
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		log.Printf("config: invalid %s, using default: %v", name, err)
+		slog.Warn("config: invalid value, using default", "name", name, "error", err)
 		return fallback
 	}
 	if value <= 0 {
-		log.Printf("config: %s must be positive, using default", name)
+		slog.Warn("config: value must be positive, using default", "name", name)
 		return fallback
 	}
 	return value
