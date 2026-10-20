@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { oauthClient, hasAuthHint, clearAuthHint } from '@/lib/oauth-client'
 import { startOAuthFlow } from '@/lib/auth-flow'
 import { MOCK_ACCESS_TOKEN, USE_MOCK } from '@/lib/mock'
+import { AppNetworkProvider } from '@/providers/network-provider'
 
 /** Pages where a failed silent refresh must never auto-start an OAuth redirect. */
 const AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/consent', '/accept-terms']
@@ -18,7 +19,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      retry: 1,
+      retry: false, // GET retry is owned by withRetry in lib/axios.ts
       refetchOnWindowFocus: false,
     },
   },
@@ -28,7 +29,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthInitializer />
-      {children}
+      <AppNetworkProvider>{children}</AppNetworkProvider>
     </QueryClientProvider>
   )
 }

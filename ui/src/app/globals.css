@@ -2,6 +2,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* @aoctech/ui 0.9 network components (OfflineBanner, UnavailableScreen, ErrorState, Button).
+   No package stylesheet is imported (styles.css/themes.css would repaint the app). Tailwind does not
+   scan node_modules, so the package classes need this @source. */
+@source "../../node_modules/@aoctech/ui/dist";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -50,6 +55,14 @@
 
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
+
+    /* Minimal map of @aoctech/ui semantic tokens onto Account's own palette (network components only). */
+    --color-brand-600: var(--primary);
+    --color-brand-700: oklch(0.48 0.22 258);
+    --color-surface: var(--muted);
+    --color-danger: var(--destructive);
+    --color-danger-strong: oklch(0.48 0.245 27.325);
+    --color-warning: oklch(0.72 0.16 75);
 
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
