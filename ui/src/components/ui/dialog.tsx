@@ -13,7 +13,8 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+  // With `render` (a package Button) the Button's own data-slot must survive: touch.css keys on it.
+  return <DialogPrimitive.Trigger {...(props.render ? {} : {"data-slot": "dialog-trigger"})} {...props} />
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
@@ -21,7 +22,7 @@ function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
+  return <DialogPrimitive.Close {...(props.render ? {} : {"data-slot": "dialog-close"})} {...props} />
 }
 
 function DialogOverlay({
@@ -64,7 +65,6 @@ function DialogContent({
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
-            data-slot="dialog-close"
             render={
               <Button
                 variant="ghost"
