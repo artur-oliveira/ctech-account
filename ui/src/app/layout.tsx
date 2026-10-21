@@ -3,6 +3,7 @@ import {IBM_Plex_Sans, IBM_Plex_Mono} from 'next/font/google'
 import {Toaster} from '@/components/ui/sonner'
 import {QueryProvider} from '@/providers/query-provider'
 import {I18nProvider} from '@/providers/i18n-provider'
+import {DensityScope} from '@aoctech/ui'
 import {RouteTitle} from '@/components/route-title'
 import './globals.css'
 import React from 'react'
@@ -101,8 +102,10 @@ export default function RootLayout({
       className="fixed inset-0 -z-10 opacity-[0.6] bg-linear-to-b from-background via-background to-blue-50 dark:to-blue-950"/>
 
     <I18nProvider>
-      <RouteTitle/>
-      <QueryProvider>{children}</QueryProvider>
+      <DensityScope density="compact" className="contents">
+        <RouteTitle/>
+        <QueryProvider>{children}</QueryProvider>
+      </DensityScope>
     </I18nProvider>
 
     <Toaster/>
