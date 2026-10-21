@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "bundle:pin": "node scripts/check-bundle-budget.mjs --update",
     "generate:support-proto": "protoc -I../proto --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/lib/api/proto --ts_proto_opt=esModuleInterop=true,forceLong=number,useOptionals=messages support.proto"
   },
   "dependencies": {
