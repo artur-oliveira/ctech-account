@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { API_URL } from '@/lib/axios'
 
 const GOOGLE_AUTH_PATH = '/v1.0/auth/google'
@@ -23,7 +23,7 @@ export function GoogleSignInButton({
     <Button
       type="button"
       variant="outline"
-      className="w-full max-sm:min-h-11"
+      className="w-full"
       onClick={() => {
         // OAuth must leave the SPA and let the Go API start the provider flow.
         // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API document navigation is intentional.

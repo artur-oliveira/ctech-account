@@ -5,7 +5,7 @@ import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import {Label} from '@/components/ui/label'
 import {OTPInput} from '@/components/ui/otp-input'
 import {Card, CardContent} from '@/components/ui/card'
@@ -21,7 +21,7 @@ import {reportClientError} from '@/lib/client-logging'
 const MFA_CODE_LENGTH = 6
 
 function MFASkeleton() {
-  return <div className="h-32 animate-pulse bg-muted rounded"/>
+  return <Skeleton className="h-32 rounded"/>
 }
 
 // null (still hydrating) propagates; anything unparseable means no methods.

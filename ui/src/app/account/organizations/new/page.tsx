@@ -10,7 +10,7 @@ import {fetchHandoff, lookupTaxID} from '@/lib/queries'
 import {createOrganizationAPI, registerCompanyAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
 import {cn} from '@/lib/utils'
-import {Button, buttonVariants} from '@/components/ui/button'
+import { Button, buttonVariants, Skeleton } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
@@ -27,7 +27,7 @@ import {formatTaxIDInput} from '@/lib/types'
  */
 export default function NewOrganizationPage() {
   return (
-    <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted"/>}>
+    <Suspense fallback={<Skeleton className="h-64 rounded-xl"/>}>
       <NewOrganization/>
     </Suspense>
   )
@@ -137,7 +137,7 @@ function NewOrganization() {
     : t('organizations.new.submit')
 
   if (isHandoff && isLoading) {
-    return <div className="h-64 animate-pulse rounded-xl bg-muted"/>
+    return <Skeleton className="h-64 rounded-xl"/>
   }
 
   // A misconfigured integration strands nobody: the person is told, and given
@@ -148,7 +148,7 @@ function NewOrganization() {
         <Building2 className="mx-auto size-8 text-muted-foreground opacity-40"/>
         <h1 className="text-lg font-semibold">{t('organizations.new.handoffInvalidTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('organizations.new.handoffInvalidBody')}</p>
-        <Link href="/account/organizations" className={cn(buttonVariants({variant: 'outline'}), 'max-sm:min-h-11')}>
+        <Link href="/account/organizations" className={cn(buttonVariants({variant: 'outline'}), 'touch-target')}>
           {t('organizations.new.goToOrganizations')}
         </Link>
       </div>
@@ -255,17 +255,17 @@ function NewOrganization() {
         )}
 
         <div className="flex items-center gap-2 pt-2">
-          <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+          <Button type="submit" disabled={isPending}>
             {isPending ? t('common.saving') : submitLabel}
           </Button>
           {/* A real action, not a back button: the product that sent them has
               to be told, or it cannot put the person back where they were. */}
           {isHandoff ? (
-            <Button type="button" variant="ghost" onClick={() => leave('cancelled')} className="max-sm:min-h-11">
+            <Button type="button" variant="ghost" onClick={() => leave('cancelled')}>
               {t('common.cancel')}
             </Button>
           ) : (
-            <Link href="/account/organizations" className={cn(buttonVariants({variant: 'ghost'}), 'max-sm:min-h-11')}>
+            <Link href="/account/organizations" className={cn(buttonVariants({variant: 'ghost'}), 'touch-target')}>
               {t('common.cancel')}
             </Link>
           )}

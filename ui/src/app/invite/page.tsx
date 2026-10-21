@@ -11,7 +11,7 @@ import { useAuthStore } from '@/store/auth'
 import { acceptInvitationAPI, resendVerificationAPI } from '@/lib/mutations'
 import { fetchProfile } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants, Skeleton } from '@aoctech/ui'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
@@ -25,7 +25,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 export default function InvitePage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
-      <Suspense fallback={<div className="h-48 animate-pulse rounded-xl bg-muted" />}>
+      <Suspense fallback={<Skeleton className="h-48 rounded-xl"/>}>
         <Invite />
       </Suspense>
     </main>
@@ -105,12 +105,12 @@ function Invite() {
             role="button" on whatever it renders, which would strip the link
             semantics a screen reader needs to announce these as navigation. */}
         <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-          <Link href={to('/login')} className={cn(buttonVariants(), 'flex-1')}>
+          <Link href={to('/login')} className={cn(buttonVariants(), 'flex-1 touch-target')}>
             {t('organizations.invite.signIn')}
           </Link>
           <Link
             href={to('/register')}
-            className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
+            className={cn(buttonVariants({ variant: 'outline' }), 'flex-1 touch-target')}
           >
             {t('organizations.invite.register')}
           </Link>
@@ -120,13 +120,13 @@ function Invite() {
   }
 
   if (!isInitialized) {
-    return <div className="h-48 animate-pulse rounded-xl bg-muted" />
+    return <Skeleton className="h-48 rounded-xl"/>
   }
 
   // The redirect is in flight; showing the accept button again would invite a
   // second POST on a token that is already spent.
   if (isSuccess) {
-    return <div className="h-48 animate-pulse rounded-xl bg-muted" />
+    return <Skeleton className="h-48 rounded-xl"/>
   }
 
   return (
@@ -160,7 +160,7 @@ function Invite() {
           </Alert>
           <Link
             href="/account/organizations"
-            className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
+            className={cn(buttonVariants({ variant: 'outline' }), 'w-full touch-target')}
           >
             {t('organizations.invite.open')}
           </Link>

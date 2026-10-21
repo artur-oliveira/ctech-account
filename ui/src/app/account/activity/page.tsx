@@ -5,7 +5,7 @@ import {useState} from 'react'
 import {useTranslation} from 'react-i18next'
 import {fetchActivity} from '@/lib/queries'
 import {formatDistanceToNow} from '@/lib/format'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
 import type {ActivityEvent} from '@/lib/types'
 import {QueryError} from '@/components/query-error'
@@ -34,7 +34,7 @@ export default function ActivityPage() {
     return (
       <div className="space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-16 animate-pulse bg-muted rounded-lg"/>
+          <Skeleton key={i} className="h-16 rounded-lg"/>
         ))}
       </div>
     )

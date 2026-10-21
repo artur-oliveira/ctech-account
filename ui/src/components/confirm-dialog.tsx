@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { AlertTriangle, Loader2Icon } from 'lucide-react'
 
 type ConfirmDialogProps = {
@@ -90,12 +90,12 @@ export function ConfirmDialog({
         <DialogFooter showCloseButton={false}>
           <DialogClose
             render={
-              <Button variant="outline" className="min-h-11" disabled={pending}>
+              <Button variant="outline" disabled={pending}>
                 {cancelLabel ?? t('dialog.cancel')}
               </Button>
             }
           />
-          <Button variant={variant} className="min-h-11" disabled={pending} onClick={handleConfirm}>
+          <Button variant={variant === 'destructive' ? 'danger' : 'brand'} disabled={pending} onClick={handleConfirm}>
             {pending && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
             {confirmLabel ?? t('dialog.confirm')}
           </Button>

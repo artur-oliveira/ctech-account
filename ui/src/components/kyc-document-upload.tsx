@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import Image from 'next/image'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { uploadKYCDocumentAPI } from '@/lib/mutations'
@@ -124,10 +124,10 @@ export function KYCDocumentUpload({ uploadedTypes }: { uploadedTypes: KYCDocumen
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" className="min-h-11" onClick={changeFile} disabled={isPending}>
+            <Button type="button" variant="outline" onClick={changeFile} disabled={isPending}>
               {t('identity.documentPreviewChangeFile')}
             </Button>
-            <Button type="button" className="min-h-11" onClick={confirmUpload} disabled={isPending}>
+            <Button type="button" onClick={confirmUpload} disabled={isPending}>
               {isPending ? t('identity.uploading') : t('identity.documentPreviewConfirm')}
             </Button>
           </div>
@@ -145,7 +145,7 @@ export function KYCDocumentUpload({ uploadedTypes }: { uploadedTypes: KYCDocumen
             onChange={handleFile}
             disabled={isPending}
           />
-          <Button type="button" className="min-h-11" onClick={() => fileInput.current?.click()} disabled={isPending}>
+          <Button type="button" onClick={() => fileInput.current?.click()} disabled={isPending}>
             <Upload className="size-4" />
             {isReplacing ? t('identity.replaceDocument') : t('identity.uploadDocument')}
           </Button>

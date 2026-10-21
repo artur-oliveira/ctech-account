@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { consentDecisionAPI } from '@/lib/mutations'
@@ -147,7 +147,7 @@ export default function ConsentPage() {
         <div className="text-center">
           <h1 className="text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
         </div>
-        <Suspense fallback={<div className="h-64 animate-pulse bg-muted rounded-lg" />}>
+        <Suspense fallback={<Skeleton className="h-64 rounded-lg"/>}>
           <ConsentForm />
         </Suspense>
       </div>

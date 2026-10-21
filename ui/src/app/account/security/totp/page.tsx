@@ -6,6 +6,7 @@ import { fetchTOTPSetup } from '@/lib/queries'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { TOTPConfirmForm } from './totp-confirm'
 import { QueryError } from '@/components/query-error'
+import { Skeleton } from '@aoctech/ui'
 
 export default function TOTPSetupPage() {
   const { t } = useTranslation()
@@ -15,7 +16,7 @@ export default function TOTPSetupPage() {
   })
 
   if (isLoading) {
-    return <div className="h-64 animate-pulse bg-muted rounded-lg" />
+    return <Skeleton className="h-64 rounded-lg"/>
   }
 
   if (isError) {

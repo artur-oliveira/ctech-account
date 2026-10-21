@@ -11,7 +11,7 @@ import {createOrganizationAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
 import {planProblemOf, planURL} from '@/lib/plan-problem'
 import {cn} from '@/lib/utils'
-import {Button, buttonVariants} from '@/components/ui/button'
+import { Button, buttonVariants, Skeleton } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
@@ -26,7 +26,7 @@ const MAX_NAME = 120
  */
 export default function NewSpacePage() {
   return (
-    <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted"/>}>
+    <Suspense fallback={<Skeleton className="h-64 rounded-xl"/>}>
       <NewSpace/>
     </Suspense>
   )
@@ -91,7 +91,7 @@ function NewSpace() {
       : (error?.message ?? null)
 
   if (isHandoff && isLoading) {
-    return <div className="h-64 animate-pulse rounded-xl bg-muted"/>
+    return <Skeleton className="h-64 rounded-xl"/>
   }
 
   // A misconfigured integration strands nobody: the person is told, and given
@@ -102,7 +102,7 @@ function NewSpace() {
         <Users className="mx-auto size-8 text-muted-foreground opacity-40"/>
         <h1 className="text-lg font-semibold">{t('spaces.new.handoffInvalidTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('spaces.new.handoffInvalidBody')}</p>
-        <Link href="/account/spaces" className={cn(buttonVariants({variant: 'outline'}), 'max-sm:min-h-11')}>
+        <Link href="/account/spaces" className={cn(buttonVariants({variant: 'outline'}), 'touch-target')}>
           {t('spaces.new.goToSpaces')}
         </Link>
       </div>
@@ -122,16 +122,16 @@ function NewSpace() {
         </Alert>
         <div className="flex flex-wrap items-center gap-2">
           {plansHref && (
-            <a href={plansHref} className={cn(buttonVariants(), 'max-sm:min-h-11')}>
+            <a href={plansHref} className={cn(buttonVariants(), 'touch-target')}>
               {t('spaces.plan.seePlans')}
             </a>
           )}
           {isHandoff ? (
-            <Button type="button" variant="ghost" onClick={() => leave('cancelled')} className="max-sm:min-h-11">
+            <Button type="button" variant="ghost" onClick={() => leave('cancelled')}>
               {t('spaces.plan.back')}
             </Button>
           ) : (
-            <Link href="/account/spaces" className={cn(buttonVariants({variant: 'ghost'}), 'max-sm:min-h-11')}>
+            <Link href="/account/spaces" className={cn(buttonVariants({variant: 'ghost'}), 'touch-target')}>
               {t('spaces.plan.back')}
             </Link>
           )}
@@ -186,17 +186,17 @@ function NewSpace() {
         </div>
 
         <div className="flex items-center gap-2 pt-2">
-          <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+          <Button type="submit" disabled={isPending}>
             {isPending ? t('common.saving') : t('spaces.new.submit')}
           </Button>
           {/* A real action, not a back button: the product that sent them has
               to be told, or it cannot put the person back where they were. */}
           {isHandoff ? (
-            <Button type="button" variant="ghost" onClick={() => leave('cancelled')} className="max-sm:min-h-11">
+            <Button type="button" variant="ghost" onClick={() => leave('cancelled')}>
               {t('common.cancel')}
             </Button>
           ) : (
-            <Link href="/account/spaces" className={cn(buttonVariants({variant: 'ghost'}), 'max-sm:min-h-11')}>
+            <Link href="/account/spaces" className={cn(buttonVariants({variant: 'ghost'}), 'touch-target')}>
               {t('common.cancel')}
             </Link>
           )}

@@ -14,7 +14,7 @@ import { StepUpDialog } from '@/components/step-up-dialog'
 import { TermsGate } from '@/components/terms-gate'
 import { UserMenu } from '@/components/user-menu'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { Separator } from '@/components/ui/separator'
+import { Separator } from '@aoctech/ui'
 import { QueryError } from '@/components/query-error'
 
 export default function AccountLayout({ children }: { children: React.ReactNode }) {

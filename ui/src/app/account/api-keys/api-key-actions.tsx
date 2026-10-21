@@ -3,7 +3,7 @@
 import {SyntheticEvent, useState} from 'react'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Button} from '@/components/ui/button'
+import {Button} from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {
@@ -170,7 +170,7 @@ export function RevokeAPIKeyButton({keyId}: { keyId: string }) {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="destructive" size="sm">
+        <Button variant="danger" size="sm">
           {t('apiKeys.revoke')}
         </Button>
       }

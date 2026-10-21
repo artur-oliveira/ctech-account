@@ -6,15 +6,14 @@ import { useTranslation } from 'react-i18next'
 import { fetchMySupportTickets } from '@/lib/queries'
 import { formatDistanceToNow } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Button, Skeleton, Badge } from '@aoctech/ui'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { SupportTicket } from '@/lib/types'
 
-const STATUS_VARIANT = {
-  open: 'default',
-  answered: 'secondary',
-  closed: 'outline',
+const STATUS_TONE = {
+  open: 'attention',
+  answered: 'positive',
+  closed: 'neutral',
 } as const
 
 export default function MySupportTicketsPage() {
@@ -47,7 +46,7 @@ export default function MySupportTicketsPage() {
     {
       key: 'status',
       header: t('support.admin.statusLabel'),
-      cell: (ticket) => <Badge variant={STATUS_VARIANT[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>,
+      cell: (ticket) => <Badge tone={STATUS_TONE[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>,
     },
     {
       key: 'lastMessage',
@@ -61,7 +60,7 @@ export default function MySupportTicketsPage() {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
+          <Skeleton key={i} className="h-16 rounded-lg"/>
         ))}
       </div>
     )

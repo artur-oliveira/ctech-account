@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { Languages } from 'lucide-react'
 
 /**

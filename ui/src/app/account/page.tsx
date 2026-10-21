@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchProfile, fetchSessions } from '@/lib/queries'
 import { formatDistanceToNow } from '@/lib/format'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@aoctech/ui'
 import { QueryError } from '@/components/query-error'
 
 export default function DashboardPage() {
@@ -31,7 +31,7 @@ export default function DashboardPage() {
         <p className="text-muted-foreground text-sm mt-1">
           {user.email}
           {!user.email_verified && (
-            <Badge variant="secondary" className="ml-2 text-xs">{t('dashboard.unverified')}</Badge>
+            <Badge tone="attention" className="ml-2">{t('dashboard.unverified')}</Badge>
           )}
         </p>
       </div>

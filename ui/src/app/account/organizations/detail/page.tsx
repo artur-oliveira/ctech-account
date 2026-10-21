@@ -17,6 +17,7 @@ import { MembersTab } from './members-tab'
 import { CompaniesTab } from './companies-tab'
 import { InvitationsTab } from './invitations-tab'
 import { SettingsTab } from './settings-tab'
+import { Skeleton } from '@aoctech/ui'
 
 /**
  * The id travels as a query parameter because production is a static export
@@ -25,7 +26,7 @@ import { SettingsTab } from './settings-tab'
  */
 export default function OrganizationDetailPage() {
   return (
-    <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-muted" />}>
+    <Suspense fallback={<Skeleton className="h-40 rounded-lg"/>}>
       <OrganizationDetail />
     </Suspense>
   )
@@ -73,7 +74,7 @@ function OrganizationDetail() {
     return (
       <div className="space-y-6">
         <BackLink />
-        <div className="h-40 animate-pulse rounded-lg bg-muted" />
+        <Skeleton className="h-40 rounded-lg"/>
       </div>
     )
   }

@@ -11,6 +11,7 @@ import { ResponsiveDataList, type Column } from '@/components/responsive-data-li
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import type { Organization } from '@/lib/types'
 import { CreateOrganizationDialog } from './organization-actions'
+import { Skeleton } from '@aoctech/ui'
 
 export default function OrganizationsPage() {
   const { t } = useTranslation()
@@ -23,7 +24,7 @@ export default function OrganizationsPage() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )

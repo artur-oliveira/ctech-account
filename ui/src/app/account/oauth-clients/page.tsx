@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchOAuthClients } from '@/lib/queries'
 import { formatDate } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Badge } from '@/components/ui/badge'
+import { Badge, Skeleton } from '@aoctech/ui'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { OAuthClient } from '@/lib/types'
 import {
@@ -23,7 +23,7 @@ import { readClientPrefill } from './prefill'
 export default function OAuthClientsPage() {
   // useSearchParams needs a Suspense boundary in a static export.
   return (
-    <Suspense fallback={<div className="h-24 animate-pulse bg-muted rounded-lg" />}>
+    <Suspense fallback={<Skeleton className="h-24 rounded-lg"/>}>
       <OAuthClients />
     </Suspense>
   )
@@ -44,7 +44,7 @@ function OAuthClients() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-24 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-24 rounded-lg"/>
         ))}
       </div>
     )
@@ -67,7 +67,7 @@ function OAuthClients() {
       cell: (c) => (
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className="text-sm font-medium">{c.name}</span>
-          <Badge variant="secondary" className="text-xs">
+          <Badge>
             {t(`oauthClients.type.${c.client_type}`)}
           </Badge>
           <button
@@ -96,7 +96,7 @@ function OAuthClients() {
       cell: (c) => (
         <div className="flex flex-wrap gap-1">
           {c.allowed_scopes.map((scope) => (
-            <Badge key={scope} variant="outline" className="text-xs font-mono">{scope}</Badge>
+            <Badge key={scope} className="font-mono">{scope}</Badge>
           ))}
         </div>
       ),
