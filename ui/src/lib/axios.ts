@@ -1,3 +1,4 @@
+import {withRetry} from '@aoctech/ui'
 import axios, {isAxiosError as _isAxiosError} from 'axios'
 import {useAuthStore} from '@/store/auth'
 import {useStepUpStore} from '@/store/step-up'
@@ -33,6 +34,11 @@ export const cnpjaApi = axios.create({
   // this public lookup on a real browser transport even during local QA.
   adapter: ['xhr', 'http', 'fetch'],
 })
+
+// Only GETs are retried (mutations carry no Idempotency-Key here). Wrapping the call, not an
+// interceptor, keeps the 401 refresh and step-up replays below untouched: they see each attempt's error.
+const getOnce = api.get.bind(api)
+api.get = ((url, config) => withRetry(() => getOnce(url, config), {method: 'GET'})) as typeof api.get
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken
