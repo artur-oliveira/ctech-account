@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchSessions } from '@/lib/queries'
 import { formatDistanceToNow, formatDate } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Badge } from '@/components/ui/badge'
+import { Badge, Skeleton } from '@aoctech/ui'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { Session } from '@/lib/types'
 import { RevokeSessionButton, RevokeAllButton } from './session-actions'
@@ -26,7 +26,7 @@ export default function SessionsPage() {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )
@@ -45,7 +45,7 @@ export default function SessionsPage() {
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium truncate">{s.device_name}</span>
           {s.is_current && (
-            <Badge variant="secondary" className="text-xs shrink-0">{t('sessions.current')}</Badge>
+            <Badge className="shrink-0">{t('sessions.current')}</Badge>
           )}
         </div>
       ),

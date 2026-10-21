@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { LegalConsent, NOTHING_ACCEPTED, isConsentComplete } from '@/components/legal-consent'
@@ -107,7 +107,7 @@ export default function AcceptTermsPage() {
 
         <Card>
           <CardContent>
-            <Suspense fallback={<div className="h-32 animate-pulse bg-muted rounded" />}>
+            <Suspense fallback={<Skeleton className="h-32 rounded"/>}>
               <AcceptTermsForm />
             </Suspense>
           </CardContent>

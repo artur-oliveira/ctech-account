@@ -3,7 +3,7 @@
 import { SyntheticEvent, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import {
   Dialog,
   DialogContent,
@@ -113,7 +113,7 @@ export function RemovePasskeyButton({ passkeyId }: { passkeyId: string }) {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="destructive" size="sm">
+        <Button variant="danger" size="sm">
           {t('passkeys.remove')}
         </Button>
       }

@@ -8,6 +8,7 @@ import { QueryError } from '@/components/query-error'
 import { Card, CardContent } from '@/components/ui/card'
 import { RegisterPasskeyButton, RemovePasskeyButton } from './passkey-actions'
 import { Fingerprint } from 'lucide-react'
+import { Skeleton } from '@aoctech/ui'
 
 export default function PasskeysPage() {
   const { t } = useTranslation()
@@ -20,7 +21,7 @@ export default function PasskeysPage() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )

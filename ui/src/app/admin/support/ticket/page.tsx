@@ -10,17 +10,16 @@ import {fetchAdminSupportTicket} from '@/lib/queries'
 import {addAdminSupportInternalNoteAPI, replyAdminSupportTicketAPI, setAdminSupportEscalationAPI, setAdminSupportTicketStatusAPI} from '@/lib/mutations'
 import {formatDate} from '@/lib/format'
 import {QueryError} from '@/components/query-error'
-import {Button} from '@/components/ui/button'
-import {Badge} from '@/components/ui/badge'
+import { Button, Badge } from '@aoctech/ui'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import type {SupportMessage} from '@/lib/types'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {useSupportRealtime} from '@/lib/hooks/use-support-realtime'
 
-const STATUS_VARIANT = {
-  open: 'default',
-  answered: 'secondary',
-  closed: 'outline',
+const STATUS_TONE = {
+  open: 'attention',
+  answered: 'positive',
+  closed: 'neutral',
 } as const
 
 const ACTIVE_STATUS_VALUES = ['open', 'answered'] as const
@@ -103,7 +102,7 @@ function AdminTicketThread() {
           <p className="text-sm capitalize text-muted-foreground">{t(`support.priority.${ticket.priority}`)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={STATUS_VARIANT[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
+          <Badge tone={STATUS_TONE[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
           {!isClosed && <Select value={ticket.status} onValueChange={(value) => value && setStatus.mutate(value)}>
             <SelectTrigger aria-label={t('support.admin.statusLabel')} className="w-40">
               <SelectValue>
@@ -119,7 +118,7 @@ function AdminTicketThread() {
             </SelectContent>
           </Select>}
           {!isClosed && <ConfirmDialog
-            trigger={<Button variant="destructive">{t('support.admin.close')}</Button>}
+            trigger={<Button variant="danger">{t('support.admin.close')}</Button>}
             title={t('support.admin.closeTitle')}
             description={t('support.admin.closeDescription')}
             confirmLabel={t('support.admin.closeConfirm')}
@@ -168,7 +167,7 @@ function AdminTicketThread() {
         <form onSubmit={submitNote} className="space-y-2">
           <label className="flex items-center gap-2 text-sm font-medium" htmlFor="internal-note"><LockKeyhole className="size-4"/>{t('support.admin.internalNote')}</label>
           <textarea id="internal-note" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} minLength={3} maxLength={4000} required className="min-h-28 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/70" placeholder={t('support.admin.internalNotePlaceholder')}/>
-          <Button type="submit" variant="secondary" disabled={addNote.isPending}>{t('support.admin.saveNote')}</Button>
+          <Button type="submit" variant="outline" disabled={addNote.isPending}>{t('support.admin.saveNote')}</Button>
         </form>
         {internal_notes.length > 0 && <div className="space-y-2 border-t border-border pt-3">
           {internal_notes.map((note) => <div key={note.id} className="space-y-1"><p className="whitespace-pre-wrap text-sm">{note.body}</p><p className="text-xs text-muted-foreground">{formatDate(note.created_at)}</p></div>)}

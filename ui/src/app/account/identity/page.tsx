@@ -3,13 +3,11 @@
 import Link from 'next/link'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Button} from '@/components/ui/button'
+import { Button, Badge, Separator } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Card, CardContent, CardDescription, CardHeader} from '@/components/ui/card'
 import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
-import {Badge} from '@/components/ui/badge'
-import {Separator} from '@/components/ui/separator'
 import {cn} from '@/lib/utils'
 import {KYCBasicForm} from '@/components/kyc-basic-form'
 import {KYCSelfiePhoto} from '@/components/kyc-selfie-photo'
@@ -35,15 +33,15 @@ function StateBadge({status}: { status: KYCStatus }) {
   const {t} = useTranslation()
   switch (status.state) {
     case 'verified':
-      return <Badge variant="default"><CheckCircle2 className="size-3.5"/>{t('identity.levelVerified')}</Badge>
+      return <Badge tone="positive"><CheckCircle2 className="size-3.5"/>{t('identity.levelVerified')}</Badge>
     case 'basic_verified':
-      return <Badge variant="secondary"><CheckCircle2 className="size-3.5"/>{t('identity.levelBasicVerified')}</Badge>
+      return <Badge tone="neutral"><CheckCircle2 className="size-3.5"/>{t('identity.levelBasicVerified')}</Badge>
     case 'under_review':
-      return <Badge variant="secondary"><FileSearch className="size-3.5"/>{t('identity.levelUnderReview')}</Badge>
+      return <Badge tone="attention"><FileSearch className="size-3.5"/>{t('identity.levelUnderReview')}</Badge>
     case 'rejected':
-      return <Badge variant="destructive"><XCircle className="size-3.5"/>{t('identity.levelRejected')}</Badge>
+      return <Badge tone="urgent"><XCircle className="size-3.5"/>{t('identity.levelRejected')}</Badge>
     default:
-      return <Badge variant="outline">{t('identity.levelNone')}</Badge>
+      return <Badge>{t('identity.levelNone')}</Badge>
   }
 }
 
@@ -93,7 +91,7 @@ function MFARequired() {
       <AlertTitle>{t('identity.mfaRequiredTitle')}</AlertTitle>
       <AlertDescription className="space-y-3">
         <p>{t('identity.mfaRequired')}</p>
-        <Button render={<Link href="/account/security"/>} className="min-h-11">{t('identity.mfaRequiredCta')}</Button>
+        <Button render={<Link href="/account/security"/>}>{t('identity.mfaRequiredCta')}</Button>
       </AlertDescription>
     </Alert>
   )
@@ -157,7 +155,7 @@ function EnhancedSection({status}: { status: KYCStatus }) {
         <KYCSelfiePhoto uploaded={uploadedTypes.includes('selfie_with_document')}/>
       </div>
 
-      <Button type="button" className="min-h-11" disabled={!docsComplete || isPending} onClick={() => submit()}>
+      <Button type="button" disabled={!docsComplete || isPending} onClick={() => submit()}>
         {isPending ? t('identity.submitting') : t('identity.submitEnhancedCta')}
       </Button>
     </div>

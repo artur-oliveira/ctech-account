@@ -16,6 +16,7 @@ import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import { MembersTab } from '@/app/account/organizations/detail/members-tab'
 import { InvitationsTab } from '@/app/account/organizations/detail/invitations-tab'
 import { SettingsTab } from '@/app/account/organizations/detail/settings-tab'
+import { Skeleton } from '@aoctech/ui'
 
 /**
  * The people of one space: roster, invitations, access levels, transfer.
@@ -30,7 +31,7 @@ import { SettingsTab } from '@/app/account/organizations/detail/settings-tab'
  */
 export default function SpacePeoplePage() {
   return (
-    <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-muted" />}>
+    <Suspense fallback={<Skeleton className="h-40 rounded-lg"/>}>
       <SpacePeople />
     </Suspense>
   )
@@ -94,7 +95,7 @@ function SpacePeople() {
     return (
       <div className="space-y-6">
         <BackLink />
-        <div className="h-40 animate-pulse rounded-lg bg-muted" />
+        <Skeleton className="h-40 rounded-lg"/>
       </div>
     )
   }

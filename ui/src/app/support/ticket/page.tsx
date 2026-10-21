@@ -9,16 +9,15 @@ import { fetchSupportTicket } from '@/lib/queries'
 import { replySupportTicketAPI, submitSupportTicketNPSAPI } from '@/lib/mutations'
 import { formatDate } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Button, Badge } from '@aoctech/ui'
 import type { SupportMessage } from '@/lib/types'
 import Link from 'next/link'
 import {useSupportRealtime} from '@/lib/hooks/use-support-realtime'
 
-const STATUS_VARIANT = {
-  open: 'default',
-  answered: 'secondary',
-  closed: 'outline',
+const STATUS_TONE = {
+  open: 'attention',
+  answered: 'positive',
+  closed: 'neutral',
 } as const
 
 function MessageAuthorIcon({ authorType }: { authorType: SupportMessage['author_type'] }) {
@@ -104,7 +103,7 @@ function TicketThread() {
         </div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold">{ticket.subject_other || t(`support.categories.${ticket.subject_category}`)}</h1>
-          <Badge variant={STATUS_VARIANT[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
+          <Badge tone={STATUS_TONE[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
         </div>
       </div>
 

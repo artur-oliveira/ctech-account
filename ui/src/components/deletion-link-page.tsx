@@ -4,7 +4,7 @@ import Link from 'next/link'
 import {useMutation} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Button} from '@/components/ui/button'
+import {Button} from '@aoctech/ui'
 import {Card, CardContent} from '@/components/ui/card'
 import {useProductName} from '@/components/leave-products-card'
 import {isAxiosError} from '@/lib/axios'
@@ -70,7 +70,7 @@ export function DeletionLinkPage({kind, requestID, token, service, action}: Prop
               </Alert>
             )}
             {!run.isSuccess && !invalid && (
-              <Button className="w-full" variant={kind === 'confirm' ? 'destructive' : 'default'}
+              <Button className="w-full" variant={kind === 'confirm' ? 'danger' : 'brand'}
                       disabled={run.isPending} onClick={() => run.mutate()}>
                 {run.isPending ? t('common.loading') : t(`${ns}.button`, {product})}
               </Button>

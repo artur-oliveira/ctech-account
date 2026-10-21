@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { OTPInput } from '@/components/ui/otp-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Fingerprint } from 'lucide-react'

@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -100,7 +100,7 @@ export function CreateOrganizationDialog() {
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+            <Button type="submit" disabled={isPending}>
               {isPending ? t('organizations.create.submitting') : t('organizations.create.submit')}
             </Button>
           </DialogFooter>

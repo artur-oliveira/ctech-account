@@ -11,7 +11,7 @@ import {formatDate} from '@/lib/format'
 import {isAxiosError} from '@/lib/axios'
 import {QueryError} from '@/components/query-error'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {
@@ -42,7 +42,7 @@ export function CompaniesTab({organization}: { organization: Organization }) {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-14 animate-pulse rounded-lg bg-muted"/>
+          <Skeleton key={i} className="h-14 rounded-lg"/>
         ))}
       </div>
     )
@@ -233,7 +233,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+            <Button type="submit" disabled={isPending}>
               {isPending ? t('common.saving') : t('organizations.companies.add')}
             </Button>
           </DialogFooter>

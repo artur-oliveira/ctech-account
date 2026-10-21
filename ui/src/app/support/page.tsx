@@ -8,7 +8,7 @@ import {createSupportTicketAPI} from '@/lib/mutations'
 import {useAuthStore} from '@/store/auth'
 import {buildSupportSubject, findSupportCategory, SUPPORT_CATEGORIES} from '@/lib/support-catalog'
 import {TurnstileWidget} from '@/components/turnstile-widget'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
@@ -73,7 +73,7 @@ export default function SupportPage() {
       {!isInitialized ? (
         <div className="space-y-3" aria-hidden="true">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
+            <Skeleton key={i} className="h-16 rounded-lg"/>
           ))}
         </div>
       ) : (

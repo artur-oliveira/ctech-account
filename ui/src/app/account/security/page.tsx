@@ -5,8 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchPasskeys, fetchTOTPStatus, fetchProfile } from '@/lib/queries'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Button, Badge } from '@aoctech/ui'
 import { Fingerprint, KeyRound, Lock, Globe } from 'lucide-react'
 import { RemoveTOTPButton, UnlinkGoogleButton } from './security-actions'
 import { GoogleSignInButton } from '@/components/google-sign-in-button'
@@ -55,7 +54,7 @@ export default function SecurityPage() {
               <Globe className="size-5" />
               <CardTitle className="text-base">{t('security.google.title')}</CardTitle>
               {googleLinked && (
-                <Badge variant="secondary">{t('security.google.linked')}</Badge>
+                <Badge tone="positive">{t('security.google.linked')}</Badge>
               )}
             </div>
             <div className="flex gap-2">
@@ -81,7 +80,7 @@ export default function SecurityPage() {
               <KeyRound className="size-5" />
               <CardTitle className="text-base">{t('security.totp.title')}</CardTitle>
               {totpEnabled && (
-                <Badge variant="secondary">{t('security.totp.enabled')}</Badge>
+                <Badge tone="positive">{t('security.totp.enabled')}</Badge>
               )}
             </div>
             <div className="flex gap-2">

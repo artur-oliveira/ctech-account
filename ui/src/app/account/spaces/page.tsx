@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { QueryError } from '@/components/query-error'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants, Skeleton } from '@aoctech/ui'
 import type { Organization } from '@/lib/types'
 
 /**
@@ -30,7 +30,7 @@ export default function SpacesPage() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )
@@ -102,7 +102,7 @@ export default function SpacesPage() {
 function NewSpaceLink() {
   const { t } = useTranslation()
   return (
-    <Link href="/account/spaces/new" className={cn(buttonVariants({ size: 'sm' }), 'max-sm:min-h-11')}>
+    <Link href="/account/spaces/new" className={cn(buttonVariants({ size: 'sm' }), 'touch-target')}>
       <Plus className="size-4" />
       {t('spaces.create')}
     </Link>

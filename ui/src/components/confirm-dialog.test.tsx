@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ConfirmDialog } from './confirm-dialog'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 
 function deferred<T>() {
   let resolve!: (value: T) => void

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchAPIKeys } from '@/lib/queries'
 import { formatDistanceToNow, formatDate } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Badge } from '@/components/ui/badge'
+import { Badge, Skeleton } from '@aoctech/ui'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { APIKey } from '@/lib/types'
 import { CreateAPIKeyDialog, RevokeAPIKeyButton } from './api-key-actions'
@@ -22,7 +22,7 @@ export default function APIKeysPage() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )
@@ -50,7 +50,7 @@ export default function APIKeysPage() {
       cell: (k) => (
         <div className="flex flex-wrap gap-1">
           {k.scopes.map((scope) => (
-            <Badge key={scope} variant="secondary" className="text-xs">{scope}</Badge>
+            <Badge key={scope}>{scope}</Badge>
           ))}
         </div>
       ),

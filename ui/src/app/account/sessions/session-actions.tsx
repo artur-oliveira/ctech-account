@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { revokeSessionAPI, revokeAllSessionsAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
@@ -55,7 +55,7 @@ export function RevokeAllButton() {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="destructive" size="sm">
+        <Button variant="danger" size="sm">
           {isPending ? t('sessions.revoking') : t('sessions.revokeAll')}
         </Button>
       }

@@ -5,8 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge, Skeleton, Button } from '@aoctech/ui'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { QueryError } from '@/components/query-error'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
@@ -50,7 +49,7 @@ export default function AdminKYCPage() {
     {
       key: 'status', header: t('adminKyc.status'),
       cell: (review) => (
-        <Badge variant={review.status === 'rejected' ? 'destructive' : review.status === 'verified' ? 'default' : 'secondary'}>
+        <Badge tone={review.status === 'rejected' ? 'urgent' : review.status === 'verified' ? 'positive' : 'attention'}>
           {t(`adminKyc.states.${review.status}`)}
         </Badge>
       ),
@@ -86,7 +85,7 @@ export default function AdminKYCPage() {
 
       {reviews.isPending ? (
         <div className="space-y-2" aria-label={t('common.loading')}>
-          {[0, 1, 2].map((item) => <div key={item} className="h-14 animate-pulse rounded-lg bg-muted" />)}
+          {[0, 1, 2].map((item) => <Skeleton key={item} className="h-14 rounded-lg"/>)}
         </div>
       ) : reviews.isError ? (
         <QueryError error={reviews.error} onRetry={() => reviews.refetch()} />

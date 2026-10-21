@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import {useAuthStore} from '@/store/auth'
 import {useTranslation} from "react-i18next";
-import {Button} from "@/components/ui/button";
+import {Button} from "@aoctech/ui";
 
 export default function NotFound() {
   const {isInitialized, accessToken} = useAuthStore()
