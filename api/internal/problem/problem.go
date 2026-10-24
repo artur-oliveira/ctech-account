@@ -1,7 +1,7 @@
-// Package apierror is the account's catalogue of RFC 7807 problems: every type
+// Package problem is the account's catalogue of RFC 7807 problems: every type
 // the API emits, under https://accounts.aoctech.app/problems/, built on the
 // shared api-commons/problem package (body shape, Send, Retry-After, cause log).
-package apierror
+package problem
 
 import (
 	"fmt"
@@ -90,7 +90,7 @@ var _ = func() (n int) {
 func newProblem(slug, detail, instance string) *Problem {
 	d, ok := types.Lookup(types.URI(slug))
 	if !ok {
-		panic("apierror: unregistered problem type " + slug)
+		panic("problem: unregistered problem type " + slug)
 	}
 	return problem.New(d.Status, d.URI, d.Title, detail).WithInstance(instance)
 }

@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // RegisterInternal mounts the one service-to-service route a product needs:
@@ -68,18 +68,18 @@ func (h *CompanyHandler) internalList(c fiber.Ctx) error {
 	if len(orgID) > maxInternalOrganizationIDLength {
 		// No organization has such an id; a key that long would only come
 		// back from DynamoDB as a validation error, read as a 500.
-		return apierror.NotFound("organization", c.Path()).Send(c)
+		return problem.NotFound("organization", c.Path()).Send(c)
 	}
 	kind, err := h.orgs.KindOf(c.Context(), orgID)
 	if errors.Is(err, organization.ErrNotFound) {
-		return apierror.NotFound("organization", c.Path()).Send(c)
+		return problem.NotFound("organization", c.Path()).Send(c)
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	companies, err := h.svc.List(c.Context(), orgID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	truncated := len(companies) > InternalCompanyListLimit
 	if truncated {
@@ -117,11 +117,11 @@ func (h *CompanyHandler) internalIdentity(c fiber.Ctx) error {
 	orgID := c.Params("organization_id")
 	company, err := h.svc.Get(c.Context(), orgID, c.Params("company_id"))
 	if err != nil {
-		return apierror.NotFound("company", c.Path()).Send(c)
+		return problem.NotFound("company", c.Path()).Send(c)
 	}
 	kind, err := h.orgs.KindOf(c.Context(), orgID)
 	if err != nil {
-		return apierror.NotFound("company", c.Path()).Send(c)
+		return problem.NotFound("company", c.Path()).Send(c)
 	}
 	return c.JSON(fiber.Map{
 		"organization_id":   orgID,
@@ -147,7 +147,7 @@ func (h *CompanyHandler) internalIdentity(c fiber.Ctx) error {
 func (h *CompanyHandler) internalReach(c fiber.Ctx) error {
 	orgID, mayAct, err := h.svc.ReachOf(c.Context(), c.Params("company_id"), c.Params("user_id"))
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !mayAct {
 		// No organization on a refusal: naming one would say the company exists.
@@ -159,7 +159,7 @@ func (h *CompanyHandler) internalReach(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"may_act": false})
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	// Reach, the organization and its kind, and nothing else. A role or a
 	// permission list here would be the platform holding the product's

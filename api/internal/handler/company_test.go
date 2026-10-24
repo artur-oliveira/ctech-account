@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	companyDomain "gopkg.aoctech.app/account/api/internal/domain/company"
 	"gopkg.aoctech.app/account/api/internal/domain/company/registry"
 	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/authguard"
 )
@@ -188,10 +188,10 @@ func newCompanyTestApp(t *testing.T) *companyTestApp {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	app.Use(recover.New())

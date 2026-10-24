@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 const (
@@ -24,7 +24,7 @@ func RequireOrgRole(svc *organization.Service, minRole string) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		orgID := c.Params("id")
 		if orgID == "" {
-			return apierror.Forbidden(orgAccessDenied, c.Path()).Send(c)
+			return problem.Forbidden(orgAccessDenied, c.Path()).Send(c)
 		}
 		role, err := svc.RoleOf(c.Context(), orgID, GetUserID(c))
 		if err != nil {
@@ -32,12 +32,12 @@ func RequireOrgRole(svc *organization.Service, minRole string) fiber.Handler {
 			// same answer. Distinguishing them turns this route into a probe
 			// for which organization ids are real.
 			if errors.Is(err, organization.ErrNotAMember) || errors.Is(err, organization.ErrNotFound) {
-				return apierror.Forbidden(orgAccessDenied, c.Path()).Send(c)
+				return problem.Forbidden(orgAccessDenied, c.Path()).Send(c)
 			}
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 		if !organization.AtLeast(role, minRole) {
-			return apierror.Forbidden(orgAccessDenied, c.Path()).Send(c)
+			return problem.Forbidden(orgAccessDenied, c.Path()).Send(c)
 		}
 		// Published so the handler acts on the role this middleware already
 		// resolved, instead of reading the membership a second time and

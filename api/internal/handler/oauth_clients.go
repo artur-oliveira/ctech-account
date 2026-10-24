@@ -4,10 +4,10 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -48,17 +48,17 @@ func sendClientError(c fiber.Ctx, err error) error {
 	var scopeErr oauthclient.ErrInvalidScope
 	switch {
 	case errors.Is(err, oauthclient.ErrNotFound):
-		return apierror.NotFound("OAuth client not found.", c.Path()).Send(c)
+		return problem.NotFound("OAuth client not found.", c.Path()).Send(c)
 	case errors.Is(err, oauthclient.ErrForbidden):
-		return apierror.Forbidden("This OAuth client belongs to another account.", c.Path()).Send(c)
+		return problem.Forbidden("This OAuth client belongs to another account.", c.Path()).Send(c)
 	case errors.Is(err, oauthclient.ErrInvalidClientType),
 		errors.Is(err, oauthclient.ErrInvalidRedirectURI),
 		errors.Is(err, oauthclient.ErrNotConfidential):
-		return apierror.InvalidRequest(err.Error(), c.Path()).Send(c)
+		return problem.InvalidRequest(err.Error(), c.Path()).Send(c)
 	case errors.As(err, &scopeErr):
-		return apierror.InvalidRequest(scopeErr.Error(), c.Path()).Send(c)
+		return problem.InvalidRequest(scopeErr.Error(), c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }
 
@@ -67,7 +67,7 @@ func (h *OAuthClientsHandler) list(c fiber.Ctx) error {
 
 	clients, err := h.clientSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(clients))

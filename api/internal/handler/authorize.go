@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
@@ -20,6 +19,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 type AuthorizeHandler struct {
@@ -84,7 +84,7 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 	nonce := c.Query("nonce")
 
 	if clientID == "" || redirectURI == "" {
-		return apierror.InvalidRequest("client_id and redirect_uri are required.", c.Path()).Send(c)
+		return problem.InvalidRequest("client_id and redirect_uri are required.", c.Path()).Send(c)
 	}
 
 	// Resolve the client and confirm the redirect_uri is registered BEFORE any
@@ -93,13 +93,13 @@ func (h *AuthorizeHandler) Authorize(c fiber.Ctx) error {
 	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, oauthclient.ErrNotFound) {
-			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+			return problem.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !oauthClient.IsRedirectURIAllowed(redirectURI) {
-		return apierror.InvalidRequest("The redirect_uri is not registered for this client.", c.Path()).Send(c)
+		return problem.InvalidRequest("The redirect_uri is not registered for this client.", c.Path()).Send(c)
 	}
 
 	// The redirect_uri is now trusted — OAuth errors may be delivered to it.
@@ -265,20 +265,20 @@ func (h *AuthorizeHandler) ConsentDecision(c fiber.Ctx) error {
 
 	cookieValue := c.Cookies(sessionCookieName)
 	if cookieValue == "" {
-		return apierror.Unauthorized("No active session.", c.Path()).Send(c)
+		return problem.Unauthorized("No active session.", c.Path()).Send(c)
 	}
 	sess, err := h.sessionSvc.ValidateToken(c.Context(), cookieValue)
 	if err != nil {
-		return apierror.Unauthorized("Session is invalid or has expired.", c.Path()).Send(c)
+		return problem.Unauthorized("Session is invalid or has expired.", c.Path()).Send(c)
 	}
 
 	decoded, err := base64.RawURLEncoding.DecodeString(req.Req)
 	if err != nil || len(decoded) > maxConsentReqLen {
-		return apierror.InvalidRequest("Malformed consent request reference.", c.Path()).Send(c)
+		return problem.InvalidRequest("Malformed consent request reference.", c.Path()).Send(c)
 	}
 	authorizeURL, err := url.Parse(string(decoded))
 	if err != nil || authorizeURL.Path != authorizeRequestPath || authorizeURL.Host != "" {
-		return apierror.InvalidRequest("Consent request must reference the authorize endpoint.", c.Path()).Send(c)
+		return problem.InvalidRequest("Consent request must reference the authorize endpoint.", c.Path()).Send(c)
 	}
 
 	params := authorizeURL.Query()
@@ -291,12 +291,12 @@ func (h *AuthorizeHandler) ConsentDecision(c fiber.Ctx) error {
 	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, oauthclient.ErrNotFound) {
-			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+			return problem.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !oauthClient.IsRedirectURIAllowed(redirectURI) {
-		return apierror.InvalidRequest("The redirect_uri is not registered for this client.", c.Path()).Send(c)
+		return problem.InvalidRequest("The redirect_uri is not registered for this client.", c.Path()).Send(c)
 	}
 
 	if !req.Approved {
@@ -310,10 +310,10 @@ func (h *AuthorizeHandler) ConsentDecision(c fiber.Ctx) error {
 
 	allowedScopes := oauthClient.FilterScopes(strings.Fields(params.Get("scope")))
 	if len(allowedScopes) == 0 {
-		return apierror.InvalidRequest("No valid scopes requested for this client.", c.Path()).Send(c)
+		return problem.InvalidRequest("No valid scopes requested for this client.", c.Path()).Send(c)
 	}
 	if err := h.consentSvc.Grant(c.Context(), sess.UserID(), clientID, allowedScopes); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, sess.UserID(), audit.EventConsentGranted, map[string]string{"client_id": clientID})
 

@@ -2,10 +2,10 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -30,7 +30,7 @@ func (h *SessionsHandler) list(c fiber.Ctx) error {
 
 	sessions, err := h.sessionSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(sessions))
@@ -58,11 +58,11 @@ func (h *SessionsHandler) revoke(c fiber.Ctx) error {
 	targetSessionID := c.Params("id")
 
 	if targetSessionID == currentSessionID {
-		return apierror.InvalidRequest("Cannot revoke the current session — use POST /v1.0/auth/logout instead.", c.Path()).Send(c)
+		return problem.InvalidRequest("Cannot revoke the current session — use POST /v1.0/auth/logout instead.", c.Path()).Send(c)
 	}
 
 	if err := h.sessionSvc.Revoke(c.Context(), userID, targetSessionID); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSessionRevoked, map[string]string{"session_id": targetSessionID})
@@ -75,7 +75,7 @@ func (h *SessionsHandler) revokeAll(c fiber.Ctx) error {
 	currentSessionID := middleware.GetSessionID(c)
 
 	if err := h.sessionSvc.RevokeAll(c.Context(), userID, currentSessionID); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSessionRevokedAll, nil)

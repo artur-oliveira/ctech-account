@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/passkey"
 	"gopkg.aoctech.app/account/api/internal/domain/mfa/totp"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 const (
@@ -72,16 +72,16 @@ func (h *StepUpHandler) challenge(c fiber.Ctx) error {
 
 	hasMFA, err := h.userHasMFA(c, userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !hasMFA {
-		return apierror.MFAEnrollmentRequired(c.Path()).Send(c)
+		return problem.MFAEnrollmentRequired(c.Path()).Send(c)
 	}
 
 	ok, err := h.totpSvc.Validate(c.Context(), userID, req.Code)
 	if err != nil || !ok {
 		recordAudit(c, h.audit, userID, audit.EventStepUpFailed, map[string]string{"method": stepUpMethodTOTP})
-		return apierror.InvalidCredentials(c.Path()).WithCause(err).Send(c)
+		return problem.InvalidCredentials(c.Path()).WithCause(err).Send(c)
 	}
 
 	return h.finish(c, userID, sessionID, session.AMRTOTP, stepUpMethodTOTP)
@@ -96,11 +96,11 @@ func (h *StepUpHandler) passkeyBegin(c fiber.Ctx) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, passkey.ErrCacheRequired):
-			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
+			return problem.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrNoCredentials):
-			return apierror.MFAEnrollmentRequired(c.Path()).WithCause(err).Send(c)
+			return problem.MFAEnrollmentRequired(c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -118,21 +118,21 @@ func (h *StepUpHandler) passkeyComplete(c fiber.Ctx) error {
 	sessionToken := c.Query("session_token")
 
 	if sessionToken == "" {
-		return apierror.InvalidRequest("session_token query param is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("session_token query param is required.", c.Path()).Send(c)
 	}
 	if len(c.Body()) == 0 {
-		return apierror.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
 	}
 
 	if err := h.passkeySvc.FinishUserAuthentication(c.Context(), userID, sessionToken, c.Body()); err != nil {
 		recordAudit(c, h.audit, userID, audit.EventStepUpFailed, map[string]string{"method": stepUpMethodPasskey})
 		switch {
 		case errors.Is(err, passkey.ErrSessionExpired):
-			return apierror.InvalidToken("Passkey session expired. Please try again.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidToken("Passkey session expired. Please try again.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrInvalidResponse):
-			return apierror.InvalidRequest("Invalid passkey response.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidRequest("Invalid passkey response.", c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).WithCause(err).Send(c)
+			return problem.Unauthorized("Passkey authentication failed.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -142,7 +142,7 @@ func (h *StepUpHandler) passkeyComplete(c fiber.Ctx) error {
 // finish stamps the MFA proof on the session and audits the challenge.
 func (h *StepUpHandler) finish(c fiber.Ctx, userID, sessionID, amrMethod, auditMethod string) error {
 	if err := h.sessionSvc.RecordMFA(c.Context(), userID, sessionID, amrMethod); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventStepUpSuccess, map[string]string{"method": auditMethod})
 	return c.SendStatus(fiber.StatusNoContent)

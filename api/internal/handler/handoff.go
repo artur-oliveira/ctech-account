@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/observability"
 )
 
@@ -88,5 +88,5 @@ func normalizeReturnTo(raw string) (string, bool) {
 func (h *HandoffHandler) reject(c fiber.Ctx, reason, clientID, returnTo string) error {
 	observability.Warn(c.Context(), "organization handoff refused", nil,
 		"reason", reason, "client_id", clientID, "return_to", returnTo)
-	return apierror.OrganizationHandoffInvalid(c.Path()).Send(c)
+	return problem.OrganizationHandoffInvalid(c.Path()).Send(c)
 }

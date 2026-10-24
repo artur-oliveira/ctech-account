@@ -4,9 +4,9 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -41,14 +41,14 @@ func (h *ActivityHandler) list(c fiber.Ctx) error {
 	if raw := c.Query("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > activityMaxLimit {
-			return apierror.InvalidRequest("limit must be an integer between 1 and 100.", c.Path()).Send(c)
+			return problem.InvalidRequest("limit must be an integer between 1 and 100.", c.Path()).Send(c)
 		}
 		limit = int32(n)
 	}
 
 	events, next, err := h.auditSvc.ListByUser(c.Context(), userID, c.Query("cursor"), limit)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(events))

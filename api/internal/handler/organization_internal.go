@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/observability"
 )
 
@@ -43,7 +43,7 @@ func (h *OrganizationHandler) internalMember(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"member": false})
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	// The kind travels with the role because a role alone does not say what it
 	// grants: `member` is full access in a space and narrower in an
@@ -64,7 +64,7 @@ func (h *OrganizationHandler) internalUserOrganizations(c fiber.Ctx) error {
 	userID := c.Params("user_id")
 	workspaces, err := h.svc.ListWorkspaces(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	out := make([]fiber.Map, 0, len(workspaces))
 	for _, w := range workspaces {

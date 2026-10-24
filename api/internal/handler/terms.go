@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -81,11 +81,11 @@ func acceptPendingTerms(c fiber.Ctx, userSvc *user.Service, auditSvc *audit.Serv
 	}
 
 	if (pending.ToS && !acceptToS) || (pending.Privacy && !acceptPrivacy) {
-		return apierror.ValidationFailed("You must accept the updated Terms of Service and Privacy Policy to continue.", c.Path())
+		return problem.ValidationFailed("You must accept the updated Terms of Service and Privacy Policy to continue.", c.Path())
 	}
 
 	if err := userSvc.AcceptTerms(c.Context(), u.ID(), pending.ToS, pending.Privacy); err != nil {
-		return apierror.ServerError(c.Path())
+		return problem.ServerError(c.Path())
 	}
 
 	meta := map[string]string{"method": method}
@@ -132,9 +132,9 @@ func (h *TermsHandler) accept(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return apierror.NotFound("User", c.Path()).Send(c)
+			return problem.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if err := acceptPendingTerms(c, h.userSvc, h.audit, u, req.AcceptToS, req.AcceptPrivacy, acceptMethodInApp); err != nil {
@@ -143,7 +143,7 @@ func (h *TermsHandler) accept(c fiber.Ctx) error {
 
 	u, err = h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{"terms_pending": legal.PendingFor(u.TOSVersion, u.PrivacyVersion)})

@@ -5,8 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // UserContactInternalHandler serves the service-to-service read of one person's
@@ -38,14 +38,14 @@ type internalUserContactResponse struct {
 func (h *UserContactInternalHandler) get(c fiber.Ctx) error {
 	u, err := h.users.GetByID(c.Context(), c.Params("sub"))
 	if errors.Is(err, user.ErrNotFound) {
-		return apierror.NotFound("User not found.", c.Path()).Send(c)
+		return problem.NotFound("User not found.", c.Path()).Send(c)
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	// A locked (deletion pending) or purged account has no contact to give.
 	if u.DeletionState != "" {
-		return apierror.NotFound("User not found.", c.Path()).Send(c)
+		return problem.NotFound("User not found.", c.Path()).Send(c)
 	}
 	return c.JSON(internalUserContactResponse{Email: u.Email, FirstName: u.FirstName, EmailVerified: u.EmailVerified})
 }

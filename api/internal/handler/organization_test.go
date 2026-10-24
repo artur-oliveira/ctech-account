@@ -14,10 +14,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	orgDomain "gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // memOrgRepo is an in-memory organization.Repository. It reproduces the two
@@ -238,10 +238,10 @@ func newOrgTestAppWith(t *testing.T, configure func(*orgDomain.Service, *memOrgR
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	app.Use(recover.New())
@@ -359,10 +359,10 @@ func TestOrganizationRoutesRefuseNonMembers(t *testing.T) {
 
 // problemOf decodes an RFC 7807 body once. Once matters: a response body is a
 // stream, and two helpers each reading it is how the second gets nothing.
-func problemOf(t *testing.T, resp *http.Response) apierror.Problem {
+func problemOf(t *testing.T, resp *http.Response) problem.Problem {
 	t.Helper()
 	body, _ := io.ReadAll(resp.Body)
-	var p apierror.Problem
+	var p problem.Problem
 	if err := json.Unmarshal(body, &p); err != nil {
 		t.Fatalf("decoding problem: %v (%s)", err, body)
 	}

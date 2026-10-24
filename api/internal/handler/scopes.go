@@ -2,7 +2,7 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -23,7 +23,7 @@ func (h *ScopesHandler) Register(v1 fiber.Router) {
 func (h *ScopesHandler) list(c fiber.Ctx) error {
 	services, err := h.catalogSvc.Catalog(c.Context())
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	public := make([]scopes.PublicServiceScopes, 0, len(services))
 	for _, s := range scopes.FilterPublic(services) {

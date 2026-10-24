@@ -8,7 +8,7 @@ code and the prose README diverge, the code wins (see "Divergences" at the end).
 ## Conventions
 
 - **Base path**: `/v1.0`. Well-known is at `/.well-known`.
-- **All errors** are RFC 7807 `application/problem+json` via `apierror.*`
+- **All errors** are RFC 7807 `application/problem+json` via `problem.*`
   (`internal/handler/helpers.go:157` `parseBody`, `api/cmd/api/main.go:213` error handler).
 - **Auth middleware chains** (defined in `internal/middleware`):
   - `RequireAuth(jwtSvc)` — verifies `Authorization: Bearer` JWT, populates locals

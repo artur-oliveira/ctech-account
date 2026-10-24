@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // supportRoleRank orders support roles by privilege. Empty and unknown roles
@@ -26,12 +26,12 @@ func RequireSupportRole(userSvc *user.Service, minRole string) fiber.Handler {
 		u, err := userSvc.GetByID(c.Context(), GetUserID(c))
 		if err != nil {
 			if errors.Is(err, user.ErrNotFound) {
-				return apierror.Forbidden("Support role required.", c.Path()).Send(c)
+				return problem.Forbidden("Support role required.", c.Path()).Send(c)
 			}
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 		if supportRoleRank[u.SupportRole] < minRank {
-			return apierror.Forbidden("Support role required.", c.Path()).Send(c)
+			return problem.Forbidden("Support role required.", c.Path()).Send(c)
 		}
 		return c.Next()
 	}

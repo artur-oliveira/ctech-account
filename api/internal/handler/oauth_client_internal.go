@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // OAuthClientInternalHandler serves the service-to-service read of one OAuth
@@ -46,10 +46,10 @@ type internalOAuthClientResponse struct {
 func (h *OAuthClientInternalHandler) get(c fiber.Ctx) error {
 	view, err := h.svc.Describe(c.Context(), c.Params("client_id"))
 	if errors.Is(err, oauthclient.ErrNotFound) {
-		return apierror.NotFound("OAuth client not found.", c.Path()).Send(c)
+		return problem.NotFound("OAuth client not found.", c.Path()).Send(c)
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(internalOAuthClientResponse{
 		ClientID:      view.ClientID,

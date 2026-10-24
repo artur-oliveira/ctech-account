@@ -2,8 +2,8 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -31,7 +31,7 @@ func (h *WellKnownHandler) Register(app *fiber.App) {
 func (h *WellKnownHandler) ProtectedResource(c fiber.Ctx) error {
 	supported, err := scopes.AccountPublicScopes()
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{
 		"resource":              h.resource,

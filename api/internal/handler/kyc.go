@@ -4,11 +4,11 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	scopeCatalog "gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -213,47 +213,47 @@ func (h *KYCHandler) sendStatus(c fiber.Ctx, userID string) error {
 func (h *KYCHandler) sendKYCError(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, kyc.ErrInvalidCPF):
-		return apierror.ValidationFailed("cpf: invalid CPF.", c.Path()).Send(c)
+		return problem.ValidationFailed("cpf: invalid CPF.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidBirthDate):
-		return apierror.ValidationFailed("birth_date: invalid date.", c.Path()).Send(c)
+		return problem.ValidationFailed("birth_date: invalid date.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidPhone):
-		return apierror.ValidationFailed("phone_number: invalid phone number.", c.Path()).Send(c)
+		return problem.ValidationFailed("phone_number: invalid phone number.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidAddress):
-		return apierror.ValidationFailed("address: invalid address.", c.Path()).Send(c)
+		return problem.ValidationFailed("address: invalid address.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidMethod):
-		return apierror.ValidationFailed("method: document verification is not available.", c.Path()).Send(c)
+		return problem.ValidationFailed("method: document verification is not available.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidDocumentType):
-		return apierror.ValidationFailed("type: unsupported document type.", c.Path()).Send(c)
+		return problem.ValidationFailed("type: unsupported document type.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidContentType):
-		return apierror.ValidationFailed("content_type: unsupported document content type.", c.Path()).Send(c)
+		return problem.ValidationFailed("content_type: unsupported document content type.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidDecision):
-		return apierror.ValidationFailed("decision: must be approve or reject.", c.Path()).Send(c)
+		return problem.ValidationFailed("decision: must be approve or reject.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrInvalidRejectionReason):
-		return apierror.ValidationFailed("reason_code: invalid rejection reason.", c.Path()).Send(c)
+		return problem.ValidationFailed("reason_code: invalid rejection reason.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrUnderage):
-		return apierror.AgeRequirementNotMet(c.Path()).Send(c)
+		return problem.AgeRequirementNotMet(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrAlreadyVerified):
-		return apierror.KYCAlreadyVerified(c.Path()).Send(c)
+		return problem.KYCAlreadyVerified(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrBasicLocked):
-		return apierror.KYCAlreadyVerified(c.Path()).Send(c)
+		return problem.KYCAlreadyVerified(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrBasicRequired):
-		return apierror.KYCBasicRequired(c.Path()).Send(c)
+		return problem.KYCBasicRequired(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrCPFConflict):
-		return apierror.CPFAlreadyRegistered(c.Path()).Send(c)
+		return problem.CPFAlreadyRegistered(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrSubmissionLocked):
-		return apierror.KYCSubmissionLocked(c.Path()).Send(c)
+		return problem.KYCSubmissionLocked(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrNotSubmitted), errors.Is(err, kyc.ErrNoDocuments):
-		return apierror.KYCNotSubmitted(c.Path()).Send(c)
+		return problem.KYCNotSubmitted(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentNotUploaded):
-		return apierror.KYCDocumentNotUploaded(c.Path()).Send(c)
+		return problem.KYCDocumentNotUploaded(c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentTooLarge):
-		return apierror.KYCDocumentTooLarge(kyc.MaxDocumentBytes, c.Path()).Send(c)
+		return problem.KYCDocumentTooLarge(kyc.MaxDocumentBytes, c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrTooManyDocuments):
-		return apierror.ValidationFailed("documents: too many documents for this submission.", c.Path()).Send(c)
+		return problem.ValidationFailed("documents: too many documents for this submission.", c.Path()).Send(c)
 	case errors.Is(err, kyc.ErrDocumentTypeMismatch):
-		return apierror.KYCDocumentNotUploaded(c.Path()).Send(c)
+		return problem.KYCDocumentNotUploaded(c.Path()).Send(c)
 	case errors.Is(err, user.ErrNotFound):
-		return apierror.NotFound("User", c.Path()).Send(c)
+		return problem.NotFound("User", c.Path()).Send(c)
 	}
-	return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+	return problem.ServerError(c.Path()).WithCause(err).Send(c)
 }

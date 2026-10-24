@@ -31,7 +31,7 @@ api/
 │   ├── seedscopes/     # Seed the platform scope catalog into DynamoDB
 │   └── kyc/            # CLI KYC reviewer (list / show / approve / reject)
 └── internal/
-    ├── apierror/       # RFC 7807 Problem types — ALL errors use this package
+    ├── problem/       # RFC 7807 Problem types — ALL errors use this package
     ├── cache/          # Valkey client (disabled no-op when VALKEY_URL absent)
     ├── config/         # Env-driven Config (cmd/api/main.go:47 loads it)
     ├── crypto/         # JWTService (RS256/ES256), Argon2id, PKCE
@@ -58,7 +58,7 @@ api/
   `_account_companies`), all OnDemand — see `cdk/lib/dynamodb-stack.ts`.
 - **Conditional writes** (`internal/database.ConditionalUpdate`) for every
   read-modify-write race (token rotation, email/CPF uniqueness, TOTP single-use).
-- **All errors are `*apierror.Problem`** → `problem.Send(c)`. Never raw
+- **All errors are `*problem.Problem`** → `problem.Send(c)`. Never raw
   `fiber.Error` / `c.Status().JSON()` for errors.
 - **Reuse `ctech-go-common` helpers** (D1); rate-limiting is a shared concern (D15).
 - Layering is strict: handler parses + calls one service method; service does business

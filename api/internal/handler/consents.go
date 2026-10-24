@@ -2,11 +2,11 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/domain/oauth/consent"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -33,7 +33,7 @@ func (h *ConsentsHandler) list(c fiber.Ctx) error {
 
 	grants, err := h.consentSvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(grants))
@@ -61,7 +61,7 @@ func (h *ConsentsHandler) revoke(c fiber.Ctx) error {
 	clientID := c.Params("clientID")
 
 	if err := h.consentSvc.Revoke(c.Context(), userID, clientID); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventConsentRevoked, map[string]string{"client_id": clientID})
 	return c.Status(fiber.StatusNoContent).Send(nil)
