@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/risk"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/api-commons/observability"
+	"gopkg.aoctech.app/api-commons/validation"
 )
 
 const birthDateLayout = "2006-01-02"
@@ -50,7 +51,9 @@ func NewService(repo Repository, presigner Presigner, riskEvaluator risk.Evaluat
 // The phone is collected for downstream onboarding but is not verified by SMS.
 // Address is collected here (not Enhanced) for the planned BaaS integration.
 func (s *Service) SubmitBasic(ctx context.Context, userID, ip string, sub BasicSubmission) error {
-	if !IsValidCPF(sub.CPF) {
+	// Digits only: the CPF is the uniqueness-claim key, so a formatted
+	// ("529.982.247-25") duplicate must not pass (validation.IsValidCPF accepts it).
+	if len(sub.CPF) != 11 || !validation.IsValidCPF(sub.CPF) {
 		return ErrInvalidCPF
 	}
 	born, err := time.Parse(birthDateLayout, sub.BirthDate)
