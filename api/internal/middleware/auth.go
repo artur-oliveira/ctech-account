@@ -7,6 +7,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/api-commons/authguard"
+	"gopkg.aoctech.app/api-commons/jwtverify"
 )
 
 const (
@@ -53,6 +55,10 @@ func setAuthLocals(c fiber.Ctx, id tokenIdentity) {
 	c.Locals(LocalScopes, id.scopes)
 	c.Locals(LocalLastMFAAt, id.lastMFAAt)
 	c.Locals(LocalClientID, id.clientID)
+	// The go-common guards (scope, step-up, client, internal) read these claims.
+	authguard.SetClaims(c, &jwtverify.Claims{
+		Sub: id.userID, Scope: id.scopes, SID: id.sessionID, AZP: id.clientID, LastMFAAt: id.lastMFAAt,
+	})
 }
 
 func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, error) {
@@ -130,43 +136,17 @@ func GetClientID(c fiber.Ctx) string {
 	return v
 }
 
-// RequireClientID guards client-specific protocol helpers such as
-// /v1.0/auth/step-up/*. Resource Server routes use RequireScope instead so
-// delegated OAuth clients and API keys can exercise only their explicit grant.
-// Must run after RequireAuth.
-func RequireClientID(clientID string) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		if GetClientID(c) != clientID {
-			return apierror.Forbidden("This endpoint is only accessible to this service's own frontend.", c.Path()).Send(c)
-		}
-		return c.Next()
-	}
-}
-
 // RequireScope guards an individual Resource Server operation. It must run
 // after RequireAuth and emits the OAuth bearer insufficient_scope challenge so
 // clients can distinguish missing authorization from a generic policy denial.
+// Kept local (not authguard.RequireScope): the wire type must stay
+// <base>/problems/insufficient-scope with required_scope, which the UI and
+// clients branch on; go-common answers a plain forbidden.
 func RequireScope(scope string) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if !HasScope(c, scope) {
 			c.Set(fiber.HeaderWWWAuthenticate, `Bearer error="insufficient_scope", scope="`+scope+`"`)
 			return apierror.InsufficientScope(scope, c.Path()).Send(c)
-		}
-		return c.Next()
-	}
-}
-
-// RequireInternalScope guards service-to-service routes. It must run after
-// RequireAuth. Only client_credentials tokens pass: they carry no session
-// (sid empty — user and api_key tokens always have one) and must hold the
-// required internal scope.
-func RequireInternalScope(scope string) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		if GetSessionID(c) != "" {
-			return apierror.Forbidden("This endpoint accepts service tokens only.", c.Path()).Send(c)
-		}
-		if !HasScope(c, scope) {
-			return apierror.Forbidden("Missing required scope.", c.Path()).Send(c)
 		}
 		return c.Next()
 	}

@@ -47,6 +47,7 @@ import (
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 // noopTOTPService implements both TOTPService and TOTPManagementService.
@@ -232,10 +233,10 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, disabledCache, cfg, auditSvc, nil).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
-	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
+	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID))
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
-	stepUp := middleware.RequireRecentMFA(middleware.StepUpMaxAge)
+	stepUp := authguard.RequireRecentMFA(authguard.DefaultStepUpMaxAge)
 	handler.NewProfileHandler(userSvc, sessionSvc, auditSvc).Register(account, stepUp)
 	handler.NewSessionsHandler(sessionSvc, auditSvc).Register(account)
 	handler.NewAPIKeysHandler(apiKeySvc, newTestCatalogService(), auditSvc).Register(account, stepUp)
@@ -257,22 +258,22 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 		WithServiceList(func() []string { return []string{"poker"} })
 	deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
 	deletionH.Register(account, v1.Group("/auth"),
-		middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
+		authguard.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(cache.NewInMemory())...)
 	deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc),
 		func(clientID string) (string, bool) { return "dfe", clientID == "dfe" }, []string{"dfe"})
-	deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
+	deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID),
 		middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
 	exportH := handler.NewDataExportHandler(newTestExportService(userSvc, sessionSvc, apiKeySvc, consentDomain.NewService(newMemConsentRepo()), auditSvc), userSvc)
-	exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(cache.NewInMemory())...)
+	exportH.Register(account, authguard.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(cache.NewInMemory())...)
 	exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), func(clientID string) (string, bool) { return "dfe", clientID == "dfe" })
 	supportH := handler.NewSupportHandler(supportSvc, userSvc, turnstile.New("", cfg.AppURL), nil, cfg.AppURL)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 	supportH.RegisterAccount(account)
-	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
+	handler.NewSupportAdminHandler(supportSvc, userSvc, nil, cfg.AppURL).Register(v1.Group("/admin", middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	kycH := handler.NewKYCHandler(kycSvc, auditSvc).WithCPFMAC(func(cpf string) string { return "mac:" + cpf })
 	kycH.Register(account, stepUp)
-	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
-	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))
+	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID), middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
+	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), authguard.RequireInternalScope(scopesPkg.InternalWalletConfirmDeposit))
 
 	handler.NewWellKnownHandler(jwtSvc, cfg.BaseURL, cfg.AppURL, cfg.Audience).Register(app)
 

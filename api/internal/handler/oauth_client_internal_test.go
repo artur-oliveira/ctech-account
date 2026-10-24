@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 // newOAuthClientInternalApp mounts the route the way main.go does, with the
@@ -21,7 +22,7 @@ func newOAuthClientInternalApp(t *testing.T) *testApp {
 	handler.NewOAuthClientInternalHandler(oauthclient.NewInternalService(ta.clientRepo, ta.userSvc)).
 		RegisterInternal(ta.app.Group("/v1.0"),
 			middleware.RequireAuth(ta.jwtSvc),
-			middleware.RequireInternalScope(scopes.InternalAccountOAuthClientRead))
+			authguard.RequireInternalScope(scopes.InternalAccountOAuthClientRead))
 	return ta
 }
 

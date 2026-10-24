@@ -10,6 +10,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 	wire "gopkg.aoctech.app/api-commons/dataexport"
 )
 
@@ -39,7 +40,7 @@ func (h *DataExportHandler) Register(account fiber.Router, selfOnly fiber.Handle
 // RegisterInternal mounts the participants' ack (service tokens only).
 // serviceForClient maps the caller's azp to its participant name.
 func (h *DataExportHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.Handler, serviceForClient func(string) (string, bool)) {
-	v1.Post("/internal/export/ack", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountExportAck),
+	v1.Post("/internal/export/ack", requireAuth, authguard.RequireInternalScope(scopes.InternalAccountExportAck),
 		func(c fiber.Ctx) error { return h.ack(c, serviceForClient) })
 }
 

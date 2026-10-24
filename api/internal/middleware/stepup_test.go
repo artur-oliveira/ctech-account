@@ -13,6 +13,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/keystore"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 const stepUpTestIssuer = "http://localhost"
@@ -39,7 +40,7 @@ func newTestJWT(t *testing.T) *crypto.JWTService {
 func TestRequireRecentMFA(t *testing.T) {
 	jwtSvc := newTestJWT(t)
 	app := fiber.New()
-	app.Get("/p", RequireAuth(jwtSvc), RequireRecentMFA(5*time.Minute), func(c fiber.Ctx) error {
+	app.Get("/p", RequireAuth(jwtSvc), authguard.RequireRecentMFA(5*time.Minute), func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 
