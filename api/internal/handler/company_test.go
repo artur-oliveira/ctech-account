@@ -20,6 +20,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 // memCompanyRepo is an in-memory company.Repository reproducing the one
@@ -447,7 +448,7 @@ func newInternalReachApp(t *testing.T) *companyTestApp {
 	handler.NewCompanyHandler(companyDomain.NewService(a.repo, time.Now), a.orgSvc, a.testApp.userSvc, nil).
 		RegisterInternal(a.app.Group("/v1.0"),
 			middleware.RequireAuth(a.testApp.jwtSvc),
-			middleware.RequireInternalScope(scopes.InternalAccountCompanyActor))
+			authguard.RequireInternalScope(scopes.InternalAccountCompanyActor))
 	return a
 }
 

@@ -38,7 +38,7 @@ func NewStepUpHandler(sessionSvc *session.Service, totpSvc TOTPService, passkeyS
 
 // Register mounts the step-up routes. requireAuth is the shared RequireAuth
 // middleware; selfOnly restricts these self-service endpoints to this
-// service's own first-party frontend (middleware.RequireClientID); challenges
+// service's own first-party frontend (authguard.RequireClientID); challenges
 // are rate-limited like login (5 failures / 15 min).
 func (h *StepUpHandler) Register(v1 fiber.Router, requireAuth, selfOnly fiber.Handler) {
 	rl := middleware.RateLimit(middleware.RateLimitConfig{

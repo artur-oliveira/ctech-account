@@ -8,13 +8,14 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 func newUserContactApp(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
 	handler.NewUserContactInternalHandler(ta.userSvc).RegisterInternal(ta.app.Group("/v1.0"),
-		middleware.RequireAuth(ta.jwtSvc), middleware.RequireInternalScope(scopes.InternalAccountUserContactRead))
+		middleware.RequireAuth(ta.jwtSvc), authguard.RequireInternalScope(scopes.InternalAccountUserContactRead))
 	return ta
 }
 

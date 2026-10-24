@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 // newInternalMembershipApp mounts both internal route groups the way main.go
@@ -19,8 +20,8 @@ func newInternalMembershipApp(t *testing.T) *companyTestApp {
 	handler.NewOrganizationHandler(a.orgSvc, a.testApp.userSvc).
 		RegisterInternal(a.app.Group("/v1.0"),
 			middleware.RequireAuth(a.testApp.jwtSvc),
-			middleware.RequireInternalScope(scopes.InternalAccountOrgMember),
-			middleware.RequireInternalScope(scopes.InternalAccountUserOrganizations))
+			authguard.RequireInternalScope(scopes.InternalAccountOrgMember),
+			authguard.RequireInternalScope(scopes.InternalAccountUserOrganizations))
 	return a
 }
 

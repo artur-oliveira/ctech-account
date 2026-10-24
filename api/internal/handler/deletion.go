@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/erasure"
 )
 
@@ -170,9 +171,9 @@ func (h *DeletionHandler) cancel(c fiber.Ctx) error {
 // subjectServices may read the CPF of a purging user.
 func (h *DeletionHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.Handler,
 	serviceForClient func(string) (string, bool), subjectServices []string) {
-	v1.Post("/internal/erasure/ack", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountErasureAck),
+	v1.Post("/internal/erasure/ack", requireAuth, authguard.RequireInternalScope(scopes.InternalAccountErasureAck),
 		func(c fiber.Ctx) error { return h.ack(c, serviceForClient) })
-	v1.Get("/internal/erasure/:request_id/subject", requireAuth, middleware.RequireInternalScope(scopes.InternalAccountErasureSubject),
+	v1.Get("/internal/erasure/:request_id/subject", requireAuth, authguard.RequireInternalScope(scopes.InternalAccountErasureSubject),
 		func(c fiber.Ctx) error { return h.subject(c, serviceForClient, subjectServices) })
 }
 

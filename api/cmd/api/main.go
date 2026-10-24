@@ -54,6 +54,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
 	"gopkg.aoctech.app/account/api/internal/utils"
+	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/awsconfig"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/health"
@@ -495,13 +496,13 @@ func main() {
 	socialH.Register(v1)
 	authorizeH.Register(v1)
 	tokenH.Register(v1)
-	stepUpH.Register(v1, middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID))
+	stepUpH.Register(v1, middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID))
 	passkeyH.RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), userinfoH.UserInfo)
 	supportH.Register(v1.Group("", middleware.OptionalAuth(jwtSvc)))
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc), perUserLimiter)
-	stepUp := middleware.RequireRecentMFA(middleware.StepUpMaxAge)
+	stepUp := authguard.RequireRecentMFA(authguard.DefaultStepUpMaxAge)
 	profileH.Register(account, stepUp)
 	sessionsH.Register(account)
 	apiKeysH.Register(account, stepUp)
@@ -540,7 +541,7 @@ func main() {
 				erasurepub.ExportPublisher{SNS: erasurepub.New(sns.NewFromConfig(awsCfg), cfg.ErasureTopicARN)})
 		}
 		exportH := handler.NewDataExportHandler(exportSvc, userSvc)
-		exportH.Register(account, middleware.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
+		exportH.Register(account, authguard.RequireClientID(cfg.SelfClientID), middleware.DataExportLimiters(valkeyClient)...)
 		exportH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient)
 	} else {
 		slog.Info("EXPORTS_BUCKET or FROM_EMAIL not set — personal data export disabled")
@@ -620,9 +621,9 @@ func main() {
 		tokenH.WithRelinker(deletion.NewRelinker(publisher, userSvc, loginClients))
 		deletionH := handler.NewDeletionHandler(deletionSvc, userSvc, auditSvc)
 		deletionH.Register(account, v1.Group("/auth"),
-			middleware.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
+			authguard.RequireClientID(cfg.SelfClientID), middleware.DeletionRequestLimiters(valkeyClient)...)
 		deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient, []string{erasureSubjectReader})
-		deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
+		deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID),
 			middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
 		startWorker("deletion", supervisor.Every(deletion.WorkerInterval, func(ctx context.Context) error {
 			deletionSvc.ProcessDue(ctx)
@@ -631,7 +632,7 @@ func main() {
 	}
 	adminAuth := []fiber.Handler{
 		middleware.RequireAuth(jwtSvc),
-		middleware.RequireClientID(cfg.SelfClientID),
+		authguard.RequireClientID(cfg.SelfClientID),
 	}
 	// Hoisted: the company routes mount on this same group, so both handlers
 	// sit behind one RequireAuth + RequireClientID rather than two groups that
@@ -651,18 +652,18 @@ func main() {
 	companyH.RegisterLookup(v1.Group("/companies", adminAuth[0], adminAuth[1]))
 	supportAdminH.Register(v1.Group("/admin", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAgent)))
 	handler.NewKYCAdminHandler(kycSvc, auditSvc, userSvc).Register(v1.Group("/admin/kyc", adminAuth[0], adminAuth[1], middleware.RequireSupportRole(userSvc, userDomain.SupportRoleManager)))
-	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountKYC))
-	companyH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountCompanyActor))
+	kycH.RegisterInternalGet(v1, middleware.RequireAuth(jwtSvc), authguard.RequireInternalScope(scopesPkg.InternalAccountKYC))
+	companyH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), authguard.RequireInternalScope(scopesPkg.InternalAccountCompanyActor))
 	orgH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc),
-		middleware.RequireInternalScope(scopesPkg.InternalAccountOrgMember),
-		middleware.RequireInternalScope(scopesPkg.InternalAccountUserOrganizations))
+		authguard.RequireInternalScope(scopesPkg.InternalAccountOrgMember),
+		authguard.RequireInternalScope(scopesPkg.InternalAccountUserOrganizations))
 	handler.NewOAuthClientInternalHandler(oauthclientDomain.NewInternalService(oauthClientRepo, userSvc)).
-		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountOAuthClientRead))
+		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), authguard.RequireInternalScope(scopesPkg.InternalAccountOAuthClientRead))
 	handler.NewUserContactInternalHandler(userSvc).
-		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), middleware.RequireInternalScope(scopesPkg.InternalAccountUserContactRead))
+		RegisterInternal(v1, middleware.RequireAuth(jwtSvc), authguard.RequireInternalScope(scopesPkg.InternalAccountUserContactRead))
 	scopeRegistryH.Register(v1,
 		middleware.RequireAuth(jwtSvc),
-		middleware.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),
+		authguard.RequireInternalScope(scopesPkg.InternalAccountScopeRegistryWrite),
 	)
 
 	port := fmt.Sprintf(":%s", cfg.Port)

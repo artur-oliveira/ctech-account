@@ -12,6 +12,8 @@ import (
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/middleware"
 	"gopkg.aoctech.app/account/api/internal/scopes"
+	"gopkg.aoctech.app/api-commons/authguard"
+	"gopkg.aoctech.app/api-commons/jwtverify"
 )
 
 type scopeRegistryRepoStub struct{ resource *scopes.ResourceServer }
@@ -87,6 +89,7 @@ func newScopeRegistryHTTP(t *testing.T, managedResource string) (*fiber.App, *sc
 		c.Locals(middleware.LocalUserID, "scope-publisher-dfe")
 		c.Locals(middleware.LocalClientID, "scope-publisher-dfe")
 		c.Locals(middleware.LocalScopes, scopes.InternalAccountScopeRegistryWrite)
+		authguard.SetClaims(c, &jwtverify.Claims{Sub: "scope-publisher-dfe", AZP: "scope-publisher-dfe", Scope: scopes.InternalAccountScopeRegistryWrite})
 		return c.Next()
 	})
 	return app, repo, audits, reconciler

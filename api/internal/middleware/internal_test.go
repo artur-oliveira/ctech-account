@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/authguard"
 )
 
 func TestRequireInternalScope(t *testing.T) {
 	jwtSvc := newTestJWT(t)
 	app := fiber.New()
-	app.Get("/internal", RequireAuth(jwtSvc), RequireInternalScope("internal:account:kyc"), func(c fiber.Ctx) error {
+	app.Get("/internal", RequireAuth(jwtSvc), authguard.RequireInternalScope("internal:account:kyc"), func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 
