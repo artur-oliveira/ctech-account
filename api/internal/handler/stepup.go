@@ -48,6 +48,7 @@ func (h *StepUpHandler) Register(v1 fiber.Router, requireAuth, selfOnly fiber.Ha
 		Window:            middleware.FailedLoginWindow,
 		KeyFunc:           middleware.GetUserID,
 		CountOnlyFailures: true,
+		FailClosed:        true, // MFA code brute-force guard: never silently unlimited
 	})
 	auth := v1.Group("/auth")
 	auth.Post("/step-up", requireAuth, selfOnly, rl, h.challenge)

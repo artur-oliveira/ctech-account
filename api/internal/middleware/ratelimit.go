@@ -1,33 +1,27 @@
 package middleware
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
-	"gopkg.aoctech.app/api-commons/observability"
+	"gopkg.aoctech.app/api-commons/ratelimit"
+	"gopkg.aoctech.app/api-commons/ratelimit/fiberlimit"
 )
-
-const rateLimitKeyPrefix = "rl:"
 
 const rateLimitUnavailableMsg = "Rate limiting is temporarily unavailable. Please try again later."
 
-// localsSkipRateLimitCount is set by a handler to tell RateLimit not to count
-// this response as a failure even though its status is >= 400 — used when the
-// failure is a benign lifecycle outcome (e.g. a refresh/code exchange that
-// raced a concurrent logout) rather than a guessable credential, so it
-// shouldn't consume the brute-force budget shared with genuine attack traffic.
-const localsSkipRateLimitCount = "skip_rate_limit_count"
+const rateLimitExceededMsg = "Too many requests. Please slow down and try again later."
 
 // SkipRateLimitCount marks the current response as exempt from the
 // CountOnlyFailures counter. Only use this for errors that require possessing
-// a real (if now-stale) credential — never for a blindly guessable one (wrong
-// password, wrong client_secret, unknown code/token).
-func SkipRateLimitCount(c fiber.Ctx) {
-	c.Locals(localsSkipRateLimitCount, true)
-}
+// a real (if now-stale) credential (a refresh/code exchange that raced a
+// concurrent logout), never for a blindly guessable one (wrong password, wrong
+// client_secret, unknown code/token).
+func SkipRateLimitCount(c fiber.Ctx) { fiberlimit.SkipCount(c) }
 
 // Rate limiting defaults (see README / PLAN.md).
 const (
@@ -37,127 +31,86 @@ const (
 	PerUserWindow     = time.Minute
 	// PasskeyBeginMax/Window bound discoverable WebAuthn challenge creation per
 	// IP. Conditional UI starts one challenge per login-page load.
-	PasskeyBeginMax      = 20
-	PasskeyBeginWindow   = time.Minute
-	rateLimitExceededMsg = "Too many requests. Please slow down and try again later."
+	PasskeyBeginMax    = 20
+	PasskeyBeginWindow = time.Minute
 )
 
-// RateLimitConfig configures a rate-limiting middleware backed by a Valkey counter.
+// RateLimitConfig configures a go-common ratelimit policy backed by the Valkey counter.
 type RateLimitConfig struct {
 	Cache *cache.Client
-	// Prefix namespaces the counter (e.g. "login", "user") so different limiters don't collide.
+	// Prefix namespaces the counter (e.g. "login", "user"); the key is rl:<Prefix>:<id>.
 	Prefix string
 	// Max is the number of counted events allowed within Window before requests are rejected.
 	Max int64
-	// Window is the sliding period the counter lives for.
+	// Window is the period the counter lives for.
 	Window time.Duration
 	// KeyFunc derives the per-caller identity (IP or user id). Returning "" skips limiting.
 	KeyFunc func(fiber.Ctx) string
-	// CountOnlyFailures counts a request toward the limit only when the handler responds
-	// with a 4xx/5xx status (used for brute-force protection on auth endpoints). When false,
-	// every request counts (used for per-user throughput limits).
+	// CountOnlyFailures counts a request only when it fails (brute-force guard).
 	CountOnlyFailures bool
-	// CountOnlySuccesses counts a request only when the handler succeeded (no
-	// returned error, status < 400): a budget for an action (e.g. 3 deletion
-	// requests per 30 days) that typos and rejected attempts must not consume.
+	// CountOnlySuccesses counts a request only when it succeeds (a budget for an
+	// action that typos and rejected attempts must not consume).
 	CountOnlySuccesses bool
-	// FailClosed makes the limiter deny requests when it cannot enforce the limit
-	// (cache disabled, or a Valkey error) instead of silently allowing them. This is the
-	// correct posture for an auth service: a missing cache is a fail-open hole that lets
-	// brute force run unbounded (SEC-002/SEC-003). Valkey is mandatory in production, so
-	// this only triggers on a cache blip — degrading to denial rather than to "allow all".
+	// FailClosed denies requests the limiter cannot enforce (cache disabled or a
+	// Valkey error) instead of allowing them: the posture for every auth route.
 	FailClosed bool
 }
 
-// retryAfter reads the counter's remaining TTL and rounds it up to a whole
-// second, so a client is never told to retry before the window has actually
-// elapsed. A TTL lookup failure just omits the hint (0) rather than failing
-// the request — Retry-After is advisory, not part of the enforcement path.
-func retryAfter(c fiber.Ctx, cache *cache.Client, key string) time.Duration {
-	ttl, err := cache.TTL(c.Context(), key)
-	if err != nil {
-		observability.Warn(c.Context(), "rate limit: failed to read retry TTL", err)
-		return 0
+var errCacheDisabled = errors.New("rate limit cache is disabled")
+
+// counter adapts the account cache to ratelimit.TTLCounter. A disabled cache is
+// an error, so a fail-closed limiter denies instead of silently counting nothing.
+type counter struct{ c *cache.Client }
+
+func (k counter) enabled() bool { return k.c != nil && k.c.Enabled() }
+
+func (k counter) Incr(ctx context.Context, key string, w time.Duration) (int64, error) {
+	if !k.enabled() {
+		return 0, errCacheDisabled
 	}
-	if ttl <= 0 {
-		return 0
-	}
-	return ((ttl + time.Second - 1) / time.Second) * time.Second
+	return k.c.Incr(ctx, key, w)
 }
 
-// denyUnavailable rejects the request because the limiter cannot enforce.
-// It logs the underlying cause (Valkey error or disabled cache) so a cache
-// blip that degrades to 503 is diagnosable instead of silent — see the
-// 2026-07-20 prod incident where /account/* 503'd with no logged reason.
-func denyUnavailable(c fiber.Ctx, prefix, op string, cause error) error {
-	path := c.Path()
-	if cause == nil {
-		cause = fmt.Errorf("rate limit cache is disabled")
+func (k counter) Count(ctx context.Context, key string) (int64, error) {
+	if !k.enabled() {
+		return 0, errCacheDisabled
 	}
-	return apierror.ServiceUnavailable(rateLimitUnavailableMsg, path).WithCause(fmt.Errorf("ratelimit[%s] %s: %w", prefix, op, cause)).Send(c)
+	return k.c.Count(ctx, key)
 }
 
-// RateLimit returns a Fiber middleware enforcing the given RateLimitConfig.
-// When FailClosed is false it degrades gracefully (no-op) without Valkey; when
-// true it denies requests it cannot protect (SEC-002/SEC-003).
+func (k counter) TTL(ctx context.Context, key string) (time.Duration, error) {
+	return k.c.TTL(ctx, key)
+}
+
+// RateLimit returns the go-common policy middleware for cfg. When FailClosed is
+// false and the cache is disabled it is a no-op; when true it answers 503.
 func RateLimit(cfg RateLimitConfig) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		if cfg.Cache == nil || !cfg.Cache.Enabled() || cfg.KeyFunc == nil {
-			if cfg.FailClosed {
-				return denyUnavailable(c, cfg.Prefix, "enforce", nil)
-			}
-			return c.Next()
-		}
-		id := cfg.KeyFunc(c)
-		if id == "" {
-			return c.Next()
-		}
-		key := rateLimitKeyPrefix + cfg.Prefix + ":" + id
-
-		if cfg.CountOnlyFailures || cfg.CountOnlySuccesses {
-			// Brute-force guard: count only failed responses. Admit on the
-			// pre-check, but treat a cache error or an already-saturated bucket
-			// as denial when FailClosed (SEC-003). The window boundary TOCTOU is
-			// bounded by the failure-only counting model; the limiter's job is
-			// to make unbounded guessing impossible, which FailClosed guarantees.
-			n, err := cfg.Cache.Count(c.Context(), key)
-			if err != nil && cfg.FailClosed {
-				return denyUnavailable(c, cfg.Prefix, "count", err)
-			}
-			if err != nil {
-				observability.Warn(c.Context(), "rate limit: counter read failed open", err, "prefix", cfg.Prefix)
-			}
-			if err == nil && n >= cfg.Max {
-				return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
-			}
-
-			err = c.Next()
-			skip, _ := c.Locals(localsSkipRateLimitCount).(bool)
-			failed := c.Response().StatusCode() >= fiber.StatusBadRequest
-			succeeded := err == nil && !failed
-			if (cfg.CountOnlyFailures && failed && !skip) || (cfg.CountOnlySuccesses && succeeded) {
-				if _, incrErr := cfg.Cache.Incr(c.Context(), key, cfg.Window); incrErr != nil {
-					observability.Error(c.Context(), "rate limit: failed to count request", incrErr, "prefix", cfg.Prefix)
-				}
-			}
-			return err
-		}
-
-		// Throughput guard: count every request atomically and decide on the
-		// returned count, eliminating the read-then-write TOCTOU (CON-013).
-		n, err := cfg.Cache.Incr(c.Context(), key, cfg.Window)
-		if err != nil {
-			if cfg.FailClosed {
-				return denyUnavailable(c, cfg.Prefix, "incr", err)
-			}
-			observability.Warn(c.Context(), "rate limit: request counter failed open", err, "prefix", cfg.Prefix)
-			return c.Next()
-		}
-		if n > cfg.Max {
-			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), retryAfter(c, cfg.Cache, key)).Send(c)
-		}
-		return c.Next()
+	k := counter{cfg.Cache}
+	if !k.enabled() && !cfg.FailClosed {
+		return func(c fiber.Ctx) error { return c.Next() }
 	}
+	mode := ratelimit.FailOpen
+	if cfg.FailClosed {
+		mode = ratelimit.FailClosed
+	}
+	count := fiberlimit.CountAll
+	switch {
+	case cfg.CountOnlyFailures:
+		count = fiberlimit.CountFailures
+	case cfg.CountOnlySuccesses:
+		count = fiberlimit.CountSuccesses
+	}
+	return fiberlimit.NewPolicy(fiberlimit.PolicyConfig{
+		Limiter: &ratelimit.Limiter{Counter: k, Prefix: cfg.Prefix, Max: cfg.Max, Window: cfg.Window, FailMode: mode},
+		Key:     cfg.KeyFunc,
+		Count:   count,
+		Deny: func(c fiber.Ctx, secs int) error {
+			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), time.Duration(secs)*time.Second).Send(c)
+		},
+		Unavailable: func(c fiber.Ctx) error {
+			return apierror.ServiceUnavailable(rateLimitUnavailableMsg, c.Path()).Send(c)
+		},
+	})
 }
 
 // DeletionRequestLimiters guard POST /v1.0/account/deletion, per user:
