@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/api-commons/authguard"
+	"gopkg.aoctech.app/api-commons/jwtverify"
 )
 
 const (
@@ -74,7 +77,13 @@ func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, er
 	}
 	sub, _ := claims["sub"].(string)
 	iat, _ := claims["iat"].(float64)
-	if err := jwtSvc.CheckRevoked(c.Context(), sub, int64(iat)); err != nil {
+	// Reads fail open when the revocation list is down, every other verb fails
+	// closed (503): same policy as go-common authguard.RequireUnrevokedByMethod.
+	failClosed := authguard.PolicyForMethod(c.Method()) == authguard.PolicyWriteClosed
+	if err := jwtSvc.CheckRevoked(c.Context(), sub, int64(iat), failClosed); err != nil {
+		if errors.Is(err, jwtverify.ErrRevocationUnavailable) {
+			return id, apierror.ServiceUnavailable("Could not validate the session. Please try again.", c.Path()).WithCause(err)
+		}
 		return id, apierror.InvalidToken("The access token is invalid or has expired.", c.Path())
 	}
 
