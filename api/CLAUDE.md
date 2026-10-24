@@ -186,8 +186,9 @@ go test -race ./...            # family standard; CI does not run it yet
   content types (e.g. `application/health+json`, `application/problem+json`).
 - Valkey client: when `VALKEY_URL` is absent or invalid, client is in disabled mode — operations are no-ops, not errors.
 - `crypto.JWTService` signs RS256 or ES256 (per the active key's algorithm). No HS256, no `SECRET_KEY`.
-- `GET /v1.0/health-check` returns `application/health+json` — status is `"pass"` only when DynamoDB and Valkey respond
-  to ping.
+- `GET /v1.0/health-check` returns `application/health+json` (go-common `health`, wired in `cmd/api/main.go`) — DynamoDB
+  and (outside dev) Valkey are primary checks (failure = 503); CPU/memory only warn (207). Check keys: `dynamodb`,
+  `cache`, `cpu`, `memory`, `uptime`. `/v1.0/health` is dependency-free liveness.
 - Rate limiting: 5 failed logins / 15 min per IP (Valkey counter), 100 req/min per authenticated user.
   Covers `/authorize`, `/authorize/consent`, `/auth/register`, `/revoke`, `/auth/google*`, and
   `/auth/passkeys/authenticate/complete` in addition to the routes already listed in README. A `429`
