@@ -12,8 +12,8 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/utils"
-	"gopkg.aoctech.app/account/api/internal/validate"
 	"gopkg.aoctech.app/api-commons/observability"
+	"gopkg.aoctech.app/api-commons/validation"
 )
 
 // clientIP extracts the real client IP from the first entry of the
@@ -159,9 +159,18 @@ func parseBody[T any](c fiber.Ctx, dst *T) error {
 	if err := c.Bind().JSON(dst); err != nil {
 		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path())
 	}
-	if err := validate.Struct(*dst); err != nil {
-		ve, _ := validate.IsValidationError(err)
-		return apierror.ValidationFailed(ve.Detail(), c.Path())
+	// c.Bind().JSON (lenient on unknown fields) is kept on purpose: switching to
+	// validation.BindJSON would start rejecting clients that send extra fields.
+	if err := validation.Validate(*dst); err != nil {
+		ve, ok := validation.IsValidationError(err)
+		if !ok {
+			return err
+		}
+		parts := make([]string, len(ve.Fields))
+		for i, f := range ve.Fields {
+			parts[i] = f.Field + ": " + f.Message()
+		}
+		return apierror.ValidationFailed(strings.Join(parts, "; "), c.Path())
 	}
 	return nil
 }

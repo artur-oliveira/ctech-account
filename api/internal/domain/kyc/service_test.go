@@ -275,8 +275,16 @@ func enhancedReviewed(t *testing.T, svc *Service, presigner testPresigner, sms *
 	}
 }
 
+// The CPF is the uniqueness-claim key: a formatted spelling of a valid CPF must not
+// be accepted (go-common IsValidCPF tolerates formatting, SubmitBasic must not).
 func TestSubmitBasicRejectsInvalidCPF(t *testing.T) {
 	svc, _, _, _ := setup()
+	for _, cpf := range []string{"11111111111", "529.982.247-25"} {
+		sub := basicSub(cpf)
+		if err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", sub); !errors.Is(err, ErrInvalidCPF) {
+			t.Fatalf("cpf %q: err = %v, want ErrInvalidCPF", cpf, err)
+		}
+	}
 	sub := basicSub("11111111111")
 	err := svc.SubmitBasic(context.Background(), "u1", "1.2.3.4", sub)
 	if !errors.Is(err, ErrInvalidCPF) {

@@ -8,7 +8,7 @@ import (
 
 	"uuid"
 
-	"gopkg.aoctech.app/account/api/internal/validate"
+	"gopkg.aoctech.app/api-commons/validation"
 )
 
 var (
@@ -20,14 +20,14 @@ var (
 
 // Freetext bounds, per docs/specs/2026-08-22-support-tickets-design.md §3.5.
 var (
-	bodyRule = validate.FreetextRule{Min: 15, Max: 4000, AllowNewlines: true}
+	bodyRule = validation.FreetextRule{Min: 15, Max: 4000, AllowNewlines: true}
 	// subjectOtherRule stays single-line: it ends up in an e-mail Subject
 	// header (ticketSubjectLine in the handler package) as well as list/UI
 	// labels, so a newline here would let a submitter inject extra raw MIME
 	// headers into the outbound SES message.
-	subjectOtherRule = validate.FreetextRule{Min: 3, Max: 120}
-	npsMessageRule   = validate.FreetextRule{Min: 15, Max: 1000, AllowNewlines: true}
-	internalNoteRule = validate.FreetextRule{Min: 3, Max: 4000, AllowNewlines: true}
+	subjectOtherRule = validation.FreetextRule{Min: 3, Max: 120}
+	npsMessageRule   = validation.FreetextRule{Min: 15, Max: 1000, AllowNewlines: true}
+	internalNoteRule = validation.FreetextRule{Min: 3, Max: 4000, AllowNewlines: true}
 )
 
 type Service struct {
@@ -66,7 +66,7 @@ func (s *Service) CreateTicket(ctx context.Context, in CreateTicketInput) (*Tick
 	// for category=other (the one case with no subcategory catalog to fall
 	// back on).
 	if in.SubjectOther != "" {
-		cleaned, err := validate.Freetext(in.SubjectOther, subjectOtherRule)
+		cleaned, err := validation.Freetext(in.SubjectOther, subjectOtherRule)
 		if err != nil {
 			return nil, fmt.Errorf("%w: subject_other %v", ErrInvalidInput, err)
 		}
@@ -80,7 +80,7 @@ func (s *Service) CreateTicket(ctx context.Context, in CreateTicketInput) (*Tick
 	if !contains(ValidPriorities, in.Priority) {
 		return nil, fmt.Errorf("%w: unknown priority %q", ErrInvalidInput, in.Priority)
 	}
-	body, err := validate.Freetext(in.Body, bodyRule)
+	body, err := validation.Freetext(in.Body, bodyRule)
 	if err != nil {
 		return nil, fmt.Errorf("%w: body %v", ErrInvalidInput, err)
 	}
@@ -205,7 +205,7 @@ func (s *Service) ReplyAsUser(ctx context.Context, id, userID, anonToken, body s
 	if ticket.Status == StatusClosed {
 		return ErrTicketClosed
 	}
-	cleaned, err := validate.Freetext(body, bodyRule)
+	cleaned, err := validation.Freetext(body, bodyRule)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
@@ -219,7 +219,7 @@ func (s *Service) ReplyAsUser(ctx context.Context, id, userID, anonToken, body s
 // not send e-mail — the handler does that with the returned Message/Ticket
 // and then persists the resulting SES Message-ID via UpdateTicket.
 func (s *Service) ReplyAsAgent(ctx context.Context, id, agentUserID, body string) (*Message, *Ticket, error) {
-	cleaned, err := validate.Freetext(body, bodyRule)
+	cleaned, err := validation.Freetext(body, bodyRule)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
@@ -298,7 +298,7 @@ func (s *Service) AddInternalNote(ctx context.Context, id, agentUserID, body str
 	if ticket.Status == StatusClosed {
 		return nil, ErrTicketClosed
 	}
-	cleaned, err := validate.Freetext(body, internalNoteRule)
+	cleaned, err := validation.Freetext(body, internalNoteRule)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
@@ -356,13 +356,13 @@ func (s *Service) SubmitNPS(ctx context.Context, id, userID, anonToken string, s
 	}
 	cleanMessage := ""
 	if score <= 3 {
-		cleaned, err := validate.Freetext(message, npsMessageRule)
+		cleaned, err := validation.Freetext(message, npsMessageRule)
 		if err != nil {
 			return ErrInvalidNPS
 		}
 		cleanMessage = cleaned
 	} else if message != "" {
-		cleaned, err := validate.Freetext(message, npsMessageRule)
+		cleaned, err := validation.Freetext(message, npsMessageRule)
 		if err != nil {
 			return ErrInvalidNPS
 		}
