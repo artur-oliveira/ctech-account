@@ -357,7 +357,7 @@ func (r *dynamoRepository) ListPendingKYC(ctx context.Context) ([]*user.User, er
 	var users []*user.User
 	var startKey map[string]types.AttributeValue
 	for {
-		out, err := r.db.Scan(ctx, &dynamodb.ScanInput{
+		out, err := r.db.Scan(ctx, &dynamodb.ScanInput{ // standards:allow offline operator tool (cmd/kyc list)
 			TableName:        aws.String(table),
 			FilterExpression: aws.String("kyc_level = :lvl AND kyc_status = :st"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{

@@ -9,6 +9,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  standards:
+    name: Family standards
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash scripts/standards-check.sh
+        env:
+          # baselined debt: local internal/apierror package (migrate to go-common problem, then drop)
+          STANDARDS_SKIP: "apierror"
+
   backend:
     name: Go Build & Test
     runs-on: ubuntu-26.04-arm
@@ -78,7 +88,7 @@ jobs:
         env:
           ENVIRONMENT: dev
           CTECH_VPC_ID: vpc-placeholder   # synth does not resolve lookups
-        run: npx cdk synth --quiet 2>&1 | head -5 || true
+        run: npx cdk synth --quiet 2>&1 | head -5 || true  # standards:allow synth smoke is best-effort, needs AWS creds
         # Full synth requires AWS credentials; this just checks TypeScript compiles.
 
       - name: TypeScript Check
