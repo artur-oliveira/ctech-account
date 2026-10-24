@@ -222,3 +222,23 @@ func TestRateLimit_CountOnlySuccesses(t *testing.T) {
 		t.Fatalf("third success: want 429, got %d", got)
 	}
 }
+
+// An auth route must never run unlimited: a disabled cache with FailClosed is a 503.
+func TestRateLimit_DisabledCacheFailClosedIs503(t *testing.T) {
+	c, _ := cache.New("") // disabled
+	for _, tc := range []struct {
+		name string
+		cfg  RateLimitConfig
+	}{
+		{"count-all", RateLimitConfig{}},
+		{"count-failures", RateLimitConfig{CountOnlyFailures: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.cfg.Cache, tc.cfg.Prefix, tc.cfg.Max, tc.cfg.Window = c, "login", 1, time.Minute
+			tc.cfg.KeyFunc, tc.cfg.FailClosed = staticKey, true
+			if got := doPost(t, newApp(RateLimit(tc.cfg), fiber.StatusOK)); got != fiber.StatusServiceUnavailable {
+				t.Fatalf("want 503, got %d", got)
+			}
+		})
+	}
+}

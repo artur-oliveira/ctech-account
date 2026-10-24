@@ -233,7 +233,7 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 	handler.NewAuthHandler(userSvc, sessionSvc, noop, sharedClientRepo, disabledCache, cfg, nil, auditSvc).Register(v1)
 	handler.NewPasskeyHandler(passkeySvc, userSvc, sessionSvc, disabledCache, cfg, auditSvc, nil).RegisterAuth(v1.Group("/auth"))
 	v1.Get("/userinfo", middleware.RequireAuth(jwtSvc), handler.NewUserInfoHandler(userSvc).UserInfo)
-	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, disabledCache, auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID))
+	handler.NewStepUpHandler(sessionSvc, noop, passkeySvc, cache.NewInMemory(), auditSvc).Register(v1, middleware.RequireAuth(jwtSvc), authguard.RequireClientID(cfg.SelfClientID))
 
 	account := v1.Group("/account", middleware.RequireAuth(jwtSvc))
 	stepUp := authguard.RequireRecentMFA(authguard.DefaultStepUpMaxAge)
