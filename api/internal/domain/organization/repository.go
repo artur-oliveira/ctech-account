@@ -200,7 +200,7 @@ func (r *repo) GetBySourceRef(ctx context.Context, system, ref string) (*Organiz
 }
 
 func (r *repo) UpdateDisplayName(ctx context.Context, id, name string, now time.Time) error {
-	ok, err := database.ConditionalUpdate(ctx, r.db, r.orgsName, orgPK(id), aws.String(metaSK),
+	ok, err := r.orgs.ConditionalUpdate(ctx, orgPK(id), aws.String(metaSK),
 		map[string]any{"display_name": name, "updated_at": now.UTC()},
 		"attribute_exists(pk)", nil, nil)
 	if err != nil {
@@ -300,7 +300,7 @@ func (r *repo) SetRole(ctx context.Context, orgID, userID, role string) error {
 	if !IsGrantableRole(role) {
 		return fmt.Errorf("role %q is not grantable", role)
 	}
-	ok, err := database.ConditionalUpdate(ctx, r.db, r.membershipsName, orgPK(orgID), aws.String(memberSK(userID)),
+	ok, err := r.memberships.ConditionalUpdate(ctx, orgPK(orgID), aws.String(memberSK(userID)),
 		map[string]any{"role": role},
 		"attribute_exists(pk) AND #role <> :owner",
 		map[string]string{"#role": "role"},
@@ -352,7 +352,7 @@ func (r *repo) RenameMember(ctx context.Context, userID, name string) error {
 		return err
 	}
 	for _, m := range memberships {
-		ok, err := database.ConditionalUpdate(ctx, r.db, r.membershipsName,
+		ok, err := r.memberships.ConditionalUpdate(ctx,
 			orgPK(m.OrganizationID), aws.String(memberSK(userID)),
 			map[string]any{"name": name}, "attribute_exists(pk)", nil, nil)
 		if err != nil {

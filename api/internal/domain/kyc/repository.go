@@ -85,6 +85,7 @@ type Repository interface {
 
 type dynamoRepository struct {
 	db       *dynamodb.Client
+	base     database.Base
 	table    string
 	userRepo user.Repository
 }
@@ -92,7 +93,7 @@ type dynamoRepository struct {
 // NewRepository returns a DynamoDB-backed Repository reusing the user
 // repository for reads.
 func NewRepository(db *dynamodb.Client, tablePrefix string, userRepo user.Repository) Repository {
-	return &dynamoRepository{db: db, table: database.TableName(tablePrefix, usersTable), userRepo: userRepo}
+	return &dynamoRepository{db: db, base: database.NewBase(db, tablePrefix, usersTable), table: database.TableName(tablePrefix, usersTable), userRepo: userRepo}
 }
 
 func (r *dynamoRepository) GetUser(ctx context.Context, userID string) (*user.User, error) {
@@ -284,7 +285,7 @@ func (r *dynamoRepository) SaveEnhancedSubmission(ctx context.Context, userID, s
 }
 
 func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt string, actor ReviewActor) error {
-	applied, err := database.ConditionalUpdate(ctx, r.db, r.table, user.BuildPK(userID), nil, map[string]any{
+	applied, err := r.base.ConditionalUpdate(ctx, user.BuildPK(userID), nil, map[string]any{
 		"kyc_status":           StatusVerified,
 		"kyc_verified_at":      verifiedAt,
 		"kyc_rejection_reason": "",
@@ -310,7 +311,7 @@ func (r *dynamoRepository) MarkVerified(ctx context.Context, userID, verifiedAt 
 }
 
 func (r *dynamoRepository) MarkRejected(ctx context.Context, userID, reasonCode, details, reviewedAt string, actor ReviewActor) error {
-	applied, err := database.ConditionalUpdate(ctx, r.db, r.table, user.BuildPK(userID), nil, map[string]any{
+	applied, err := r.base.ConditionalUpdate(ctx, user.BuildPK(userID), nil, map[string]any{
 		"kyc_status":           StatusRejected,
 		"kyc_rejection_code":   reasonCode,
 		"kyc_rejection_reason": details,

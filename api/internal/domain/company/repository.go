@@ -77,16 +77,12 @@ type Repository interface {
 }
 
 type repo struct {
-	db        *dynamodb.Client
 	companies database.Base
-	tableName string
 }
 
 func NewRepository(db *dynamodb.Client, tablePrefix string) Repository {
 	return &repo{
-		db:        db,
 		companies: database.NewBase(db, tablePrefix, companiesTable),
-		tableName: database.TableName(tablePrefix, companiesTable),
 	}
 }
 
@@ -232,7 +228,7 @@ func (r *repo) GetBySourceRef(ctx context.Context, system, ref string) (*Company
 // it would mean releasing one lock row and taking another, and a company whose
 // tax id was wrong is a different company.
 func (r *repo) UpdateNames(ctx context.Context, orgID, companyID, legal, trade string, now time.Time) error {
-	ok, err := database.ConditionalUpdate(ctx, r.db, r.tableName,
+	ok, err := r.companies.ConditionalUpdate(ctx,
 		orgPK(orgID), aws.String(companySK(companyID)),
 		map[string]any{"legal_name": legal, "trade_name": trade, "updated_at": now.UTC()},
 		"attribute_exists(pk)", nil, nil)
