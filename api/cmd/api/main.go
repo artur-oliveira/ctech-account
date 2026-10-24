@@ -56,6 +56,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/awsconfig"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/health"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonws "gopkg.aoctech.app/api-commons/ws"
 )
@@ -390,8 +391,19 @@ func main() {
 
 	v1 := app.Group("/v1.0")
 	handler.RegisterSupportWS(v1, supportSvc, userSvc, jwtSvc, supportWSRegistry, allowedOrigins)
-	v1.Get("/health", livenessHandler(cfg.AppVersion))
-	v1.Get("/health-check", healthHandler(db, database.TableName(cfg.TablePrefix, "account_users"), valkeyClient, cfg.AppVersion, valkeyRequired))
+	healthH := health.New(health.Config{ServiceID: "ctech-account", Description: "ctech-account Identity Provider", Version: "1", ReleaseID: cfg.AppVersion}).Add(
+		health.DynamoDB(db, database.TableName(cfg.TablePrefix, "account_users"), true),
+		// Valkey is a hard dependency in production (OAuth codes, MFA, rate limits): primary there.
+		health.Cache(func(ctx context.Context) error {
+			if !valkeyClient.Enabled() {
+				return health.ErrNotConfigured
+			}
+			return valkeyClient.Ping(ctx)
+		}, valkeyRequired),
+		health.CPU(), health.Memory(),
+	)
+	v1.Get("/health", healthH.Liveness())
+	v1.Get("/health-check", healthH.Report())
 
 	// Rate limiting (Valkey-backed; no-op when Valkey is disabled).
 	// Brute-force guard: count only failed responses per client IP.

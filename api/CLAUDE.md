@@ -12,11 +12,10 @@ The skill is the target; this repo still differs in these places. Do not copy th
 and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
 
 - Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
-- Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
+- Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx). Logging is `slog` only in the server (the one-shot `cmd/*` operator tools still use `log`).
 - Rate limit and step-up guards: local `internal/middleware` copies instead of go-common.
 - Idempotency: no inbound `Idempotency-Key` middleware (only `internal/billingclient` sends one).
 - DynamoDB: local `internal/database/conditional.go`; `domain/kyc/repository.go` still has a `Scan` call.
-- go-common pinned at v1.29.1 (check `go.mod`; the family target is a single shared minor).
 - CI (`.github/workflows/ci.yml`) runs `go vet`, arm64 build and `go test ./... -count=1` without `-race`,
   staticcheck or govulncheck. Run `go test -race ./...` locally.
 
@@ -186,8 +185,9 @@ go test -race ./...            # family standard; CI does not run it yet
   content types (e.g. `application/health+json`, `application/problem+json`).
 - Valkey client: when `VALKEY_URL` is absent or invalid, client is in disabled mode — operations are no-ops, not errors.
 - `crypto.JWTService` signs RS256 or ES256 (per the active key's algorithm). No HS256, no `SECRET_KEY`.
-- `GET /v1.0/health-check` returns `application/health+json` — status is `"pass"` only when DynamoDB and Valkey respond
-  to ping.
+- `GET /v1.0/health-check` returns `application/health+json` (go-common `health`, wired in `cmd/api/main.go`) — DynamoDB
+  and (outside dev) Valkey are primary checks (failure = 503); CPU/memory only warn (207). Check keys: `dynamodb`,
+  `cache`, `cpu`, `memory`, `uptime`. `/v1.0/health` is dependency-free liveness.
 - Rate limiting: 5 failed logins / 15 min per IP (Valkey counter), 100 req/min per authenticated user.
   Covers `/authorize`, `/authorize/consent`, `/auth/register`, `/revoke`, `/auth/google*`, and
   `/auth/passkeys/authenticate/complete` in addition to the routes already listed in README. A `429`
