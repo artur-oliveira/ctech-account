@@ -13,6 +13,7 @@ OAuth 2.0 + OpenID Connect Identity Provider for the aoctech.app platform.
 **Before any task:** Read `README.md` and `PLAN.md`.
 
 ---
+- **Standards gate:** `scripts/standards-check.sh` (canonical copy in ctech-skills, identical bytes; CI job "Family standards"; reads `FAMILY_GOCOMMON_MINOR`, default v1.38, bump it on a go-common minor). Debt hidden: STANDARDS_SKIP=apierror (local internal/apierror package, migrate to go-common problem); Scan in kyc ListPendingKYC and a `|| true` on cdk synth are allow-listed. One-off lines carry a trailing `standards:allow <reason>`.
 
 ## Projects
 
