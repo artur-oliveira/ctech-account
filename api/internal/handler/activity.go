@@ -67,5 +67,5 @@ func (h *ActivityHandler) list(c fiber.Ctx) error {
 			"created_at": e.CreatedAt,
 		})
 	}
-	return c.JSON(fiber.Map{"events": result, "next_cursor": next})
+	return c.JSON(listPage(result, next))
 }

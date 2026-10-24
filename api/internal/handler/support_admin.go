@@ -36,7 +36,7 @@ func (h *SupportAdminHandler) list(c fiber.Ctx) error {
 	if e != nil {
 		return problem.ServerError(c.Path()).WithCause(e).Send(c)
 	}
-	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
+	return c.JSON(listPage(t, n))
 }
 func (h *SupportAdminHandler) get(c fiber.Ctx) error {
 	t, m, notes, e := h.svc.GetTicketAdminWithNotes(c.Context(), c.Params("id"))

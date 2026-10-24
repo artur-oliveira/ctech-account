@@ -26,7 +26,7 @@ func TestActivityListReturnsOwnEventsOnly(t *testing.T) {
 			IP        string            `json:"ip"`
 			Metadata  map[string]string `json:"metadata"`
 			CreatedAt string            `json:"created_at"`
-		} `json:"events"`
+		} `json:"data"`
 		NextCursor string `json:"next_cursor"`
 	}
 	readJSON(t, resp, &body)
@@ -57,7 +57,7 @@ func TestActivityPaginatesWithCursor(t *testing.T) {
 
 	resp := ta.doWithToken(http.MethodGet, "/v1.0/account/activity?limit=2", nil, token)
 	var page1 struct {
-		Events     []map[string]any `json:"events"`
+		Events     []map[string]any `json:"data"`
 		NextCursor string           `json:"next_cursor"`
 	}
 	readJSON(t, resp, &page1)
@@ -67,7 +67,7 @@ func TestActivityPaginatesWithCursor(t *testing.T) {
 
 	resp = ta.doWithToken(http.MethodGet, "/v1.0/account/activity?limit=2&cursor="+page1.NextCursor, nil, token)
 	var page2 struct {
-		Events     []map[string]any `json:"events"`
+		Events     []map[string]any `json:"data"`
 		NextCursor string           `json:"next_cursor"`
 	}
 	readJSON(t, resp, &page2)
