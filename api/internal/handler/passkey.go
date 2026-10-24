@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
@@ -14,6 +13,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -59,7 +59,7 @@ func (h *PasskeyHandler) list(c fiber.Ctx) error {
 
 	creds, err := h.passkeySvc.List(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	result := make([]fiber.Map, 0, len(creds))
@@ -92,22 +92,22 @@ func (h *PasskeyHandler) registerBegin(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return apierror.NotFound("User", c.Path()).Send(c)
+			return problem.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	waUser, err := h.passkeySvc.LoadUser(c.Context(), u.ID(), u.Email, u.FullName())
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	optionsJSON, sessionToken, err := h.passkeySvc.BeginRegistration(c.Context(), waUser)
 	if err != nil {
 		if errors.Is(err, passkey.ErrCacheRequired) {
-			return apierror.ServiceUnavailable("Passkey registration is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
+			return problem.ServiceUnavailable("Passkey registration is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -125,31 +125,31 @@ func (h *PasskeyHandler) registerComplete(c fiber.Ctx) error {
 	name := c.Query("name")
 
 	if sessionToken == "" || name == "" {
-		return apierror.InvalidRequest("session_token and name query params are required.", c.Path()).Send(c)
+		return problem.InvalidRequest("session_token and name query params are required.", c.Path()).Send(c)
 	}
 	if len(c.Body()) == 0 {
-		return apierror.InvalidRequest("Request body with WebAuthn credential is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("Request body with WebAuthn credential is required.", c.Path()).Send(c)
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	waUser, err := h.passkeySvc.LoadUser(c.Context(), u.ID(), u.Email, u.FullName())
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	cred, err := h.passkeySvc.FinishRegistration(c.Context(), userID, name, sessionToken, c.Body(), waUser)
 	if err != nil {
 		switch {
 		case errors.Is(err, passkey.ErrSessionExpired):
-			return apierror.InvalidToken("Registration session expired. Please start over.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidToken("Registration session expired. Please start over.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrInvalidResponse):
-			return apierror.InvalidRequest("Invalid WebAuthn response.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidRequest("Invalid WebAuthn response.", c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 	}
 
@@ -169,11 +169,11 @@ func (h *PasskeyHandler) delete(c fiber.Ctx) error {
 
 	credSK, err := passkey.CredentialSKFromHex(idHex)
 	if err != nil {
-		return apierror.InvalidRequest("Invalid passkey ID.", c.Path()).Send(c)
+		return problem.InvalidRequest("Invalid passkey ID.", c.Path()).Send(c)
 	}
 
 	if err := h.passkeySvc.Delete(c.Context(), userID, credSK); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventPasskeyRemoved, nil)
@@ -187,9 +187,9 @@ func (h *PasskeyHandler) authenticateBegin(c fiber.Ctx) error {
 	optionsJSON, sessionToken, err := h.passkeySvc.BeginAuthentication(c.Context())
 	if err != nil {
 		if errors.Is(err, passkey.ErrCacheRequired) {
-			return apierror.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
+			return problem.ServiceUnavailable("Passkey authentication is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -204,10 +204,10 @@ func (h *PasskeyHandler) authenticateBegin(c fiber.Ctx) error {
 func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 	sessionToken := c.Query("session_token")
 	if sessionToken == "" {
-		return apierror.InvalidRequest("session_token query param is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("session_token query param is required.", c.Path()).Send(c)
 	}
 	if len(c.Body()) == 0 {
-		return apierror.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("Request body with WebAuthn assertion is required.", c.Path()).Send(c)
 	}
 
 	userID, _, err := h.passkeySvc.FinishAuthentication(c.Context(), sessionToken, c.Body())
@@ -215,26 +215,26 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 		recordAuditAnon(c, h.audit, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
 		switch {
 		case errors.Is(err, passkey.ErrSessionExpired):
-			return apierror.InvalidToken("Authentication session expired. Please start over.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidToken("Authentication session expired. Please start over.", c.Path()).WithCause(err).Send(c)
 		case errors.Is(err, passkey.ErrInvalidResponse):
-			return apierror.InvalidRequest("Invalid WebAuthn response.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidRequest("Invalid WebAuthn response.", c.Path()).WithCause(err).Send(c)
 		default:
-			return apierror.Unauthorized("Passkey authentication failed.", c.Path()).WithCause(err).Send(c)
+			return problem.Unauthorized("Passkey authentication failed.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !u.IsEnabled {
 		recordAudit(c, h.audit, userID, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
-		return apierror.AccountDisabled(c.Path()).Send(c)
+		return problem.AccountDisabled(c.Path()).Send(c)
 	}
 	if u.DeletionState != "" {
 		recordAudit(c, h.audit, userID, audit.EventLoginFailed, map[string]string{"method": session.AMRWebAuthn})
-		return apierror.AccountPendingDeletion(c.Path()).Send(c)
+		return problem.AccountPendingDeletion(c.Path()).Send(c)
 	}
 
 	// A passkey is a password-replacing primary factor. TOTP is not an extra
@@ -250,7 +250,7 @@ func (h *PasskeyHandler) authenticateComplete(c fiber.Ctx) error {
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), "Passkey", ip, c.Get("User-Agent"), []string{session.AMRWebAuthn},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"method": session.AMRWebAuthn, "session_id": sess.ID()}

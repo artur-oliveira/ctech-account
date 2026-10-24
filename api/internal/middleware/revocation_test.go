@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // downBackend is a revocation list that cannot be reached.
@@ -28,7 +28,7 @@ func TestRequireAuth_RevocationDownReadOpenWriteClosed(t *testing.T) {
 	jwtSvc := newTestJWT(t)
 	jwtSvc.SetRevocation(downBackend{})
 	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
-		if p, ok := err.(*apierror.Problem); ok {
+		if p, ok := err.(*problem.Problem); ok {
 			return p.Send(c)
 		}
 		return err

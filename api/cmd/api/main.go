@@ -20,7 +20,6 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/billingclient"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
@@ -50,6 +49,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
@@ -369,13 +369,13 @@ func main() {
 		},
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			// RFC 7807 Problem Details as the single error format.
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
 			if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
-				return apierror.NewFromFiber(fiberErr, c.Path()).WithCause(fiberErr).Send(c)
+				return problem.NewFromFiber(fiberErr, c.Path()).WithCause(fiberErr).Send(c)
 			}
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		},
 	})
 

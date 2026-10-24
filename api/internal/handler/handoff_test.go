@@ -11,9 +11,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/handler"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 type handoffTestApp struct {
@@ -42,10 +42,10 @@ func newHandoffTestApp(t *testing.T) *handoffTestApp {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	app.Use(recover.New())
@@ -135,7 +135,7 @@ func TestEveryHandoffRefusalLooksTheSame(t *testing.T) {
 		"?client_id=dfe", // missing return_to
 		"?return_to=https://dfe.example/callback", // missing client_id
 	}
-	var first apierror.Problem
+	var first problem.Problem
 	for i, q := range queries {
 		resp := a.get(t, q)
 		if resp.StatusCode != http.StatusUnprocessableEntity {

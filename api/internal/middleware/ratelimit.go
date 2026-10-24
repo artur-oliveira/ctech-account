@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 	"gopkg.aoctech.app/api-commons/ratelimit/fiberlimit"
 )
@@ -105,10 +105,10 @@ func RateLimit(cfg RateLimitConfig) fiber.Handler {
 		Key:     cfg.KeyFunc,
 		Count:   count,
 		Deny: func(c fiber.Ctx, secs int) error {
-			return apierror.TooManyRequests(rateLimitExceededMsg, c.Path(), time.Duration(secs)*time.Second).Send(c)
+			return problem.TooManyRequests(rateLimitExceededMsg, c.Path(), time.Duration(secs)*time.Second).Send(c)
 		},
 		Unavailable: func(c fiber.Ctx) error {
-			return apierror.ServiceUnavailable(rateLimitUnavailableMsg, c.Path()).Send(c)
+			return problem.ServiceUnavailable(rateLimitUnavailableMsg, c.Path()).Send(c)
 		},
 	})
 }

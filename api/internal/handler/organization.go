@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // OrganizationHandler exposes the workspace-management routes.
@@ -155,7 +155,7 @@ func (h *OrganizationHandler) create(c fiber.Ctx) error {
 func (h *OrganizationHandler) listMine(c fiber.Ctx) error {
 	kind, err := organization.NormalizeKind(c.Query("kind"))
 	if err != nil {
-		return apierror.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
+		return problem.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
 	}
 	workspaces, err := h.svc.ListWorkspaces(c.Context(), middleware.GetUserID(c))
 	if err != nil {
@@ -268,7 +268,7 @@ func (h *OrganizationHandler) invite(c fiber.Ctx) error {
 func (h *OrganizationHandler) revokeInvitation(c fiber.Ctx) error {
 	email, err := url.PathUnescape(c.Params("email"))
 	if err != nil {
-		return apierror.InvalidRequest("The invitation address is not a valid path segment.", c.Path()).Send(c)
+		return problem.InvalidRequest("The invitation address is not a valid path segment.", c.Path()).Send(c)
 	}
 	if err := h.svc.RevokeInvitation(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c), email); err != nil {
 		return organizationProblem(c, err)
@@ -302,15 +302,15 @@ func (h *OrganizationHandler) accept(c fiber.Ctx) error {
 	u, err := h.users.GetByID(c.Context(), middleware.GetUserID(c))
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return apierror.Unauthorized("Sign in to accept an invitation.", c.Path()).Send(c)
+			return problem.Unauthorized("Sign in to accept an invitation.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if !u.EmailVerified {
 		// Its own problem type: the page offers "resend verification" here and
 		// "ask for a new invitation" for every other refusal on this route, and
 		// it cannot tell them apart from a shared status and prose detail.
-		return apierror.EmailNotVerified(c.Path()).Send(c)
+		return problem.EmailNotVerified(c.Path()).Send(c)
 	}
 	m, err := h.svc.Accept(c.Context(), req.Token, middleware.GetUserID(c), u.Email, u.DisplayOrFullName())
 	if err != nil {
@@ -346,49 +346,49 @@ func organizationProblem(c fiber.Ctx, err error) error {
 	}
 	switch {
 	case errors.Is(err, organization.ErrInvalidName):
-		return apierror.ValidationFailed("The organization name is required and must be at most 120 characters.", c.Path()).Send(c)
+		return problem.ValidationFailed("The organization name is required and must be at most 120 characters.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrOwnRole):
-		return apierror.ValidationFailed("You cannot change your own role. Ask somebody who outranks you.", c.Path()).Send(c)
+		return problem.ValidationFailed("You cannot change your own role. Ask somebody who outranks you.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrOutranked):
-		return apierror.ValidationFailed("You can only manage people below your own role.", c.Path()).Send(c)
+		return problem.ValidationFailed("You can only manage people below your own role.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrInvalidKind):
-		return apierror.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
+		return problem.ValidationFailed("kind must be organization or personal.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrTransferNeedsFullAccess):
-		return apierror.ValidationFailed("A space can only be transferred to somebody with full access. Give them full access first.", c.Path()).Send(c)
+		return problem.ValidationFailed("A space can only be transferred to somebody with full access. Give them full access first.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNoCompaniesInASpace):
-		return apierror.ValidationFailed("A space holds no companies, so an invitation to one cannot name any.", c.Path()).Send(c)
+		return problem.ValidationFailed("A space holds no companies, so an invitation to one cannot name any.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotGrantable):
-		return apierror.ValidationFailed("That role cannot be assigned. Ownership moves through transfer.", c.Path()).Send(c)
+		return problem.ValidationFailed("That role cannot be assigned. Ownership moves through transfer.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotAMember), errors.Is(err, organization.ErrForbidden), errors.Is(err, organization.ErrNotFound):
-		return apierror.Forbidden("You do not have access to this organization.", c.Path()).Send(c)
+		return problem.Forbidden("You do not have access to this organization.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrInvitationInvalid), errors.Is(err, organization.ErrWrongInvitee):
 		// One answer for expired, unknown, already-used and addressed to
 		// somebody else: each distinction is a hint to whoever is guessing.
-		return apierror.Forbidden("This invitation is no longer valid.", c.Path()).Send(c)
+		return problem.Forbidden("This invitation is no longer valid.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrAlreadyMember):
-		return apierror.Conflict("That person is already in this organization.", c.Path()).Send(c)
+		return problem.Conflict("That person is already in this organization.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrPlanUnavailable):
-		return apierror.PlanUnavailable(c.Path()).WithCause(err).Send(c)
+		return problem.PlanUnavailable(c.Path()).WithCause(err).Send(c)
 	case errors.Is(err, organization.ErrPlanBusy):
-		return apierror.Conflict("Somebody changed this at the same time. Try again.", c.Path()).Send(c)
+		return problem.Conflict("Somebody changed this at the same time. Try again.", c.Path()).Send(c)
 	case errors.Is(err, organization.ErrNotASpace):
-		return apierror.NotFound("space", c.Path()).Send(c)
+		return problem.NotFound("space", c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }
 
 // planLimitProblem says what was refused. A transfer's refusal is about the
 // other person's plan, so it carries none of its numbers (decision P7).
-func planLimitProblem(c fiber.Ctx, le *organization.PlanLimitError) *apierror.Problem {
+func planLimitProblem(c fiber.Ctx, le *organization.PlanLimitError) *problem.Problem {
 	if le.Hidden {
-		return apierror.PlanLimit(le.Resource, "That person is already at their plan's space limit.", c.Path())
+		return problem.PlanLimit(le.Resource, "That person is already at their plan's space limit.", c.Path())
 	}
 	detail := fmt.Sprintf("Your plan allows %d spaces and you already have %d.", le.Limit, le.Used)
 	if le.Resource == organization.ResourcePeople {
 		detail = fmt.Sprintf("This space already has %d of %d people on your plan.", le.Used, le.Limit)
 	}
-	return apierror.WithPlanUsage(apierror.PlanLimit(le.Resource, detail, c.Path()), le.Limit, le.Used, le.Plan)
+	return problem.WithPlanUsage(problem.PlanLimit(le.Resource, detail, c.Path()), le.Limit, le.Used, le.Plan)
 }
 
 func (h *OrganizationHandler) planUsage(c fiber.Ctx) error {

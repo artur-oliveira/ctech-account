@@ -4,13 +4,13 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -53,9 +53,9 @@ func (h *ProfileHandler) get(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return apierror.NotFound("User", c.Path()).Send(c)
+			return problem.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -99,12 +99,12 @@ func (h *ProfileHandler) update(c fiber.Ctx) error {
 	}
 
 	if err := h.userSvc.UpdateProfile(c.Context(), userID, req.FirstName, req.LastName, req.DisplayName); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// Every roster this person appears on carries a copy of their name. Refresh
@@ -141,9 +141,9 @@ func (h *ProfileHandler) changePassword(c fiber.Ctx) error {
 
 	if err := h.userSvc.ChangePassword(c.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
 		if errors.Is(err, user.ErrCurrentPasswordIncorrect) {
-			return apierror.InvalidCredentials(c.Path()).Send(c)
+			return problem.InvalidCredentials(c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventPasswordChanged, nil)
@@ -169,9 +169,9 @@ func (h *ProfileHandler) setInitialPassword(c fiber.Ctx) error {
 
 	if err := h.userSvc.SetInitialPassword(c.Context(), userID, req.NewPassword); err != nil {
 		if errors.Is(err, user.ErrPasswordAlreadySet) {
-			return apierror.Conflict("This account already has a password. Use the change-password endpoint.", c.Path()).Send(c)
+			return problem.Conflict("This account already has a password. Use the change-password endpoint.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventPasswordChanged, map[string]string{"method": "initial"})
@@ -189,9 +189,9 @@ func (h *ProfileHandler) unlinkGoogle(c fiber.Ctx) error {
 
 	if err := h.userSvc.UnlinkGoogle(c.Context(), userID); err != nil {
 		if errors.Is(err, user.ErrCannotUnlink) {
-			return apierror.Conflict("Cannot unlink Google without a password. Set a password first.", c.Path()).Send(c)
+			return problem.Conflict("Cannot unlink Google without a password. Set a password first.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, userID, audit.EventSocialUnlinked, nil)

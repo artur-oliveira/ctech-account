@@ -6,9 +6,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/authguard"
 )
 
@@ -20,19 +20,19 @@ func verifyIdentity(c fiber.Ctx, users *user.Service, userID, password string) e
 	}
 	hasPassword, err := users.HasPassword(c.Context(), userID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	if !hasPassword {
 		return nil
 	}
 	if password == "" {
-		return apierror.StepUpRequired(authguard.DefaultStepUpMaxAge, c.Path())
+		return problem.StepUpRequired(authguard.DefaultStepUpMaxAge, c.Path())
 	}
 	if err := users.CheckPassword(c.Context(), userID, password); err != nil {
 		if errors.Is(err, user.ErrInvalidCredentials) {
-			return apierror.InvalidCredentials(c.Path())
+			return problem.InvalidCredentials(c.Path())
 		}
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return nil
 }

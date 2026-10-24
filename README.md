@@ -42,7 +42,7 @@ ctech-account/
 ├── api/              # Go module — all commands below assume `cd api` first
 │   ├── cmd/api/      # Entry point — Fiber app wiring
 │   └── internal/
-│       ├── apierror/     # RFC 7807 Problem Details types + constructors
+│       ├── problem/     # RFC 7807 Problem Details types + constructors
 │       ├── cache/        # Valkey client wrapper
 │       ├── config/       # Environment-driven configuration
 │       ├── crypto/       # JWT signing (RS256/ES256), Argon2id, PKCE helpers

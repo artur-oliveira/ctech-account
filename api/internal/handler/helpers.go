@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/email"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/utils"
 	"gopkg.aoctech.app/api-commons/observability"
 	"gopkg.aoctech.app/api-commons/validation"
@@ -153,11 +153,11 @@ func setSessionCookies(c fiber.Ctx, cfg *config.Config, rawToken string) {
 }
 
 // parseBody decodes JSON from the request body and validates the struct.
-// Returns a *apierror.Problem (as error) on failure so the caller can return it directly
+// Returns a *problem.Problem (as error) on failure so the caller can return it directly
 // and Fiber's error handler will send the RFC 7807 response.
 func parseBody[T any](c fiber.Ctx, dst *T) error {
 	if err := c.Bind().JSON(dst); err != nil {
-		return apierror.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path())
+		return problem.InvalidRequest("Request body is malformed or contains invalid JSON.", c.Path())
 	}
 	// c.Bind().JSON (lenient on unknown fields) is kept on purpose: switching to
 	// validation.BindJSON would start rejecting clients that send extra fields.
@@ -170,7 +170,7 @@ func parseBody[T any](c fiber.Ctx, dst *T) error {
 		for i, f := range ve.Fields {
 			parts[i] = f.Field + ": " + f.Message()
 		}
-		return apierror.ValidationFailed(strings.Join(parts, "; "), c.Path())
+		return problem.ValidationFailed(strings.Join(parts, "; "), c.Path())
 	}
 	return nil
 }

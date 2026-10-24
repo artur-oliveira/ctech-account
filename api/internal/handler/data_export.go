@@ -5,10 +5,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/dataexport"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/authguard"
 	wire "gopkg.aoctech.app/api-commons/dataexport"
@@ -47,14 +47,14 @@ func (h *DataExportHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.
 func (h *DataExportHandler) ack(c fiber.Ctx, serviceForClient func(string) (string, bool)) error {
 	service, ok := serviceForClient(middleware.GetClientID(c))
 	if !ok {
-		return apierror.Forbidden("This client is not an export participant.", c.Path())
+		return problem.Forbidden("This client is not an export participant.", c.Path())
 	}
 	var ack wire.Ack
 	if err := c.Bind().JSON(&ack); err != nil || ack.RequestID == "" || ack.Sub == "" {
-		return apierror.InvalidRequest("Body must be an export ack with request_id and sub.", c.Path())
+		return problem.InvalidRequest("Body must be an export ack with request_id and sub.", c.Path())
 	}
 	if ack.Service != "" && ack.Service != service {
-		return apierror.Forbidden("A participant may only ack for itself.", c.Path())
+		return problem.Forbidden("A participant may only ack for itself.", c.Path())
 	}
 	switch err := h.svc.Ack(c.Context(), service, ack); {
 	case err == nil, errors.Is(err, dataexport.ErrStale):
@@ -62,11 +62,11 @@ func (h *DataExportHandler) ack(c fiber.Ctx, serviceForClient func(string) (stri
 		// 2xx so the participant stops retrying.
 		return c.SendStatus(fiber.StatusNoContent)
 	case errors.Is(err, dataexport.ErrUnknownPart):
-		return apierror.Forbidden("This service was not asked for a part of this export.", c.Path())
+		return problem.Forbidden("This service was not asked for a part of this export.", c.Path())
 	case errors.Is(err, dataexport.ErrNotUploaded):
-		return apierror.Conflict("The part is not in the bucket yet; upload it and ack again.", c.Path())
+		return problem.Conflict("The part is not in the bucket yet; upload it and ack again.", c.Path())
 	default:
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 }
 
@@ -82,7 +82,7 @@ func (h *DataExportHandler) request(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	if err := verifyIdentity(c, h.users, userID, req.Password); err != nil {
 		// Sent here, not returned: the rate limiters read the response status.
-		if p, ok := errors.AsType[*apierror.Problem](err); ok {
+		if p, ok := errors.AsType[*problem.Problem](err); ok {
 			return p.Send(c)
 		}
 		return err
@@ -90,13 +90,13 @@ func (h *DataExportHandler) request(c fiber.Ctx) error {
 	e, err := h.svc.Request(c.Context(), userID)
 	switch {
 	case errors.Is(err, dataexport.ErrLocked):
-		return apierror.Conflict("This account cannot export its data right now.", c.Path())
+		return problem.Conflict("This account cannot export its data right now.", c.Path())
 	case errors.Is(err, dataexport.ErrBuilding):
-		return apierror.Conflict("An export is already being prepared.", c.Path())
+		return problem.Conflict("An export is already being prepared.", c.Path())
 	case errors.Is(err, dataexport.ErrTooSoon):
-		return apierror.TooManyRequests("You can request one export every 24 hours.", c.Path(), dataexport.MinInterval)
+		return problem.TooManyRequests("You can request one export every 24 hours.", c.Path(), dataexport.MinInterval)
 	case err != nil:
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return c.Status(fiber.StatusAccepted).JSON(exportView(e, nil))
 }
@@ -104,15 +104,15 @@ func (h *DataExportHandler) request(c fiber.Ctx) error {
 func (h *DataExportHandler) status(c fiber.Ctx) error {
 	e, err := h.svc.Status(c.Context(), middleware.GetUserID(c))
 	if errors.Is(err, dataexport.ErrNotFound) {
-		return apierror.NotFound("export", c.Path())
+		return problem.NotFound("export", c.Path())
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	var links []dataexport.Link
 	if e.State == dataexport.StateReady {
 		if links, err = h.svc.Links(c.Context(), e); err != nil {
-			return apierror.ServerError(c.Path()).WithCause(err)
+			return problem.ServerError(c.Path()).WithCause(err)
 		}
 	}
 	return c.JSON(exportView(e, links))
@@ -121,10 +121,10 @@ func (h *DataExportHandler) status(c fiber.Ctx) error {
 func (h *DataExportHandler) discard(c fiber.Ctx) error {
 	err := h.svc.Discard(c.Context(), middleware.GetUserID(c))
 	if errors.Is(err, dataexport.ErrNotFound) {
-		return apierror.NotFound("export", c.Path())
+		return problem.NotFound("export", c.Path())
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

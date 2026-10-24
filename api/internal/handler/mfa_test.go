@@ -13,7 +13,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -22,6 +21,7 @@ import (
 	sessionDomain "gopkg.aoctech.app/account/api/internal/domain/session"
 	userDomain "gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/handler"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // MFA management routes require Bearer auth. The noopTOTPService always returns errors,
@@ -183,10 +183,10 @@ func newMFAChallengeApp(t *testing.T) (*fiber.App, *cache.Client, *userDomain.Us
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := err.(*apierror.Problem); ok {
+			if problem, ok := err.(*problem.Problem); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	app.Use(recover.New())

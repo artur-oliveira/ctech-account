@@ -11,7 +11,7 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`),
 | Path                                   | Purpose                                                                       |
 |----------------------------------------|-------------------------------------------------------------------------------|
 | `cmd/api/main.go`                      | App bootstrap — Fiber config, route registration, error handler, health check |
-| `internal/apierror/problem.go`         | RFC 7807 engine — all error constructors live here                            |
+| `internal/problem/problem.go`         | RFC 7807 engine — all error constructors live here                            |
 | `internal/validate/validate.go`        | Validator singleton — use `validate.Struct()`, never instantiate your own     |
 | `internal/crypto/jwt.go`               | JWT signing/verification (RS256/ES256)                                              |
 | `internal/domain/*/repository.go`      | Repository interfaces + DynamoDB implementations                              |
@@ -26,7 +26,6 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`),
 The skill is the target; this repo still differs in these places. Do not copy the old variant into new code,
 and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
 
-- Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
 - Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
 - Guards: internal-scope, client-id and step-up are go-common `authguard` (`RequireScope` stays local: account's insufficient-scope problem type).
 - Idempotency: go-common `idempotency` is wired, optional key, on `POST /organizations` and `POST /organizations/:id/companies` only (table `{env}_account_idempotency`). Routes whose answer holds a secret (API keys, OAuth client secrets, invitation tokens, backup codes) must never be guarded: the answer is stored for 24 h. Other creating routes are not covered yet.
@@ -44,7 +43,7 @@ and do not "fix" one of them as a side effect of unrelated work (propose it as i
 ```
 cmd/api/          Entry point — Fiber app wiring, error handler, health check
 internal/
-  apierror/       RFC 7807 Problem types — ALL errors must use this package
+  problem/       RFC 7807 Problem types — ALL errors must use this package
   cache/          Valkey client (disabled when VALKEY_URL is absent)
   config/         Env-driven Config struct
   crypto/         JWTService (RS256/ES256), Argon2id helpers, PKCE
@@ -75,7 +74,7 @@ internal/
 
 ## Non-Negotiable Rules
 
-1. **Every HTTP error must be `*apierror.Problem`** — never raw `fiber.Error`, never `fmt.Errorf` returned to handler.
+1. **Every HTTP error must be `*problem.Problem`** — never raw `fiber.Error`, never `fmt.Errorf` returned to handler.
 2. **`validate.Struct(req)` in every handler that parses a body.** Check `validate.IsValidationError` → 422.
 3. **Services take repository interfaces**, not concrete types. Add to the interface first, then implement.
 4. **`c.Context()` everywhere** — never `c.UserContext()`.
@@ -86,7 +85,7 @@ internal/
 ## Adding a New Route
 
 1. Define request struct with `validate:"..."` tags on every field.
-2. Parse with `c.BodyParser`, then `validate.Struct`. Return `apierror.ValidationFailed` on error.
+2. Parse with `c.BodyParser`, then `validate.Struct`. Return `problem.ValidationFailed` on error.
 3. Call exactly one service method. Return exactly one schema.
 4. Register in the handler's `Register(r fiber.Router)` method.
 5. Add integration test in `internal/handler/<group>_test.go` using `newTestApp(t)`.
@@ -110,7 +109,7 @@ internal/
 
 - Before writing any function, search `internal/` for existing implementations.
 - One validator singleton — never instantiate `validator.New()` inline.
-- Never duplicate error constructors — check `apierror/` before adding new ones.
+- Never duplicate error constructors — check `problem/` before adding new ones.
 - **Reuse `ctech-go-common` helpers (D1):** `dynamo`, `cache`, `lock`, `jwtverify`,
   `problem`, `oauth2client`. Don't reimplement them. Rate-limiting/brute-force (D15)
   is a shared concern — prefer a shared construct over a per-repo copy.
@@ -126,10 +125,10 @@ internal/
 
 ### Error Handling
 
-- `apierror.ValidationFailed(ve.Detail(), c.Path())` for 422s.
-- `apierror.InvalidCredentials(...)` for 401 auth failures.
+- `problem.ValidationFailed(ve.Detail(), c.Path())` for 422s.
+- `problem.InvalidCredentials(...)` for 401 auth failures.
 - `.WithOAuth(code, description)` on token endpoint errors (RFC 6749).
-- `apierror.TokenReuse` for refresh token replay detection.
+- `problem.TokenReuse` for refresh token replay detection.
 
 ### Session Handling
 
@@ -147,8 +146,8 @@ internal/
 
 | Mistake                                                      | Correct approach                                          |
 |--------------------------------------------------------------|-----------------------------------------------------------|
-| `c.Status(400).JSON(err)`                                    | `apierror.InvalidRequest(...).Send(c)`                    |
-| `return fiber.ErrUnauthorized`                               | `return apierror.Unauthorized(..., c.Path())`             |
+| `c.Status(400).JSON(err)`                                    | `problem.InvalidRequest(...).Send(c)`                    |
+| `return fiber.ErrUnauthorized`                               | `return problem.Unauthorized(..., c.Path())`             |
 | Instantiating `validator.New()` inline                       | Import `validate` package, call `validate.Struct()`       |
 | `c.UserContext()`                                            | `c.Context()`                                             |
 | `c.Status(302).Redirect(url)`                                | `c.Redirect().Status(302).To(url)`                        |
@@ -199,7 +198,7 @@ Never commit: RSA private keys (`key.pem`), JWT secrets, AWS credentials, real u
 - [ ] `go test ./...` passes
 - [ ] No duplication introduced
 - [ ] All constants named (no magic strings)
-- [ ] All errors via `apierror.*` + `problem.Send(c)`
+- [ ] All errors via `problem.*` + `problem.Send(c)`
 - [ ] `validate.Struct(req)` in every body-parsing handler
 - [ ] `../README.md` updated if routes or config vars changed
 - [ ] Cross-project impact reviewed (ui ↔ cdk ↔ ctech-dfe)

@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
 	"gopkg.aoctech.app/account/api/internal/domain/apikey"
@@ -23,6 +22,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/domain/session"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -134,7 +134,7 @@ func (h *TokenHandler) Token(c fiber.Ctx) error {
 	case grantClientCredentials:
 		return h.clientCredentials(c)
 	default:
-		return apierror.UnsupportedGrantType(c.Path()).Send(c)
+		return problem.UnsupportedGrantType(c.Path()).Send(c)
 	}
 }
 
@@ -143,12 +143,12 @@ func (h *TokenHandler) Token(c fiber.Ctx) error {
 func (h *TokenHandler) apiKeyExchange(c fiber.Ctx) error {
 	rawKey := c.FormValue(grantAPIKey)
 	if rawKey == "" {
-		return apierror.InvalidRequest("api_key is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("api_key is required.", c.Path()).Send(c)
 	}
 
 	k, err := h.apiKeySvc.Authenticate(c.Context(), rawKey)
 	if err != nil {
-		return apierror.InvalidGrant("API key is invalid, expired, or revoked.", c.Path()).WithCause(err).Send(c)
+		return problem.InvalidGrant("API key is invalid, expired, or revoked.", c.Path()).WithCause(err).Send(c)
 	}
 	if p := h.pendingDeletionProblem(c, k.UserID()); p != nil {
 		return p.Send(c)
@@ -158,13 +158,13 @@ func (h *TokenHandler) apiKeyExchange(c fiber.Ctx) error {
 	// works against accounts APIs and e.g. dfe without a second exchange.
 	serviceAudiences, err := h.catalogSvc.AudiencesFor(c.Context(), k.Scopes)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	audience := append([]string{h.cfg.Audience}, serviceAudiences...)
 
 	accessToken, err := h.jwtSvc.SignAccessToken(k.UserID(), k.ID(), apiKeyClientID, k.Scopes, h.issuerURL, audience, 0, 0, nil, "")
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -184,28 +184,28 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 	clientID := c.FormValue("client_id")
 	clientSecret := c.FormValue("client_secret")
 	if clientID == "" || clientSecret == "" {
-		return apierror.InvalidRequest("client_id and client_secret are required.", c.Path()).Send(c)
+		return problem.InvalidRequest("client_id and client_secret are required.", c.Path()).Send(c)
 	}
 
 	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, oauthclient.ErrNotFound) {
-			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+			return problem.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if oauthClient.IsPublic() {
-		return apierror.UnauthorizedClient(c.Path()).Send(c)
+		return problem.UnauthorizedClient(c.Path()).Send(c)
 	}
 	// The secret is verified before anything about scopes or owners is
 	// revealed, for first-party and developer-page clients alike.
 	ok, verifyErr := crypto.VerifyPassword(clientSecret, oauthClient.ClientSecretHash)
 	if verifyErr != nil {
-		return apierror.ServerError(c.Path()).WithCause(verifyErr).Send(c)
+		return problem.ServerError(c.Path()).WithCause(verifyErr).Send(c)
 	}
 	if !ok {
-		return apierror.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
+		return problem.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
 	}
 
 	requested := strings.Fields(c.FormValue("scope"))
@@ -214,18 +214,18 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 		// Unchanged: first-party clients are clamped silently to what they hold.
 		scp = oauthClient.FilterScopes(requested)
 	} else {
-		var problem *apierror.Problem
+		var problem *problem.Problem
 		if scp, problem = h.machineScopesForDeveloperClient(c, oauthClient, requested); problem != nil {
 			return problem.Send(c)
 		}
 	}
 	if len(scp) == 0 {
-		return apierror.InvalidScope(c.Path()).Send(c)
+		return problem.InvalidScope(c.Path()).Send(c)
 	}
 
 	serviceAudiences, err := h.catalogSvc.AudiencesFor(c.Context(), scp)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	audience := append([]string{h.cfg.Audience}, serviceAudiences...)
 
@@ -234,7 +234,7 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 	// no refresh token.
 	accessToken, err := h.jwtSvc.SignAccessToken(clientID, "", clientID, scp, h.issuerURL, audience, 0, 0, nil, "")
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.JSON(fiber.Map{
@@ -254,25 +254,25 @@ func (h *TokenHandler) clientCredentials(c fiber.Ctx) error {
 //     sign-in scope means the client is a sign-in client, and it gets no
 //     machine token. internal:* scopes never qualify;
 //   - every scope REQUESTED must be held.
-func (h *TokenHandler) machineScopesForDeveloperClient(c fiber.Ctx, oc *oauthclient.OAuthClient, requested []string) ([]string, *apierror.Problem) {
+func (h *TokenHandler) machineScopesForDeveloperClient(c fiber.Ctx, oc *oauthclient.OAuthClient, requested []string) ([]string, *problem.Problem) {
 	active, err := h.clients.Active(c.Context(), oc)
 	if err != nil {
-		return nil, apierror.ServerError(c.Path()).WithCause(err)
+		return nil, problem.ServerError(c.Path()).WithCause(err)
 	}
 	if !active {
-		return nil, apierror.UnauthorizedClientBecause("The account that owns this client is not active.", c.Path())
+		return nil, problem.UnauthorizedClientBecause("The account that owns this client is not active.", c.Path())
 	}
 	bad, err := h.catalogSvc.ValidateMachineGrantable(c.Context(), oc.AllowedScopes)
 	if err != nil {
-		return nil, apierror.ServerError(c.Path()).WithCause(err)
+		return nil, problem.ServerError(c.Path()).WithCause(err)
 	}
 	if bad != "" {
-		return nil, apierror.UnauthorizedClientBecause(fmt.Sprintf(
+		return nil, problem.UnauthorizedClientBecause(fmt.Sprintf(
 			"client_credentials requires every scope this client holds to be published for machine-to-machine use; %q is not. Use a separate client for user sign-in.", bad), c.Path())
 	}
 	for _, scope := range requested {
 		if !oc.HasScope(scope) {
-			return nil, apierror.InvalidScopeBecause(fmt.Sprintf("Scope %q is not granted to this client.", scope), c.Path())
+			return nil, problem.InvalidScopeBecause(fmt.Sprintf("Scope %q is not granted to this client.", scope), c.Path())
 		}
 	}
 	return requested, nil
@@ -285,28 +285,28 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	codeVerifier := c.FormValue("code_verifier")
 
 	if code == "" || clientID == "" || redirectURI == "" {
-		return apierror.InvalidRequest("code, client_id and redirect_uri are required.", c.Path()).Send(c)
+		return problem.InvalidRequest("code, client_id and redirect_uri are required.", c.Path()).Send(c)
 	}
 
 	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, oauthclient.ErrNotFound) {
-			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+			return problem.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !oauthClient.IsPublic() {
 		clientSecret := c.FormValue("client_secret")
 		if clientSecret == "" {
-			return apierror.InvalidClient("client_secret is required for confidential clients.", c.Path()).Send(c)
+			return problem.InvalidClient("client_secret is required for confidential clients.", c.Path()).Send(c)
 		}
 		ok, verifyErr := crypto.VerifyPassword(clientSecret, oauthClient.ClientSecretHash)
 		if verifyErr != nil {
-			return apierror.ServerError(c.Path()).WithCause(verifyErr).Send(c)
+			return problem.ServerError(c.Path()).WithCause(verifyErr).Send(c)
 		}
 		if !ok {
-			return apierror.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
+			return problem.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
 		}
 	}
 
@@ -315,33 +315,33 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	ac, err := h.codeRepo.GetAndDelete(c.Context(), codeHash)
 	if err != nil {
 		if errors.Is(err, authcode.ErrNotFound) {
-			return apierror.InvalidGrant("Authorization code not found or has expired.", c.Path()).Send(c)
+			return problem.InvalidGrant("Authorization code not found or has expired.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if ac.ClientID != clientID {
-		return apierror.InvalidGrant("Authorization code was not issued to this client.", c.Path()).Send(c)
+		return problem.InvalidGrant("Authorization code was not issued to this client.", c.Path()).Send(c)
 	}
 	if ac.RedirectURI != redirectURI {
-		return apierror.InvalidGrant("redirect_uri does not match the one used in the authorization request.", c.Path()).Send(c)
+		return problem.InvalidGrant("redirect_uri does not match the one used in the authorization request.", c.Path()).Send(c)
 	}
 
 	if ac.CodeChallenge != "" {
 		if codeVerifier == "" {
-			return apierror.InvalidGrant("code_verifier is required for PKCE.", c.Path()).Send(c)
+			return problem.InvalidGrant("code_verifier is required for PKCE.", c.Path()).Send(c)
 		}
 		if !verifyPKCE(codeVerifier, ac.CodeChallenge) {
-			return apierror.InvalidGrant("code_verifier does not match the code_challenge.", c.Path()).Send(c)
+			return problem.InvalidGrant("code_verifier does not match the code_challenge.", c.Path()).Send(c)
 		}
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), ac.UserID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if u.DeletionState != "" {
-		return apierror.InvalidGrant(pendingDeletionDetail, c.Path()).Send(c)
+		return problem.InvalidGrant(pendingDeletionDetail, c.Path()).Send(c)
 	}
 
 	sess, err := h.sessionSvc.Get(c.Context(), ac.UserID, ac.SessionID)
@@ -350,7 +350,7 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 		// guessable — so this is a benign "user logged out concurrently" race,
 		// not brute-force traffic. Don't burn the shared /token rate-limit budget.
 		middleware.SkipRateLimitCount(c)
-		return apierror.InvalidGrant("Session no longer exists.", c.Path()).WithCause(err).Send(c)
+		return problem.InvalidGrant("Session no longer exists.", c.Path()).WithCause(err).Send(c)
 	}
 
 	// A person who left this product signs in to it again: tell it before any
@@ -358,13 +358,13 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 	// them) and the person simply signs in again.
 	if h.relinker != nil && len(u.UnlinkedServices) > 0 {
 		if err := h.relinker.Relink(c.Context(), u, clientID); err != nil {
-			return apierror.ServiceUnavailable("Could not reconnect this product to your account. Please try again.", c.Path()).WithCause(err).Send(c)
+			return problem.ServiceUnavailable("Could not reconnect this product to your account. Please try again.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 
 	accessToken, err := h.jwtSvc.SignAccessToken(ac.UserID, ac.SessionID, clientID, ac.Scopes, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycClaimFor(u, ac.Scopes))
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	idToken := ""
@@ -373,13 +373,13 @@ func (h *TokenHandler) authorizationCode(c fiber.Ctx) error {
 			ac.UserID, u.Email, u.FullName(), u.DisplayOrFullName(), u.FirstName, u.LastName, u.EmailVerified, clientID, ac.Nonce, h.issuerURL, kycClaimFor(u, ac.Scopes),
 		)
 		if err != nil {
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 	}
 
 	newRefreshToken, err := h.sessionSvc.IssueClientToken(c.Context(), ac.UserID, ac.SessionID, clientID, ac.Scopes)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// Set httpOnly cookie so SPA clients receive the refresh token without JS access.
@@ -429,15 +429,15 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 		// refresh fired before any session exists (no ctech_rt cookie yet). Don't
 		// burn the shared /token rate-limit budget on a client-side race.
 		middleware.SkipRateLimitCount(c)
-		return apierror.InvalidRequest("refresh_token and client_id are required.", c.Path()).Send(c)
+		return problem.InvalidRequest("refresh_token and client_id are required.", c.Path()).Send(c)
 	}
 
 	oauthClient, err := h.clientRepo.GetByID(c.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, oauthclient.ErrNotFound) {
-			return apierror.InvalidClient("Unknown client_id.", c.Path()).Send(c)
+			return problem.InvalidClient("Unknown client_id.", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// Authenticate confidential clients on refresh, exactly as on the code grant —
@@ -445,14 +445,14 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	if !oauthClient.IsPublic() {
 		clientSecret := c.FormValue("client_secret")
 		if clientSecret == "" {
-			return apierror.InvalidClient("client_secret is required for confidential clients.", c.Path()).Send(c)
+			return problem.InvalidClient("client_secret is required for confidential clients.", c.Path()).Send(c)
 		}
 		ok, verifyErr := crypto.VerifyPassword(clientSecret, oauthClient.ClientSecretHash)
 		if verifyErr != nil {
-			return apierror.ServerError(c.Path()).WithCause(verifyErr).Send(c)
+			return problem.ServerError(c.Path()).WithCause(verifyErr).Send(c)
 		}
 		if !ok {
-			return apierror.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
+			return problem.InvalidClient("Invalid client_secret.", c.Path()).Send(c)
 		}
 	}
 
@@ -460,7 +460,7 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	if err != nil {
 		if errors.Is(err, session.ErrTokenReuse) {
 			recordAuditAnon(c, h.audit, audit.EventTokenReuseDetected, map[string]string{"client_id": clientID})
-			return apierror.TokenReuse(c.Path()).WithCause(err).Send(c)
+			return problem.TokenReuse(c.Path()).WithCause(err).Send(c)
 		}
 		if errors.Is(err, session.ErrSessionExpired) {
 			// Only reachable with a real refresh token hash — never guessable —
@@ -468,12 +468,12 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 			// in-flight refresh" case, not brute-force traffic. Don't burn the
 			// shared /token rate-limit budget.
 			middleware.SkipRateLimitCount(c)
-			return apierror.SessionExpired(c.Path()).WithCause(err).Send(c)
+			return problem.SessionExpired(c.Path()).WithCause(err).Send(c)
 		}
 		if errors.Is(err, session.ErrClientMismatch) {
-			return apierror.InvalidGrant("This refresh token was not issued to this client.", c.Path()).WithCause(err).Send(c)
+			return problem.InvalidGrant("This refresh token was not issued to this client.", c.Path()).WithCause(err).Send(c)
 		}
-		return apierror.InvalidGrant("Invalid or expired refresh token.", c.Path()).WithCause(err).Send(c)
+		return problem.InvalidGrant("Invalid or expired refresh token.", c.Path()).WithCause(err).Send(c)
 	}
 
 	if p := h.pendingDeletionProblem(c, sess.UserID()); p != nil {
@@ -511,14 +511,14 @@ func (h *TokenHandler) refreshToken(c fiber.Ctx) error {
 	if slices.Contains(scp, scopes.KYC) {
 		u, err := h.userSvc.GetByID(c.Context(), sess.UserID())
 		if err != nil {
-			return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+			return problem.ServerError(c.Path()).WithCause(err).Send(c)
 		}
 		kycLevel = kyc.ClaimLevel(u.KYCLevel, u.KYCStatus)
 	}
 
 	accessToken, err := h.jwtSvc.SignAccessToken(sess.UserID(), sess.ID(), clientID, scp, h.issuerURL, accessTokenAudience(h.cfg.Audience, oauthClient), sess.AuthTime, sess.LastMFAAt, sess.AMR, kycLevel)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// Rotate the cookie with the new refresh token value.
@@ -553,7 +553,7 @@ func (h *TokenHandler) Revoke(c fiber.Ctx) error {
 		}
 	}
 	if rawToken == "" {
-		return apierror.InvalidRequest("token is required.", c.Path()).Send(c)
+		return problem.InvalidRequest("token is required.", c.Path()).Send(c)
 	}
 
 	// A presented token is either a per-client refresh token (revoke just that
@@ -621,16 +621,16 @@ const pendingDeletionDetail = "The account is scheduled for deletion."
 // token whose session revocation failed, an API key minted while the lock ran)
 // cannot mint tokens during the grace period. An unknown user is left to the
 // grant's own checks.
-func (h *TokenHandler) pendingDeletionProblem(c fiber.Ctx, userID string) *apierror.Problem {
+func (h *TokenHandler) pendingDeletionProblem(c fiber.Ctx, userID string) *problem.Problem {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if errors.Is(err, user.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	if u.DeletionState != "" {
-		return apierror.InvalidGrant(pendingDeletionDetail, c.Path())
+		return problem.InvalidGrant(pendingDeletionDetail, c.Path())
 	}
 	return nil
 }

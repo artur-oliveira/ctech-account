@@ -11,7 +11,6 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`),
 The skill is the target; this repo still differs in these places. Do not copy the old variant into new code,
 and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
 
-- Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
 - Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
 - Guards: internal-scope, client-id and step-up are go-common `authguard` (`RequireScope` stays local: account's insufficient-scope problem type).
 - Idempotency: go-common `idempotency` is wired, optional key, on `POST /organizations` and `POST /organizations/:id/companies` only (table `{env}_account_idempotency`). Routes whose answer holds a secret (API keys, OAuth client secrets, invitation tokens, backup codes) must never be guarded: the answer is stored for 24 h. Other creating routes are not covered yet.
@@ -28,7 +27,7 @@ and do not "fix" one of them as a side effect of unrelated work (propose it as i
 api/
 cmd/api/          Entry point — Fiber app wiring, error handler, health check
 internal/
-  apierror/       RFC 7807 Problem types — ALL errors must use this package
+  problem/       RFC 7807 Problem types — ALL errors must use this package
   cache/          Valkey client (disabled when VALKEY_URL is absent)
   config/         Env-driven Config struct
   crypto/         JWTService (RS256/ES256), Argon2id helpers, PKCE
@@ -94,12 +93,12 @@ Implement only what was requested. No opportunistic refactors, no added abstract
 
 ### Error Handling (MUST follow RFC 7807)
 
-- Every HTTP error MUST be an `*apierror.Problem` returned via `problem.Send(c)`.
+- Every HTTP error MUST be an `*problem.Problem` returned via `problem.Send(c)`.
 - **Never** use `c.Status(...).JSON(...)` for errors.
 - Use the most specific constructor: `InvalidCredentials`, `ValidationFailed`, `TokenReuse`, etc.
-- For validation errors: `apierror.ValidationFailed(ve.Detail(), c.Path())`.
+- For validation errors: `problem.ValidationFailed(ve.Detail(), c.Path())`.
 - For OAuth token endpoint: chain `.WithOAuth(code, description)` for RFC 6749 compatibility.
-- Never return `apierror.ServerError` for domain errors the caller caused.
+- Never return `problem.ServerError` for domain errors the caller caused.
 
 ### Validation
 
@@ -132,7 +131,7 @@ Implement only what was requested. No opportunistic refactors, no added abstract
 
 - `session.Service.IssueClientToken` — use on first OAuth code exchange (issues, or replaces, the per-client refresh token).
 - `session.Service.RotateClientToken` — validates the presented token before replacing; use on all subsequent refresh grants.
-- Token-reuse detection returns `ErrTokenReuse` / `apierror.TokenReuse`.
+- Token-reuse detection returns `ErrTokenReuse` / `problem.TokenReuse`.
 
 ### DynamoDB
 
@@ -193,7 +192,7 @@ go test -race ./...            # family standard; CI does not run it yet
   Covers `/authorize`, `/authorize/consent`, `/auth/register`, `/revoke`, `/auth/google*`, and
   `/auth/passkeys/authenticate/complete` in addition to the routes already listed in README. A `429`
   always carries a `Retry-After` header and `retry_after_seconds` body field derived from the
-  counter's TTL (`cache.Client.TTL`, `apierror.TooManyRequests`) — see README §Rate limiting.
+  counter's TTL (`cache.Client.TTL`, `problem.TooManyRequests`) — see README §Rate limiting.
 
 ---
 
@@ -215,7 +214,7 @@ Before touching: identify risks + side effects, verify backward compatibility wi
 - [ ] `go test ./...` passes
 - [ ] No duplication introduced (searched before creating)
 - [ ] All constants named (no magic strings)
-- [ ] All errors returned via `apierror.*` + `problem.Send(c)`
+- [ ] All errors returned via `problem.*` + `problem.Send(c)`
 - [ ] `validate.Struct(req)` called in every handler that parses a body
 - [ ] `../README.md` updated if routes or config vars changed
 - [ ] Cross-project impact reviewed (ui ↔ cdk ↔ ctech-dfe)

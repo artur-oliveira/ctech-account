@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/company"
 	"gopkg.aoctech.app/account/api/internal/domain/company/registry"
 	"gopkg.aoctech.app/account/api/internal/domain/organization"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // CompanyHandler exposes the companies inside an organization.
@@ -113,10 +113,10 @@ func (h *CompanyHandler) register(c fiber.Ctx) error {
 	// own if this ever regresses.
 	kind, err := h.orgs.KindOf(c.Context(), middleware.GetOrgID(c))
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if kind == organization.KindPersonal {
-		return apierror.Conflict("A space holds no companies. Create an organization to register one.", c.Path()).Send(c)
+		return problem.Conflict("A space holds no companies. Create an organization to register one.", c.Path()).Send(c)
 	}
 	created, err := h.svc.Register(c.Context(), middleware.GetOrgID(c), middleware.GetUserID(c),
 		h.callerName(c), req.TaxID, req.LegalName, req.TradeName)
@@ -189,7 +189,7 @@ func (h *CompanyHandler) revokeActor(c fiber.Ctx) error {
 func (h *CompanyHandler) lookupTaxID(c fiber.Ctx) error {
 	canonical, kind, ok := company.NormalizeTaxID(c.Query("tax_id"))
 	if !ok {
-		return apierror.ValidationFailed("That is not a valid CNPJ or CPF.", c.Path()).Send(c)
+		return problem.ValidationFailed("That is not a valid CNPJ or CPF.", c.Path()).Send(c)
 	}
 	// No lookup for a CPF, deliberately: a person's name is not ours to fetch
 	// from a public register.
@@ -226,18 +226,18 @@ func (h *CompanyHandler) nameOf(c fiber.Ctx, userID string) string {
 func companyProblem(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, company.ErrInvalidTaxID):
-		return apierror.ValidationFailed("That is not a valid CNPJ or CPF.", c.Path()).Send(c)
+		return problem.ValidationFailed("That is not a valid CNPJ or CPF.", c.Path()).Send(c)
 	case errors.Is(err, company.ErrInvalidName):
-		return apierror.ValidationFailed("The legal name is required and must be at most 200 characters.", c.Path()).Send(c)
+		return problem.ValidationFailed("The legal name is required and must be at most 200 characters.", c.Path()).Send(c)
 	case errors.Is(err, company.ErrTaxIDTaken):
 		// A conflict, not a validation failure: the request was well formed and
 		// the state refused it.
-		return apierror.Conflict("This organization already has a company with that CNPJ or CPF.", c.Path()).Send(c)
+		return problem.Conflict("This organization already has a company with that CNPJ or CPF.", c.Path()).Send(c)
 	case errors.Is(err, company.ErrNotFound):
 		// The same answer the organization routes give, for the same reason:
 		// confirming that a company id is real is itself a disclosure.
-		return apierror.Forbidden("You do not have access to this organization.", c.Path()).Send(c)
+		return problem.Forbidden("You do not have access to this organization.", c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }

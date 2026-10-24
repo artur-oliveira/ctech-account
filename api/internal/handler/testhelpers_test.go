@@ -25,7 +25,6 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -44,6 +43,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/handler"
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	scopesPkg "gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/account/api/internal/storage"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
@@ -216,13 +216,13 @@ func newTestAppWithTOTP(t *testing.T, noop totpFullService) *testApp {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
 			if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
-				return apierror.NewFromFiber(fiberErr, c.Path()).Send(c)
+				return problem.NewFromFiber(fiberErr, c.Path()).Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	app.Use(recover.New())

@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 )
 
 // KYCAdminHandler serves the human-review workspace. Route registration must
@@ -35,11 +35,11 @@ func (h *KYCAdminHandler) Register(r fiber.Router) {
 func (h *KYCAdminHandler) list(c fiber.Ctx) error {
 	queue := c.Query("status", kyc.ReviewQueuePending)
 	if queue != kyc.ReviewQueuePending && queue != kyc.ReviewQueueCompleted {
-		return apierror.ValidationFailed("status: must be pending or completed.", c.Path()).Send(c)
+		return problem.ValidationFailed("status: must be pending or completed.", c.Path()).Send(c)
 	}
 	users, err := h.kyc.ListKYCReviews(c.Context(), queue)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	reviews := make([]fiber.Map, 0, len(users))
 	for _, u := range users {
@@ -54,12 +54,12 @@ func (h *KYCAdminHandler) get(c fiber.Ctx) error {
 		return h.problem(c, err)
 	}
 	if u.KYCLevel != kyc.LevelEnhanced {
-		return apierror.NotFound("KYC review", c.Path()).Send(c)
+		return problem.NotFound("KYC review", c.Path()).Send(c)
 	}
 
 	events, _, err := h.audit.ListByUser(c.Context(), u.ID(), "", 100)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	history := make([]fiber.Map, 0)
 	for _, e := range events {
@@ -88,7 +88,7 @@ func (h *KYCAdminHandler) documents(c fiber.Ctx) error {
 		return h.problem(c, err)
 	}
 	if u.KYCLevel != kyc.LevelEnhanced || (u.KYCStatus != kyc.StatusPending && u.KYCStatus != kyc.StatusVerified) {
-		return apierror.NotFound("KYC documents", c.Path()).Send(c)
+		return problem.NotFound("KYC documents", c.Path()).Send(c)
 	}
 	actor, err := h.currentReviewer(c)
 	if err != nil {
@@ -99,13 +99,13 @@ func (h *KYCAdminHandler) documents(c fiber.Ctx) error {
 		return h.problem(c, err)
 	}
 	if h.audit == nil {
-		return apierror.ServerError(c.Path()).Send(c)
+		return problem.ServerError(c.Path()).Send(c)
 	}
 	if err := h.audit.RecordStrict(c.Context(), audit.Entry{
 		UserID: u.ID(), Type: audit.EventKYCDocumentsViewed, IP: clientIP(c),
 		UserAgent: c.Get("User-Agent"), Metadata: reviewerMetadata(actor, ""),
 	}); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{"documents": docs, "expires_in": int(kyc.PresignTTL.Seconds())})
 }
@@ -123,7 +123,7 @@ func (h *KYCAdminHandler) decision(c fiber.Ctx) error {
 	}
 	req.Details = strings.TrimSpace(req.Details)
 	if req.Decision == kyc.DecisionReject && (req.ReasonCode == "" || (req.ReasonCode == kyc.RejectionOther && req.Details == "")) {
-		return apierror.ValidationFailed("reason_code: required; details are required for other.", c.Path()).Send(c)
+		return problem.ValidationFailed("reason_code: required; details are required for other.", c.Path()).Send(c)
 	}
 	actor, err := h.currentReviewer(c)
 	if err != nil {
@@ -148,9 +148,9 @@ func (h *KYCAdminHandler) currentReviewer(c fiber.Ctx) (*user.User, error) {
 	u, err := h.users.GetByID(c.Context(), middleware.GetUserID(c))
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return nil, apierror.Forbidden("Manager role required.", c.Path()).Send(c)
+			return nil, problem.Forbidden("Manager role required.", c.Path()).Send(c)
 		}
-		return nil, apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return nil, problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return u, nil
 }

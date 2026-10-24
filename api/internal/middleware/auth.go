@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/crypto"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/jwtverify"
 )
@@ -24,7 +24,7 @@ func RequireAuth(jwtSvc *crypto.JWTService) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		id, err := extractAndVerify(c, jwtSvc)
 		if err != nil {
-			return err // already an *apierror.Problem
+			return err // already an *problem.Problem
 		}
 		setAuthLocals(c, id)
 		return c.Next()
@@ -67,17 +67,17 @@ func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, er
 
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return id, apierror.Unauthorized("Missing Authorization header.", c.Path())
+		return id, problem.Unauthorized("Missing Authorization header.", c.Path())
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return id, apierror.InvalidToken("Authorization header must be 'Bearer <token>'.", c.Path())
+		return id, problem.InvalidToken("Authorization header must be 'Bearer <token>'.", c.Path())
 	}
 
 	claims, verifyErr := jwtSvc.Verify(parts[1])
 	if verifyErr != nil {
-		return id, apierror.InvalidToken("The access token is invalid or has expired.", c.Path())
+		return id, problem.InvalidToken("The access token is invalid or has expired.", c.Path())
 	}
 	sub, _ := claims["sub"].(string)
 	iat, _ := claims["iat"].(float64)
@@ -86,9 +86,9 @@ func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, er
 	failClosed := authguard.PolicyForMethod(c.Method()) == authguard.PolicyWriteClosed
 	if err := jwtSvc.CheckRevoked(c.Context(), sub, int64(iat), failClosed); err != nil {
 		if errors.Is(err, jwtverify.ErrRevocationUnavailable) {
-			return id, apierror.ServiceUnavailable("Could not validate the session. Please try again.", c.Path()).WithCause(err)
+			return id, problem.ServiceUnavailable("Could not validate the session. Please try again.", c.Path()).WithCause(err)
 		}
-		return id, apierror.InvalidToken("The access token is invalid or has expired.", c.Path())
+		return id, problem.InvalidToken("The access token is invalid or has expired.", c.Path())
 	}
 
 	id.userID, _ = claims["sub"].(string)
@@ -100,7 +100,7 @@ func extractAndVerify(c fiber.Ctx, jwtSvc *crypto.JWTService) (tokenIdentity, er
 	}
 
 	if id.userID == "" {
-		return id, apierror.InvalidToken("Access token is missing required claims.", c.Path())
+		return id, problem.InvalidToken("Access token is missing required claims.", c.Path())
 	}
 
 	return id, nil
@@ -153,7 +153,7 @@ func RequireScope(scope string) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if !HasScope(c, scope) {
 			c.Set(fiber.HeaderWWWAuthenticate, `Bearer error="insufficient_scope", scope="`+scope+`"`)
-			return apierror.InsufficientScope(scope, c.Path()).Send(c)
+			return problem.InsufficientScope(scope, c.Path()).Send(c)
 		}
 		return c.Next()
 	}

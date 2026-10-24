@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -19,6 +18,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/observability"
 )
 
@@ -111,7 +111,7 @@ func (h *AuthHandler) register(c fiber.Ctx) error {
 			}
 			return registrationAccepted(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	recordAudit(c, h.audit, u.ID(), audit.EventTermsAccepted, map[string]string{
@@ -152,10 +152,10 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		// Email verification is a hard gate: no session, no tokens, no access to
 		// any downstream service until the address is confirmed.
 		if errors.Is(err, user.ErrEmailNotVerified) {
-			return apierror.EmailNotVerified(c.Path()).Send(c)
+			return problem.EmailNotVerified(c.Path()).Send(c)
 		}
 		if errors.Is(err, user.ErrPendingDeletion) {
-			return apierror.AccountPendingDeletion(c.Path()).Send(c)
+			return problem.AccountPendingDeletion(c.Path()).Send(c)
 		}
 		if known, getErr := h.userSvc.GetByEmail(c.Context(), strings.ToLower(req.Email)); getErr == nil {
 			recordAudit(c, h.audit, known.ID(), audit.EventLoginFailed, nil)
@@ -167,7 +167,7 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 		}
 		// A disabled account is reported as invalid credentials on purpose: a
 		// distinct error would confirm that the account exists.
-		return apierror.InvalidCredentials(c.Path()).Send(c)
+		return problem.InvalidCredentials(c.Path()).Send(c)
 	}
 
 	// Passkey is never a second factor here: a passkey-holding account signs in
@@ -177,7 +177,7 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 	if totpSecret, totpErr := h.totpSvc.Get(c.Context(), u.ID()); totpErr == nil && totpSecret.IsSetup() {
 		methods = append(methods, "totp")
 	} else if totpErr != nil && !errors.Is(totpErr, totp.ErrNotFound) {
-		return apierror.ServerError(c.Path()).WithCause(totpErr).Send(c)
+		return problem.ServerError(c.Path()).WithCause(totpErr).Send(c)
 	}
 
 	if len(methods) > 0 {
@@ -192,12 +192,12 @@ func (h *AuthHandler) login(c fiber.Ctx) error {
 // Shared by AuthHandler (password login) and PasskeyHandler (passkey login with TOTP required).
 func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, ip, userAgent, primaryAMR string, methods []string) error {
 	if cacheClient == nil || !cacheClient.Enabled() {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
 	}
 
 	rawToken, hashHex, err := crypto.GenerateMFAToken()
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	payload := mfaTokenPayload{
@@ -209,7 +209,7 @@ func issueMFAToken(c fiber.Ctx, cacheClient *cache.Client, userID, deviceName, i
 	}
 
 	if err := cacheClient.Set(c.Context(), "mfa_token:"+hashHex, payload, mfaTokenTTL); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -233,7 +233,7 @@ func (h *AuthHandler) issueSession(c fiber.Ctx, u *user.User) error {
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRPassword},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"session_id": sess.ID()}
@@ -266,7 +266,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	}
 
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("MFA cache is unavailable")).Send(c)
 	}
 
 	hashHex := crypto.HashToken(req.MFAToken)
@@ -279,14 +279,14 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	// token is only actually consumed via GetDel once the code is confirmed
 	// valid, below.
 	if err := h.cache.Get(c.Context(), tokenKey, &payload); err != nil {
-		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
 
 	// Since the token now survives a wrong guess, cap retries so it can't be
 	// brute-forced for its remaining TTL.
 	attempts, attemptsErr := h.cache.Incr(c.Context(), attemptsKey, mfaTokenTTL)
 	if attemptsErr != nil {
-		return apierror.ServiceUnavailable("MFA verification is temporarily unavailable.", c.Path()).WithCause(attemptsErr).Send(c)
+		return problem.ServiceUnavailable("MFA verification is temporarily unavailable.", c.Path()).WithCause(attemptsErr).Send(c)
 	}
 	if attempts > mfaMaxAttempts {
 		if err := h.cache.Delete(c.Context(), tokenKey); err != nil {
@@ -296,13 +296,13 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 			observability.Error(c.Context(), "mfa: failed to delete exhausted attempt counter", err)
 		}
 		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "totp", "reason": "max_attempts"})
-		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
 
 	valid, err := h.totpSvc.Validate(c.Context(), payload.UserID, req.Code)
 	if err != nil || !valid {
 		recordAudit(c, h.audit, payload.UserID, audit.EventMFAChallengeFailed, map[string]string{"method": "totp"})
-		return apierror.Unauthorized("Invalid MFA code.", c.Path()).Send(c)
+		return problem.Unauthorized("Invalid MFA code.", c.Path()).Send(c)
 	}
 
 	// Code confirmed valid — atomically claim the token (single use, replay-safe)
@@ -310,7 +310,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	// and create a second session; the loser sees "invalid-token".
 	var claimed mfaTokenPayload
 	if err := h.cache.GetDel(c.Context(), tokenKey, &claimed); err != nil {
-		return apierror.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("MFA token is invalid or has expired.", c.Path()).Send(c)
 	}
 	if err := h.cache.Delete(c.Context(), attemptsKey); err != nil {
 		observability.Warn(c.Context(), "mfa: failed to clear attempt counter after success", err)
@@ -318,12 +318,12 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 
 	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	// The mfa_token outlives the password check by up to 5 minutes; a deletion
 	// confirmed in that window must still stop the session.
 	if u.DeletionState != "" {
-		return apierror.AccountPendingDeletion(c.Path()).Send(c)
+		return problem.AccountPendingDeletion(c.Path()).Send(c)
 	}
 
 	loc := geo.Lookup(payload.IP)
@@ -336,7 +336,7 @@ func (h *AuthHandler) mfaChallenge(c fiber.Ctx) error {
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, mfaSessionAMR(payload),
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"method": "totp", "session_id": sess.ID()}
@@ -467,16 +467,16 @@ func (h *AuthHandler) verifyEmail(c fiber.Ctx) error {
 		return err
 	}
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("email verification cache is unavailable")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("email verification cache is unavailable")).Send(c)
 	}
 	hashHex := crypto.HashToken(r.Token)
 	var userID string
 	// GetDel consumes the token atomically so a link cannot be replayed.
 	if err := h.cache.GetDel(c.Context(), "ev:"+hashHex, &userID); err != nil {
-		return apierror.InvalidToken("Verification link is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("Verification link is invalid or has expired.", c.Path()).Send(c)
 	}
 	if err := h.userSvc.MarkEmailVerified(c.Context(), userID); err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	recordAudit(c, h.audit, userID, audit.EventEmailVerified, nil)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"verified": true})
@@ -545,24 +545,24 @@ func (h *AuthHandler) resetPassword(c fiber.Ctx) error {
 		return err
 	}
 	if h.cache == nil {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("password reset cache is unavailable")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("password reset cache is unavailable")).Send(c)
 	}
 	hashHex := crypto.HashToken(r.Token)
 	var userID string
 	// GetDel consumes the token atomically so a reset link cannot be replayed.
 	if err := h.cache.GetDel(c.Context(), "pr:"+hashHex, &userID); err != nil {
-		return apierror.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
 	}
 
 	hash, err := crypto.HashPassword(r.NewPassword)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if _, err := h.userSvc.GetByID(c.Context(), userID); err != nil {
-		return apierror.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
+		return problem.InvalidToken("Reset link is invalid or has expired.", c.Path()).Send(c)
 	}
 	if updErr := h.userSvc.ForceSetPassword(c.Context(), userID, hash); updErr != nil {
-		return apierror.ServerError(c.Path()).WithCause(updErr).Send(c)
+		return problem.ServerError(c.Path()).WithCause(updErr).Send(c)
 	}
 	// Revoke every existing session: a password reset must lock out anyone
 	// (including an attacker) holding a refresh token issued before the reset.

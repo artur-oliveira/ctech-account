@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	oauthclient "gopkg.aoctech.app/account/api/internal/domain/oauth/client"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -57,11 +57,11 @@ func (h *ScopeRegistryHandler) Register(v1 fiber.Router, auth ...fiber.Handler) 
 func (h *ScopeRegistryHandler) authorize(c fiber.Ctx, id string) (string, error) {
 	clientID := middleware.GetClientID(c)
 	if clientID == "" || middleware.GetUserID(c) != clientID {
-		return "", apierror.Forbidden("Publisher token subject and authorized party must match.", c.Path()).Send(c)
+		return "", problem.Forbidden("Publisher token subject and authorized party must match.", c.Path()).Send(c)
 	}
 	client, err := h.clients.GetByID(c.Context(), clientID)
 	if err != nil || client.ManagedResourceID != id {
-		return "", apierror.Forbidden("Publisher is not bound to this resource server.", c.Path()).WithCause(err).Send(c)
+		return "", problem.Forbidden("Publisher is not bound to this resource server.", c.Path()).WithCause(err).Send(c)
 	}
 	return clientID, nil
 }
@@ -74,9 +74,9 @@ func (h *ScopeRegistryHandler) get(c fiber.Ctx) error {
 	resource, err := h.registry.Get(c.Context(), id)
 	if err != nil {
 		if errors.Is(err, scopes.ErrResourceNotFound) {
-			return apierror.NotFound("Resource server", c.Path()).Send(c)
+			return problem.NotFound("Resource server", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	c.Set(headerETag, resourceETag(resource))
 	return c.JSON(resource)
@@ -90,48 +90,48 @@ func (h *ScopeRegistryHandler) put(c fiber.Ctx) error {
 	}
 	expected, err := parseETag(c.Get(headerIfMatch))
 	if err != nil {
-		return apierror.PreconditionFailed("A valid If-Match resource revision is required.", c.Path()).Send(c)
+		return problem.PreconditionFailed("A valid If-Match resource revision is required.", c.Path()).Send(c)
 	}
 	current, err := h.registry.Get(c.Context(), id)
 	if err != nil {
 		if errors.Is(err, scopes.ErrResourceNotFound) {
-			return apierror.NotFound("Resource server", c.Path()).Send(c)
+			return problem.NotFound("Resource server", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if c.Get(headerIfMatch) != resourceETag(current) {
-		return apierror.PreconditionFailed("If-Match does not identify the current resource manifest.", c.Path()).Send(c)
+		return problem.PreconditionFailed("If-Match does not identify the current resource manifest.", c.Path()).Send(c)
 	}
 	var manifest scopes.Manifest
 	if err := parseBody(c, &manifest); err != nil {
 		return err
 	}
 	if manifest.ResourceServerID != id {
-		return apierror.ValidationFailed("resource_server_id must match the route resource.", c.Path()).Send(c)
+		return problem.ValidationFailed("resource_server_id must match the route resource.", c.Path()).Send(c)
 	}
 	sourceRepo, sourceRevision := c.Get(headerSourceRepo), c.Get(headerSourceRevision)
 	if len(sourceRepo) > maxSourceMetadataSize || len(sourceRevision) > maxSourceMetadataSize {
-		return apierror.ValidationFailed("Source metadata is too long.", c.Path()).Send(c)
+		return problem.ValidationFailed("Source metadata is too long.", c.Path()).Send(c)
 	}
 	resource, changed, publishErr := h.registry.Publish(c.Context(), actor, manifest, expected, sourceRepo, sourceRevision)
 	if publishErr != nil {
 		h.record(c, actor, audit.EventScopeManifestRejected, id, publishErr.Error())
 		switch {
 		case errors.Is(publishErr, scopes.ErrRevisionConflict):
-			return apierror.PreconditionFailed("The resource manifest changed; fetch its current ETag and retry.", c.Path()).Send(c)
+			return problem.PreconditionFailed("The resource manifest changed; fetch its current ETag and retry.", c.Path()).Send(c)
 		case errors.Is(publishErr, scopes.ErrScopeRemoval):
-			return apierror.Conflict(publishErr.Error(), c.Path()).Send(c)
+			return problem.Conflict(publishErr.Error(), c.Path()).Send(c)
 		case scopes.IsRegistryValidationError(publishErr):
-			return apierror.ValidationFailed(publishErr.Error(), c.Path()).Send(c)
+			return problem.ValidationFailed(publishErr.Error(), c.Path()).Send(c)
 		case errors.Is(publishErr, scopes.ErrResourceNotFound):
-			return apierror.NotFound("Resource server", c.Path()).Send(c)
+			return problem.NotFound("Resource server", c.Path()).Send(c)
 		default:
-			return apierror.ServerError(c.Path()).WithCause(publishErr).Send(c)
+			return problem.ServerError(c.Path()).WithCause(publishErr).Send(c)
 		}
 	}
 	_, clientChanged, reconcileErr := h.reconcile.EnsureFirstPartyPublicClientScopes(c.Context(), id, publicActiveScopes(manifest.Scopes))
 	if reconcileErr != nil {
-		return apierror.ServerError(c.Path()).WithCause(reconcileErr).Send(c)
+		return problem.ServerError(c.Path()).WithCause(reconcileErr).Send(c)
 	}
 	c.Set(headerETag, resourceETag(resource))
 	h.record(c, actor, audit.EventScopeManifestPublished, id, resource.ManifestHash)

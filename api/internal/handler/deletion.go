@@ -6,11 +6,11 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/audit"
 	"gopkg.aoctech.app/account/api/internal/domain/deletion"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/erasure"
@@ -67,12 +67,12 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 		scope, phrase = deletion.ScopeService, deletion.ServicePhrase(req.Service)
 	}
 	if req.ConfirmationPhrase != phrase {
-		return apierror.InvalidRequest(`confirmation_phrase must be exactly "`+phrase+`".`, c.Path())
+		return problem.InvalidRequest(`confirmation_phrase must be exactly "`+phrase+`".`, c.Path())
 	}
 	userID := middleware.GetUserID(c)
 	if err := h.verifyIdentity(c, userID, req.Password); err != nil {
 		// Sent here, not returned: the rate limiters read the response status.
-		if p, ok := errors.AsType[*apierror.Problem](err); ok {
+		if p, ok := errors.AsType[*problem.Problem](err); ok {
 			return p.Send(c)
 		}
 		return err
@@ -85,20 +85,20 @@ func (h *DeletionHandler) request(c fiber.Ctx) error {
 		r, err = h.svc.Request(c.Context(), userID)
 	}
 	if errors.Is(err, deletion.ErrUnknownService) {
-		return apierror.UnknownService("This product cannot be left on its own.", c.Path())
+		return problem.UnknownService("This product cannot be left on its own.", c.Path())
 	}
 	var blocked *deletion.BlockedError
 	if errors.As(err, &blocked) {
-		return apierror.DeletionBlocked(blocked.Blockers, c.Path()).Send(c)
+		return problem.DeletionBlocked(blocked.Blockers, c.Path()).Send(c)
 	}
 	if errors.Is(err, deletion.ErrOpenRequest) {
-		return apierror.Conflict("A deletion request is already in progress for this account.", c.Path())
+		return problem.Conflict("A deletion request is already in progress for this account.", c.Path())
 	}
 	if errors.Is(err, deletion.ErrEligibilityUnavailable) {
-		return apierror.ServiceUnavailable("Could not check every CTech product right now. Try again in a few minutes.", c.Path()).WithCause(err)
+		return problem.ServiceUnavailable("Could not check every CTech product right now. Try again in a few minutes.", c.Path()).WithCause(err)
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, userID, audit.EventDeletionRequested, map[string]string{"request_id": r.ID, "scope": r.Scope, "service": r.Service})
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"request_id": r.ID, "state": r.State, "confirm_by": r.ConfirmBy, "scope": r.Scope, "service": r.Service})
@@ -111,10 +111,10 @@ func (h *DeletionHandler) verifyIdentity(c fiber.Ctx, userID, password string) e
 func (h *DeletionHandler) status(c fiber.Ctx) error {
 	r, err := h.svc.Status(c.Context(), middleware.GetUserID(c))
 	if errors.Is(err, deletion.ErrNotFound) {
-		return apierror.NotFound("deletion request", c.Path())
+		return problem.NotFound("deletion request", c.Path())
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return c.JSON(fiber.Map{
 		"request_id": r.ID, "state": r.State, "requested_at": r.RequestedAt,
@@ -127,7 +127,7 @@ func (h *DeletionHandler) status(c fiber.Ctx) error {
 func (h *DeletionHandler) services(c fiber.Ctx) error {
 	opts, err := h.svc.Services(c.Context(), middleware.GetUserID(c))
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return c.JSON(opts)
 }
@@ -139,10 +139,10 @@ func (h *DeletionHandler) confirm(c fiber.Ctx) error {
 	}
 	r, err := h.svc.Confirm(c.Context(), req.RequestID, req.Token)
 	if errors.Is(err, deletion.ErrInvalidToken) {
-		return apierror.InvalidToken("This confirmation link is invalid or has expired.", c.Path())
+		return problem.InvalidToken("This confirmation link is invalid or has expired.", c.Path())
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, r.UserID, audit.EventDeletionConfirmed, map[string]string{"request_id": r.ID})
 	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State, "grace_until": r.GraceUntil, "scope": r.Scope, "service": r.Service})
@@ -156,11 +156,11 @@ func (h *DeletionHandler) cancel(c fiber.Ctx) error {
 	r, err := h.svc.Cancel(c.Context(), req.RequestID, req.Token)
 	switch {
 	case errors.Is(err, deletion.ErrInvalidToken):
-		return apierror.InvalidToken("This cancel link is invalid or has expired.", c.Path())
+		return problem.InvalidToken("This cancel link is invalid or has expired.", c.Path())
 	case errors.Is(err, deletion.ErrNotCancellable):
-		return apierror.Conflict("This deletion can no longer be cancelled.", c.Path())
+		return problem.Conflict("This deletion can no longer be cancelled.", c.Path())
 	case err != nil:
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	recordAudit(c, h.audit, r.UserID, audit.EventDeletionCancelled, map[string]string{"request_id": r.ID})
 	return c.JSON(fiber.Map{"request_id": r.ID, "state": r.State, "scope": r.Scope, "service": r.Service})
@@ -180,20 +180,20 @@ func (h *DeletionHandler) RegisterInternal(v1 fiber.Router, requireAuth fiber.Ha
 func (h *DeletionHandler) ack(c fiber.Ctx, serviceForClient func(string) (string, bool)) error {
 	service, ok := serviceForClient(middleware.GetClientID(c))
 	if !ok {
-		return apierror.Forbidden("This client is not an erasure participant.", c.Path())
+		return problem.Forbidden("This client is not an erasure participant.", c.Path())
 	}
 	var ack erasure.Ack
 	if err := c.Bind().JSON(&ack); err != nil || ack.RequestID == "" {
-		return apierror.InvalidRequest("Body must be an erasure ack with request_id.", c.Path())
+		return problem.InvalidRequest("Body must be an erasure ack with request_id.", c.Path())
 	}
 	if ack.Service != "" && ack.Service != service {
-		return apierror.Forbidden("A participant may only ack for itself.", c.Path())
+		return problem.Forbidden("A participant may only ack for itself.", c.Path())
 	}
 	switch err := h.svc.Ack(c.Context(), service, ack); {
 	case errors.Is(err, deletion.ErrNotFound):
-		return apierror.NotFound("deletion request", c.Path())
+		return problem.NotFound("deletion request", c.Path())
 	case err != nil:
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -201,15 +201,15 @@ func (h *DeletionHandler) ack(c fiber.Ctx, serviceForClient func(string) (string
 func (h *DeletionHandler) subject(c fiber.Ctx, serviceForClient func(string) (string, bool), allowed []string) error {
 	service, ok := serviceForClient(middleware.GetClientID(c))
 	if !ok || !slices.Contains(allowed, service) {
-		return apierror.Forbidden("This participant may not read deletion subjects.", c.Path())
+		return problem.Forbidden("This participant may not read deletion subjects.", c.Path())
 	}
 	requestID := c.Params("request_id")
 	cpf, err := h.svc.Subject(c.Context(), requestID)
 	if errors.Is(err, deletion.ErrNotFound) {
-		return apierror.NotFound("deletion request", c.Path())
+		return problem.NotFound("deletion request", c.Path())
 	}
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err)
+		return problem.ServerError(c.Path()).WithCause(err)
 	}
 	recordAuditAnon(c, h.audit, audit.EventDeletionSubjectRead, map[string]string{"request_id": requestID, "service": service})
 	return c.JSON(fiber.Map{"cpf": cpf})
@@ -234,15 +234,15 @@ type redriveBody struct {
 func adminError(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, deletion.ErrNotFound):
-		return apierror.NotFound("deletion request", c.Path())
+		return problem.NotFound("deletion request", c.Path())
 	case errors.Is(err, deletion.ErrNotCancellable):
-		return apierror.Conflict("This deletion can no longer be cancelled.", c.Path())
+		return problem.Conflict("This deletion can no longer be cancelled.", c.Path())
 	case errors.Is(err, deletion.ErrHoldNeedsSecondAdmin):
-		return apierror.Conflict("A different admin must lift this hold.", c.Path())
+		return problem.Conflict("A different admin must lift this hold.", c.Path())
 	case errors.Is(err, deletion.ErrStateChanged):
-		return apierror.Conflict("The request changed concurrently; retry.", c.Path())
+		return problem.Conflict("The request changed concurrently; retry.", c.Path())
 	}
-	return apierror.ServerError(c.Path()).WithCause(err)
+	return problem.ServerError(c.Path()).WithCause(err)
 }
 
 func (h *DeletionHandler) adminLegalHold(c fiber.Ctx) error {

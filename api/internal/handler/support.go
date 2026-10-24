@@ -5,11 +5,11 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/support"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/turnstile"
 	"gopkg.aoctech.app/api-commons/observability"
 )
@@ -51,12 +51,12 @@ func (h *SupportHandler) create(c fiber.Ctx) error {
 	}
 	if h.verifier != nil {
 		if err := h.verifier.Verify(c.Context(), req.TurnstileToken, clientIP(c), supportTicketTurnstileAction); err != nil {
-			return apierror.ValidationFailed("Turnstile verification failed.", c.Path()).WithCause(err).Send(c)
+			return problem.ValidationFailed("Turnstile verification failed.", c.Path()).WithCause(err).Send(c)
 		}
 	}
 	id := middleware.GetUserID(c)
 	if id == "" && req.Email == "" {
-		return apierror.ValidationFailed("email is required for anonymous submissions.", c.Path()).Send(c)
+		return problem.ValidationFailed("email is required for anonymous submissions.", c.Path()).Send(c)
 	}
 	t, err := h.svc.CreateTicket(c.Context(), support.CreateTicketInput{UserID: id, AnonymousEmail: req.Email, SubjectCategory: req.SubjectCategory, SubjectOther: req.SubjectOther, Priority: req.Priority, Body: req.Body})
 	if err != nil {
@@ -128,7 +128,7 @@ func (h *SupportHandler) nps(c fiber.Ctx) error {
 func (h *SupportHandler) listMine(c fiber.Ctx) error {
 	t, n, e := h.svc.ListMine(c.Context(), middleware.GetUserID(c), c.Query("cursor"), 20)
 	if e != nil {
-		return apierror.ServerError(c.Path()).WithCause(e).Send(c)
+		return problem.ServerError(c.Path()).WithCause(e).Send(c)
 	}
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
@@ -175,12 +175,12 @@ func resolveTicketEmail(ctx context.Context, users *user.Service, t *support.Tic
 func supportProblem(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, support.ErrNotFound):
-		return apierror.NotFound("Ticket", c.Path()).Send(c)
+		return problem.NotFound("Ticket", c.Path()).Send(c)
 	case errors.Is(err, support.ErrForbidden):
-		return apierror.Forbidden("Not authorized for this ticket.", c.Path()).Send(c)
+		return problem.Forbidden("Not authorized for this ticket.", c.Path()).Send(c)
 	case errors.Is(err, support.ErrInvalidInput), errors.Is(err, support.ErrInvalidNPS), errors.Is(err, support.ErrTicketClosed):
-		return apierror.ValidationFailed(err.Error(), c.Path()).Send(c)
+		return problem.ValidationFailed(err.Error(), c.Path()).Send(c)
 	default:
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 }

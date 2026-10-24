@@ -2,11 +2,11 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/support"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/observability"
 	"time"
 )
@@ -34,7 +34,7 @@ func (h *SupportAdminHandler) list(c fiber.Ctx) error {
 	status := c.Query("status", support.StatusOpen)
 	t, n, e := h.svc.ListByStatus(c.Context(), status, c.Query("cursor"), 50)
 	if e != nil {
-		return apierror.ServerError(c.Path()).WithCause(e).Send(c)
+		return problem.ServerError(c.Path()).WithCause(e).Send(c)
 	}
 	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
 }
@@ -80,7 +80,7 @@ func (h *SupportAdminHandler) escalation(c fiber.Ctx) error {
 func (h *SupportAdminHandler) metrics(c fiber.Ctx) error {
 	buckets, err := h.svc.Metrics(c.Context(), time.Now())
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	return c.JSON(fiber.Map{"buckets": buckets})
 }

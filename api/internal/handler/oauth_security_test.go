@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -30,6 +29,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/keystore"
 	"gopkg.aoctech.app/account/api/internal/legal"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -176,10 +176,10 @@ func newOAuthTestAppWithRelinker(t *testing.T, relinker handler.Relinker) *oauth
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	consentSvc := consentDomain.NewService(newMemConsentRepo())
@@ -715,10 +715,10 @@ func TestRefresh_SessionExpiredRace_DoesNotBurnRateLimit(t *testing.T) {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	v1 := app.Group("/v1.0")
@@ -811,10 +811,10 @@ func TestRefresh_MissingToken_DoesNotBurnRateLimit(t *testing.T) {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			if problem, ok := errors.AsType[*apierror.Problem](err); ok {
+			if problem, ok := errors.AsType[*problem.Problem](err); ok {
 				return problem.Send(c)
 			}
-			return apierror.ServerError(c.Path()).Send(c)
+			return problem.ServerError(c.Path()).Send(c)
 		},
 	})
 	v1 := app.Group("/v1.0")

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/cache"
 	"gopkg.aoctech.app/account/api/internal/config"
 	"gopkg.aoctech.app/account/api/internal/crypto"
@@ -22,6 +21,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/geo"
 	"gopkg.aoctech.app/account/api/internal/legal"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/api-commons/observability"
 )
 
@@ -49,10 +49,10 @@ func (h *SocialHandler) Register(v1 fiber.Router) {
 
 func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 	if h.cfg.GoogleClientID == "" {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("Google client ID is not configured")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("Google client ID is not configured")).Send(c)
 	}
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
+		return problem.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
 	}
 
 	continueURL := c.Query("continue", h.cfg.AppURL)
@@ -62,10 +62,10 @@ func (h *SocialHandler) googleRedirect(c fiber.Ctx) error {
 
 	rawState, stateHash, err := crypto.GenerateMFAToken()
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 	if err := h.cache.Set(c.Context(), "gs:"+stateHash, continueURL, googleStateTTL); err != nil {
-		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
+		return problem.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(err).Send(c)
 	}
 
 	redirectURI := h.cfg.BaseURL + "/v1.0/auth/google/callback"
@@ -89,17 +89,17 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 	code := c.Query("code")
 	rawState := c.Query("state")
 	if code == "" || rawState == "" {
-		return apierror.InvalidRequest("Missing code or state.", c.Path()).Send(c)
+		return problem.InvalidRequest("Missing code or state.", c.Path()).Send(c)
 	}
 
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
+		return problem.ServiceUnavailable("Google login is temporarily unavailable.", c.Path()).WithCause(errors.New("Google OAuth state cache is unavailable")).Send(c)
 	}
 
 	stateHash := crypto.HashToken(rawState)
 	var continueURL string
 	if err := h.cache.Get(c.Context(), "gs:"+stateHash, &continueURL); err != nil {
-		return apierror.InvalidToken("OAuth state is invalid or has expired.", c.Path()).WithCause(err).Send(c)
+		return problem.InvalidToken("OAuth state is invalid or has expired.", c.Path()).WithCause(err).Send(c)
 	}
 	if err := h.cache.Delete(c.Context(), "gs:"+stateHash); err != nil {
 		observability.Warn(c.Context(), "google login: failed to delete consumed OAuth state", err)
@@ -107,7 +107,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 
 	googleProfile, err := h.exchangeGoogleCode(c.Context(), code)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	if !googleProfile.EmailVerified {
@@ -136,7 +136,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 				if errors.Is(lErr, user.ErrGoogleEmailConflict) {
 					return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=google_link_conflict")
 				}
-				return apierror.ServerError(c.Path()).WithCause(lErr).Send(c)
+				return problem.ServerError(c.Path()).WithCause(lErr).Send(c)
 			} else {
 				observability.Warn(c.Context(), "google linking: existing session cookie was invalid", vErr)
 			}
@@ -160,7 +160,7 @@ func (h *SocialHandler) googleCallback(c fiber.Ctx) error {
 		if errors.Is(err, user.ErrGoogleEmailConflict) {
 			return c.Redirect().Status(fiber.StatusFound).To(h.cfg.AppURL + "/login?error=google_account_exists")
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	// A brand-new Google account never saw the register form's checkbox — gate
@@ -190,7 +190,7 @@ func (h *SocialHandler) redirectToAcceptTerms(c fiber.Ctx, userID, continueURL s
 	// A brand-new account has accepted nothing, so both documents are pending.
 	location, err := mintAcceptTermsURL(c, h.cache, h.cfg.AppURL, payload, legal.PendingFor("", ""))
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	return c.Redirect().Status(fiber.StatusFound).To(location)
@@ -213,19 +213,19 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 	}
 
 	if h.cache == nil || !h.cache.Enabled() {
-		return apierror.ServerError(c.Path()).WithCause(errors.New("terms acceptance cache is unavailable")).Send(c)
+		return problem.ServerError(c.Path()).WithCause(errors.New("terms acceptance cache is unavailable")).Send(c)
 	}
 
 	hashHex := crypto.HashToken(req.Token)
 	var payload termsTokenPayload
 	// GetDel consumes the token atomically (single use, replay-safe).
 	if err := h.cache.GetDel(c.Context(), termsTokenCachePrefix+hashHex, &payload); err != nil {
-		return apierror.InvalidToken("Terms acceptance token is invalid or has expired.", c.Path()).WithCause(err).Send(c)
+		return problem.InvalidToken("Terms acceptance token is invalid or has expired.", c.Path()).WithCause(err).Send(c)
 	}
 
 	u, err := h.userSvc.GetByID(c.Context(), payload.UserID)
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	method := acceptMethodGoogle
@@ -252,7 +252,7 @@ func (h *SocialHandler) acceptTerms(c fiber.Ctx) error {
 		sess, rawToken, sErr := h.sessionSvc.Create(c.Context(), u.ID(), payload.DeviceName, payload.IP, payload.UserAgent, []string{session.AMRGoogle},
 			session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 		if sErr != nil {
-			return apierror.ServerError(c.Path()).WithCause(sErr).Send(c)
+			return problem.ServerError(c.Path()).WithCause(sErr).Send(c)
 		}
 
 		meta := map[string]string{"method": acceptMethodGoogle, "session_id": sess.ID()}
@@ -381,7 +381,7 @@ func (h *SocialHandler) issueSessionFromSocial(c fiber.Ctx, u *user.User) error 
 	sess, rawToken, err := h.sessionSvc.Create(c.Context(), u.ID(), deviceName, ip, c.Get("User-Agent"), []string{session.AMRGoogle},
 		session.GeoData{City: loc.City, Region: loc.Region, Country: loc.Country, Latitude: loc.Latitude, Longitude: loc.Longitude})
 	if err != nil {
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	meta := map[string]string{"method": "google", "session_id": sess.ID()}

@@ -4,10 +4,10 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/account/api/internal/apierror"
 	"gopkg.aoctech.app/account/api/internal/domain/kyc"
 	"gopkg.aoctech.app/account/api/internal/domain/user"
 	"gopkg.aoctech.app/account/api/internal/middleware"
+	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/scopes"
 )
 
@@ -25,9 +25,9 @@ func (h *UserInfoHandler) UserInfo(c fiber.Ctx) error {
 	u, err := h.userSvc.GetByID(c.Context(), userID)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return apierror.NotFound("User", c.Path()).Send(c)
+			return problem.NotFound("User", c.Path()).Send(c)
 		}
-		return apierror.ServerError(c.Path()).WithCause(err).Send(c)
+		return problem.ServerError(c.Path()).WithCause(err).Send(c)
 	}
 
 	resp := fiber.Map{
