@@ -8,7 +8,7 @@ import { isAxiosError } from '@/lib/axios'
 import { formatDate } from '@/lib/format'
 import { describeScope } from '@/lib/scope-description'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { QueryError } from '@/components/query-error'
 import { toast } from 'sonner'
@@ -34,7 +34,7 @@ function RevokeConsentButton({ clientId }: { clientId: string }) {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="destructive" size="sm">
+        <Button variant="danger" size="sm">
           {t('connectedApps.revoke')}
         </Button>
       }
@@ -56,7 +56,7 @@ export default function ConnectedAppsPage() {
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-20 animate-pulse bg-muted rounded-lg" />
+          <Skeleton key={i} className="h-20 rounded-lg"/>
         ))}
       </div>
     )

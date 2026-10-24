@@ -4,7 +4,7 @@ import { Suspense, useState, SyntheticEvent } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
@@ -84,7 +84,7 @@ export default function ResetPasswordPage() {
         </div>
         <Card>
           <CardContent className="space-y-4">
-            <Suspense fallback={<div className="h-32 animate-pulse bg-muted rounded" />}>
+            <Suspense fallback={<Skeleton className="h-32 rounded"/>}>
               <ResetPasswordForm />
             </Suspense>
             <p className="text-center text-sm text-muted-foreground">

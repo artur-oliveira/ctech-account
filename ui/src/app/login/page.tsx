@@ -4,12 +4,11 @@ import {Suspense, SyntheticEvent, useCallback, useEffect, useRef, useState} from
 import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton, Separator } from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Card, CardContent} from '@/components/ui/card'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Separator} from '@/components/ui/separator'
 import {toast} from 'sonner'
 import {api, isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
@@ -258,7 +257,7 @@ function LoginForm() {
           />
         </div>
 
-        <Button type="submit" className="w-full max-sm:min-h-11" disabled={loading || passkeyLoading}>
+        <Button type="submit" className="w-full" disabled={loading || passkeyLoading}>
           {loading ? t('login.submitting') : t('login.submit')}
         </Button>
       </form>
@@ -273,7 +272,7 @@ function LoginForm() {
       <Button
         type="button"
         variant="outline"
-        className="w-full max-sm:min-h-11"
+        className="w-full"
         onClick={handlePasskeyLogin}
         disabled={loading || passkeyLoading}
       >
@@ -303,7 +302,7 @@ export default function LoginPage() {
 
         <Card>
           <CardContent>
-            <Suspense fallback={<div className="h-40 animate-pulse bg-muted rounded"/>}>
+            <Suspense fallback={<Skeleton className="h-40 rounded"/>}>
               <LoginForm/>
             </Suspense>
 

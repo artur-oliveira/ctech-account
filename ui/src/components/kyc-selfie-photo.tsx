@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { uploadKYCDocumentAPI } from '@/lib/mutations'
 import { Camera, ShieldCheck, XCircle } from 'lucide-react'
@@ -107,7 +107,7 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
     return (
       <div className="flex items-center gap-2">
         <p className="text-sm font-medium">{t('identity.selfieWithDocumentDone')}</p>
-        <Button type="button" variant="ghost" size="sm" className="min-h-11" onClick={() => setRetake(true)}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setRetake(true)}>
           {t('identity.retakePhoto')}
         </Button>
       </div>
@@ -121,7 +121,7 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
         <AlertDescription className="space-y-3">
           <p className="text-foreground font-medium">{t('identity.selfieConsentTitle')}</p>
           <p>{t('identity.selfieWithDocumentConsentBody')}</p>
-          <Button type="button" className="min-h-11" onClick={() => setConsented(true)}>
+          <Button type="button" onClick={() => setConsented(true)}>
             <Camera className="size-4" />
             {t('identity.selfieConsentCta')}
           </Button>
@@ -137,10 +137,10 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
         {/* eslint-disable-next-line @next/next/no-img-element -- object URL, next/image can't optimize it */}
         <img src={preview.url} alt={t('identity.selfieWithDocument')} className="aspect-3/4 w-full max-w-xs sm:max-w-sm rounded-lg bg-muted object-cover" />
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" className="min-h-11" onClick={() => setPreview(null)} disabled={isPending}>
+          <Button type="button" variant="outline" onClick={() => setPreview(null)} disabled={isPending}>
             {t('identity.retakePhoto')}
           </Button>
-          <Button type="button" className="min-h-11" onClick={confirm} disabled={isPending}>
+          <Button type="button" onClick={confirm} disabled={isPending}>
             {isPending ? t('identity.uploading') : t('identity.documentPreviewConfirm')}
           </Button>
         </div>
@@ -172,7 +172,7 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
         <video ref={videoRef} autoPlay muted playsInline className="aspect-3/4 w-full max-w-xs sm:max-w-sm -scale-x-100 rounded-lg bg-muted object-cover" />
       )}
 
-      <Button type="button" className="min-h-11" onClick={capture} disabled={!!cameraError}>
+      <Button type="button" onClick={capture} disabled={!!cameraError}>
         <Camera className="size-4" />
         {t('identity.capturePhoto')}
       </Button>

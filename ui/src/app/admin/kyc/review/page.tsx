@@ -7,8 +7,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
 import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
-import {Badge} from '@/components/ui/badge'
-import {Button} from '@/components/ui/button'
+import { Badge, Skeleton, Button } from '@aoctech/ui'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -87,7 +86,7 @@ function ReviewPageContent() {
             <p className="mt-1 font-mono text-xs text-muted-foreground">{review.user_id}</p>
           </div>
           <Badge
-            variant={review.status === 'rejected' ? 'destructive' : review.status === 'verified' ? 'default' : 'secondary'}>
+            tone={review.status === 'rejected' ? 'urgent' : review.status === 'verified' ? 'positive' : 'attention'}>
             {t(`adminKyc.states.${review.status}`)}
           </Badge>
         </div>
@@ -136,8 +135,7 @@ function ReviewPageContent() {
                   <p className="text-sm font-medium">{t(`adminKyc.documentTypes.${document.type}`)}</p>
                   <p className="text-xs text-muted-foreground">{formatDate(document.uploaded_at)}</p>
                 </div>
-                <Button variant="ghost" size="sm"
-                        render={<a href={document.url} target="_blank" rel="noopener noreferrer"/>}>
+                <Button variant="ghost" size="sm" render={<a href={document.url} target="_blank" rel="noopener noreferrer"/>}>
                   {t('adminKyc.openDocument')} <ExternalLink className="size-4"/>
                 </Button>
               </li>
@@ -227,7 +225,7 @@ function RejectReviewButton({pending, onReject}: {
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
       <DialogTrigger
-        render={<Button variant="destructive" disabled={pending}><XCircle className="size-4"/> {t('adminKyc.reject')}
+        render={<Button variant="danger" disabled={pending}><XCircle className="size-4"/> {t('adminKyc.reject')}
         </Button>}/>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
@@ -264,8 +262,7 @@ function RejectReviewButton({pending, onReject}: {
         </div>
         <DialogFooter showCloseButton={false}>
           <DialogClose render={<Button variant="outline" disabled={pending}>{t('dialog.cancel')}</Button>}/>
-          <Button variant="destructive" onClick={submit}
-                  disabled={pending}>{pending ? t('dialog.processing') : t('adminKyc.reject')}</Button>
+          <Button variant="danger" onClick={submit} disabled={pending}>{pending ? t('dialog.processing') : t('adminKyc.reject')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -273,5 +270,5 @@ function RejectReviewButton({pending, onReject}: {
 }
 
 export default function AdminKYCReviewPage() {
-  return <Suspense fallback={<div className="h-72 animate-pulse rounded-lg bg-muted"/>}><ReviewPageContent/></Suspense>
+  return <Suspense fallback={<Skeleton className="h-72 rounded-lg"/>}><ReviewPageContent/></Suspense>
 }

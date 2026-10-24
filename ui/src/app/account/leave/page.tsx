@@ -5,7 +5,7 @@ import {useSearchParams} from 'next/navigation'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Button} from '@/components/ui/button'
+import {Button} from '@aoctech/ui'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
@@ -127,7 +127,7 @@ function LeaveProduct() {
           ) : profile.data ? (
             <p className="text-sm text-muted-foreground">{t('deletion.noPasswordHint')}</p>
           ) : null}
-          <Button type="submit" variant="destructive" disabled={!service || typed !== phrase || request.isPending || !profile.data}>
+          <Button type="submit" variant="danger" disabled={!service || typed !== phrase || request.isPending || !profile.data}>
             {request.isPending ? t('common.loading') : t('deletion.leave.submit', {product})}
           </Button>
         </form>

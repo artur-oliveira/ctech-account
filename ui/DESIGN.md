@@ -194,13 +194,12 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 ## 5. Components
 
 ### Buttons
-- **Shape:** gently rounded (14px / `rounded-lg`), height 32px, text-sm medium.
-- **Primary:** CTech Cobalt fill, white text; hover → cobalt at 80% alpha (no darkening shift); active → 1px downward translate. Focus-visible → 3px cobalt ring at 70%.
-- **Outline / Secondary / Ghost:** white or transparent fill, ink text; hover → muted well. Outline carries a hairline border.
-- **Destructive:** red tint (10% fill) + red text; never a solid red block except for explicit irreversible actions.
+- **Source:** `Button` from `@aoctech/ui` (no local copy; `Badge`, `Separator` and `Skeleton` too). The root layout wraps the app in `<DensityScope density="compact">` and `globals.css` imports only `@aoctech/ui/touch.css`, never `styles.css` (it would repaint the app). The package reads Account's tokens through the map in `globals.css` (`brand-600/700`, `danger`, `danger-strong`, `success`, `warning`, `surface`); without it the colour disappears silently. The local Dialog portals out of the scope, so its popup carries `data-density="compact"`.
+- **Shape:** gently rounded (14px / `rounded-lg`), height 32px with a mouse, text-sm medium. Under touch (coarse pointer or below `sm`) it is drawn 36px with an invisible 44px hit area; an icon button stays square. Keep 8px between neighbouring buttons. No local `min-h-11`.
+- **Variants:** `brand` (CTech Cobalt fill, white text, hover `brand-700`), `outline`, `ghost`, `link`, `danger`. Focus-visible is a 3px ring at 50%.
+- **Danger:** solid red fill, white text (the package has no tinted variant). This replaces the earlier red tint; a soft variant would have to come from `@aoctech/ui`.
 - **Disabled:** 50% opacity, no pointer events.
-- Every variant shares the same shape and focus treatment — see The One Vocabulary Rule.
-- On phone layouts, interactive targets expand to at least 44px even when their desktop visual height remains 32px; this includes dialog close controls.
+- Links styled as buttons use `buttonVariants` plus the `touch-target` class.
 
 ### Cards / Containers
 - **Corner:** 1.225rem (`rounded-xl`).
@@ -215,8 +214,8 @@ This system is flat. Cards and popovers sit on pure-white `Surface` lifted only 
 - **Disabled:** muted fill, 50% opacity, not-allowed cursor.
 
 ### Badges (status pills)
-- **Style:** pill radius (2.275rem), height 20px, text-xs medium. Default = cobalt fill; secondary = muted; destructive = red tint + red text; outline = hairline border.
-- Used for account state: Verified, Pending, Linked, Revoked.
+- **Source:** `Badge` from `@aoctech/ui`; pill radius, text-xs medium, tone is semantic and never brand: `neutral` (hairline + muted), `positive` (green: verified, enabled, answered), `attention` (amber: unverified, under review, open), `urgent` (red: rejected).
+- Used for account state: Verified, Pending, Linked, Revoked. Role and scope chips are `neutral`.
 
 ### Alerts
 - **Style:** 14px radius, hairline border, Surface fill. Destructive variant uses red text on Surface (no red fill flood). Title medium, description muted, balanced wrap.

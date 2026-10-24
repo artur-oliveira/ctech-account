@@ -12,7 +12,7 @@ import {QueryError} from '@/components/query-error'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
 import {OrganizationRoleBadge} from '@/components/organization-role-badge'
-import {Button} from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import {
   assignableRoles,
@@ -75,7 +75,7 @@ export function MembersTab({organization}: { organization: Organization }) {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-14 animate-pulse rounded-lg bg-muted"/>
+          <Skeleton key={i} className="h-14 rounded-lg"/>
         ))}
       </div>
     )

@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@aoctech/ui'
 import { useWorkspaceT } from '@/lib/workspace-copy'
 import type { OrganizationKind, OrganizationRole } from '@/lib/types'
 
@@ -22,7 +22,7 @@ export function OrganizationRoleBadge({
 }) {
   const wt = useWorkspaceT(kind)
   return (
-    <Badge variant={role === 'owner' ? 'default' : 'secondary'} className="text-xs">
+    <Badge tone="neutral">
       {wt(`organizations.roles.${role}`)}
     </Badge>
   )

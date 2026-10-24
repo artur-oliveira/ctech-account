@@ -7,15 +7,15 @@ import { useTranslation } from 'react-i18next'
 import { fetchAdminSupportMetrics, fetchAdminSupportTickets } from '@/lib/queries'
 import { formatDistanceToNow } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Badge } from '@/components/ui/badge'
+import { Badge, Skeleton } from '@aoctech/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { SupportTicket } from '@/lib/types'
 
-const STATUS_VARIANT = {
-  open: 'default',
-  answered: 'secondary',
-  closed: 'outline',
+const STATUS_TONE = {
+  open: 'attention',
+  answered: 'positive',
+  closed: 'neutral',
 } as const
 
 const STATUS_VALUES = ['open', 'answered', 'closed'] as const
@@ -55,13 +55,13 @@ export default function AdminSupportPage() {
     {
       key: 'status',
       header: t('support.admin.statusLabel'),
-      cell: (ticket) => <Badge variant={STATUS_VARIANT[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>,
+      cell: (ticket) => <Badge tone={STATUS_TONE[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>,
     },
     {
       key: 'escalation',
       header: t('support.admin.escalationLabel'),
       cell: (ticket) => ticket.escalation_level && ticket.escalation_level !== 'none'
-        ? <Badge variant="outline">{t(`support.admin.escalation.${ticket.escalation_level}`)}</Badge>
+        ? <Badge>{t(`support.admin.escalation.${ticket.escalation_level}`)}</Badge>
         : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
@@ -126,7 +126,7 @@ export default function AdminSupportPage() {
       {q.isLoading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
+            <Skeleton key={i} className="h-16 rounded-lg"/>
           ))}
         </div>
       ) : q.isError ? (

@@ -12,7 +12,7 @@ import {useTranslation} from 'react-i18next'
 import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
-import {Button} from '@/components/ui/button'
+import {Button} from '@aoctech/ui'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
@@ -106,7 +106,7 @@ function RenameSection({organization}: { organization: Organization }) {
             className="max-sm:h-11"
           />
         </div>
-        <Button type="submit" disabled={isPending} className="max-sm:min-h-11">
+        <Button type="submit" disabled={isPending}>
           {isPending ? t('organizations.settings.saving') : t('organizations.settings.save')}
         </Button>
       </form>
@@ -202,7 +202,7 @@ function TransferSection({organization}: { organization: Organization }) {
           </div>
           <ConfirmDialog
             trigger={
-              <Button variant="destructive" size="sm" disabled={!target || isPending}>
+              <Button variant="danger" size="sm" disabled={!target || isPending}>
                 {t('organizations.settings.transfer')}
               </Button>
             }
@@ -245,7 +245,7 @@ function LeaveSection({organization}: { organization: Organization }) {
       <div className="mt-4">
         <ConfirmDialog
           trigger={
-            <Button variant="destructive" size="sm">
+            <Button variant="danger" size="sm">
               {t('organizations.settings.leave')}
             </Button>
           }

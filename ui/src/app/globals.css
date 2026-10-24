@@ -2,9 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* @aoctech/ui 0.9 network components (OfflineBanner, UnavailableScreen, ErrorState, Button).
-   No package stylesheet is imported (styles.css/themes.css would repaint the app). Tailwind does not
-   scan node_modules, so the package classes need this @source. */
+/* Compact density: a button is 32px for a mouse, drawn 36px with a 44px hit area under touch.
+   Only touch.css, never styles.css: styles.css brings themes.css, which would repaint the app.
+   Tailwind does not scan node_modules, so the package classes need this @source. */
+@import "@aoctech/ui/touch.css";
 @source "../../node_modules/@aoctech/ui/dist";
 
 @custom-variant dark (&:is(.dark *));
@@ -56,13 +57,15 @@
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
 
-    /* Minimal map of @aoctech/ui semantic tokens onto Account's own palette (network components only). */
+    /* Map of the @aoctech/ui semantic tokens onto Account's own palette (Button, Badge, network components).
+       Without these the colour disappears silently. Light only: the app never sets .dark. */
     --color-brand-600: var(--primary);
     --color-brand-700: oklch(0.48 0.22 258);
     --color-surface: var(--muted);
     --color-danger: var(--destructive);
     --color-danger-strong: oklch(0.48 0.245 27.325);
-    --color-warning: oklch(0.72 0.16 75);
+    --color-warning: oklch(0.46 0.12 70);
+    --color-success: oklch(0.5 0.13 150);
 
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);

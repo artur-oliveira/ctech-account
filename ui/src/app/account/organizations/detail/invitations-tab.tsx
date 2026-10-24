@@ -16,7 +16,7 @@ import { QueryError } from '@/components/query-error'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -78,7 +78,7 @@ export function InvitationsTab({ organization }: { organization: Organization })
     return (
       <div className="space-y-3">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
+          <Skeleton key={i} className="h-14 rounded-lg"/>
         ))}
       </div>
     )
@@ -428,7 +428,7 @@ function InviteDialog({ organization }: { organization: Organization }) {
             )}
 
             <DialogFooter>
-              <Button type="submit" disabled={isPending || areCompaniesLoading || didCompaniesFail} className="max-sm:min-h-11">
+              <Button type="submit" disabled={isPending || areCompaniesLoading || didCompaniesFail}>
                 {isPending
                   ? t('organizations.invitations.submitting')
                   : t('organizations.invitations.submit')}

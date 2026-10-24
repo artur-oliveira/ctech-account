@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/auth'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 import { LanguageSwitcher } from '@/components/language-switcher'
 
 export default function Home() {
@@ -34,8 +34,7 @@ export default function Home() {
             {t('home.description')}
           </p>
           <Button
-            size="lg"
-            className="mt-8 h-auto min-h-9 w-full whitespace-normal py-2 sm:w-auto"
+            className="mt-8 h-auto min-h-9 w-full whitespace-normal py-2 in-data-[density=compact]:h-auto sm:w-auto"
             render={<Link href={ctaHref} />}
           >
             {ctaLabel}

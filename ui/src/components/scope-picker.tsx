@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { fetchScopeCatalog } from '@/lib/queries'
 import { QueryError } from '@/components/query-error'
-import { Button } from '@/components/ui/button'
+import { Button, Skeleton } from '@aoctech/ui'
 import type { ScopeEntry, ScopeService } from '@/lib/types'
 
 export const IDENTITY_SERVICE = 'identity'
@@ -65,7 +65,7 @@ function ServiceGroup({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon"
           onClick={() => setOpen(!open)}
           className="text-foreground/60 hover:text-foreground"
           aria-label={service.name}
@@ -128,7 +128,7 @@ export function ScopePicker({ value, onChange, includeIdentity = false }: ScopeP
   const selected = new Set(value)
 
   if (isLoading) {
-    return <div className="h-24 animate-pulse bg-muted rounded-md" />
+    return <Skeleton className="h-24 rounded-md"/>
   }
   if (isError) {
     return <QueryError error={error} onRetry={() => refetch()} />

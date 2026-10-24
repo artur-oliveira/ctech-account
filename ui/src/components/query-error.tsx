@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { isAxiosError } from '@/lib/axios'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { Button } from '@aoctech/ui'
 
 type QueryErrorProps = {
   error: unknown
