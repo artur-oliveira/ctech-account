@@ -57,7 +57,9 @@ import (
 	"gopkg.aoctech.app/api-commons/awsconfig"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/health"
+	"gopkg.aoctech.app/api-commons/lock"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
+	"gopkg.aoctech.app/api-commons/supervisor"
 	commonws "gopkg.aoctech.app/api-commons/ws"
 )
 
@@ -80,6 +82,30 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	// Background workers run under the supervisor: cancellable context, panic
+	// restart, and (with Valkey) one leader per worker across instances. They are
+	// stopped before the process exits (see the shutdown path).
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+	var sup *supervisor.Supervisor
+	{
+		var locker *lock.Locker
+		if cfg.ValkeyURL != "" {
+			lockBackend, lbErr := commoncache.NewRedisBackend(cfg.ValkeyURL)
+			if lbErr != nil {
+				fatal("connecting worker lock backend", "error", lbErr)
+			}
+			locker = lock.New(lockBackend, 30*time.Second)
+		}
+		sup = supervisor.New(workerCtx, supervisor.Config{Locker: locker, LockPrefix: "supervisor:" + cfg.Environment + ":"})
+	}
+	// startWorker runs a worker; a refusal means the supervisor already stopped.
+	startWorker := func(name string, fn func(context.Context) error) {
+		if err := sup.Run(ctx, name, fn); err != nil {
+			fatal("starting worker", "worker", name, "error", err)
+		}
+	}
 
 	db, err := database.New(ctx, cfg.AWSRegion)
 	if err != nil {
@@ -150,7 +176,9 @@ func main() {
 		if cfg.Environment != "" {
 			lockKey = fmt.Sprintf("rotate_jwk_lock:%s", cfg.Environment)
 		}
-		go keystore.RunRotator(ctx, keystore.RotatorConfig{
+		// Every instance reloads keys, so no supervisor leader lock; the rotation
+		// itself stays under its own per-rotation Valkey lock below.
+		rotatorCfg := keystore.RotatorConfig{
 			Store:  keyStore,
 			Reload: jwtSvc.Reload,
 			TryLock: func(ctx context.Context) (bool, error) {
@@ -163,7 +191,8 @@ func main() {
 			MaxAge:   keystore.KeyMaxAge,
 			Now:      time.Now,
 			Env:      cfg.Environment,
-		})
+		}
+		startWorker("keystore-rotator", func(ctx context.Context) error { keystore.RunRotator(ctx, rotatorCfg); return nil })
 	}
 
 	// GeoIP: per-instance auto-updating local MaxMind database. Disabled
@@ -179,7 +208,7 @@ func main() {
 			Now:        time.Now,
 		}
 		geoupdater.Startup(ctx, geoCfg)
-		go geoupdater.Run(ctx, geoCfg)
+		startWorker("geoupdater", func(ctx context.Context) error { geoupdater.Run(ctx, geoCfg); return nil })
 	} else {
 		slog.Info("MAXMIND_ACCOUNT_ID/MAXMIND_LICENSE_KEY not set — GeoIP lookups disabled")
 	}
@@ -245,14 +274,12 @@ func main() {
 				}
 				return u.ID(), nil
 			})
-		go func() { _ = planSvc.CheckBilling(ctx) }()
-		planLockKey := "plan_levels_worker_lock:" + cfg.Environment
-		go planlimit.RunWorker(ctx, planSvc, func(ctx context.Context) (bool, error) {
-			if !valkeyClient.Enabled() {
-				return true, nil // dev: single instance
-			}
-			return valkeyClient.SetNX(ctx, planLockKey, "1", planlimit.WorkerInterval-5*time.Second)
-		}, planlimit.WorkerInterval)
+		// Startup diagnostic: runs on every instance (not a leader-only worker).
+		go func() { _ = planSvc.CheckBilling(workerCtx) }()
+		startWorker("plan-levels", supervisor.Every(planlimit.WorkerInterval, func(ctx context.Context) error {
+			planSvc.ProcessDue(ctx)
+			return nil
+		}))
 	} else {
 		slog.Info("BILLING_API_URL not set — plan limits on personal spaces disabled")
 	}
@@ -597,13 +624,10 @@ func main() {
 		deletionH.RegisterInternal(v1, middleware.RequireAuth(jwtSvc), cfg.ErasureServiceForClient, []string{erasureSubjectReader})
 		deletionH.RegisterAdmin(v1.Group("/admin/deletion", middleware.RequireAuth(jwtSvc), middleware.RequireClientID(cfg.SelfClientID),
 			middleware.RequireSupportRole(userSvc, userDomain.SupportRoleAdmin)))
-		workerLockKey := "deletion_worker_lock:" + cfg.Environment
-		go deletion.RunWorker(ctx, deletionSvc, func(ctx context.Context) (bool, error) {
-			if !valkeyClient.Enabled() {
-				return true, nil // dev: single instance
-			}
-			return valkeyClient.SetNX(ctx, workerLockKey, "1", deletion.WorkerInterval-5*time.Second)
-		}, deletion.WorkerInterval)
+		startWorker("deletion", supervisor.Every(deletion.WorkerInterval, func(ctx context.Context) error {
+			deletionSvc.ProcessDue(ctx)
+			return nil
+		}))
 	}
 	adminAuth := []fiber.Handler{
 		middleware.RequireAuth(jwtSvc),
@@ -657,6 +681,11 @@ func main() {
 	slog.Info("shutting down gracefully...")
 	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
 		slog.Error("shutdown error", "error", err)
+	}
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stopCancel()
+	if err := sup.Shutdown(stopCtx); err != nil {
+		slog.Error("worker shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
 }

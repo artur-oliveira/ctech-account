@@ -174,26 +174,4 @@ func (s *Service) CheckBilling(ctx context.Context) error {
 	return nil
 }
 
-// RunWorker drains the queue on whichever instance wins tryLock for the tick
-// (deletion.RunWorker's pattern).
-func RunWorker(ctx context.Context, svc *Service, tryLock func(context.Context) (bool, error), interval time.Duration) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			ok, err := tryLock(ctx)
-			if err != nil {
-				observability.Error(ctx, "plan levels worker: lock failed", err)
-				continue
-			}
-			if ok {
-				svc.ProcessDue(ctx)
-			}
-		}
-	}
-}
-
 var _ LevelCounter = (*organization.Service)(nil)
