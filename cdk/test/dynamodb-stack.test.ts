@@ -60,3 +60,20 @@ test('data exports table keeps one CURRENT row per person', () => {
     KeySchema: [{AttributeName: 'pk', KeyType: 'HASH'}, {AttributeName: 'sk', KeyType: 'RANGE'}],
   })
 })
+
+test('idempotency table is on-demand with pk/sk and TTL on ttl', () => {
+  const app = new cdk.App()
+  const stack = new DynamoDBStack(app, 'TestIdempotencyStack', {
+    env: {account: '868899309401', region: 'us-east-1'},
+    environment: 'prod',
+  })
+  Template.fromStack(stack).hasResourceProperties('AWS::DynamoDB::GlobalTable', {
+    TableName: 'prod_account_idempotency',
+    BillingMode: 'PAY_PER_REQUEST',
+    KeySchema: [
+      {AttributeName: 'pk', KeyType: 'HASH'},
+      {AttributeName: 'sk', KeyType: 'RANGE'},
+    ],
+    TimeToLiveSpecification: {AttributeName: 'ttl', Enabled: true},
+  })
+})
