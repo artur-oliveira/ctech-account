@@ -29,18 +29,14 @@ type Repository interface {
 }
 
 type dynamoRepository struct {
-	base      database.Base
-	db        *dynamodb.Client
-	sealer    *crypto.Sealer
-	tableName string
+	base   database.Base
+	sealer *crypto.Sealer
 }
 
 func NewRepository(db *dynamodb.Client, sealer *crypto.Sealer, tablePrefix string) Repository {
 	return &dynamoRepository{
-		base:      database.NewBase(db, tablePrefix, "account_mfa"),
-		db:        db,
-		sealer:    sealer,
-		tableName: database.TableName(tablePrefix, "account_mfa"),
+		base:   database.NewBase(db, tablePrefix, "account_mfa"),
+		sealer: sealer,
 	}
 }
 
@@ -94,7 +90,7 @@ func (r *dynamoRepository) Confirm(ctx context.Context, userID string, backupCod
 	condValues := map[string]types.AttributeValue{
 		":f": &types.AttributeValueMemberBOOL{Value: false},
 	}
-	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, pk, &sk, map[string]any{
+	applied, err := r.base.ConditionalUpdate(ctx, pk, &sk, map[string]any{
 		"verified":     true,
 		"backup_codes": backupCodes,
 	}, "attribute_not_exists(#verified) OR #verified = :f", nil, condValues)
@@ -113,7 +109,7 @@ func (r *dynamoRepository) ConsumeBackupCode(ctx context.Context, userID string,
 	condValues := map[string]types.AttributeValue{
 		":cv": &types.AttributeValueMemberN{Value: strconv.FormatInt(version, 10)},
 	}
-	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, pk, &sk, map[string]any{
+	applied, err := r.base.ConditionalUpdate(ctx, pk, &sk, map[string]any{
 		"backup_codes": remaining,
 		"version":      version + 1,
 	}, "attribute_not_exists(#version) OR #version = :cv", nil, condValues)

@@ -105,7 +105,7 @@ func (r *dynamoRepository) Create(ctx context.Context, u *User) error {
 	// attribute so it is NOT projected into the email-index GSI and cannot be
 	// returned by GetByEmail in place of the real user.
 	markerPK := EmailMarkerPK(u.Email)
-	applied, err := database.ConditionalUpdate(ctx, r.db, r.tableName, markerPK, nil,
+	applied, err := r.table.ConditionalUpdate(ctx, markerPK, nil,
 		map[string]any{"kind": "email-lock", "created_at": now},
 		"attribute_not_exists(pk)", nil, nil)
 	if err != nil {
@@ -140,7 +140,7 @@ func (r *dynamoRepository) Update(ctx context.Context, userID string, updates ma
 }
 
 func (r *dynamoRepository) ClearDeletionIfRequest(ctx context.Context, userID, requestID string) error {
-	_, err := database.ConditionalUpdate(ctx, r.db, r.tableName, BuildPK(userID), nil,
+	_, err := r.table.ConditionalUpdate(ctx, BuildPK(userID), nil,
 		map[string]any{
 			"deletion_state":      nil,
 			"deletion_request_id": nil,

@@ -15,7 +15,8 @@ and do not "fix" one of them as a side effect of unrelated work (propose it as i
 - Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx). Logging is `slog` only in the server (the one-shot `cmd/*` operator tools still use `log`).
 - Rate limit and step-up guards: local `internal/middleware` copies instead of go-common.
 - Idempotency: no inbound `Idempotency-Key` middleware (only `internal/billingclient` sends one).
-- DynamoDB: local `internal/database/conditional.go`; `domain/kyc/repository.go` still has a `Scan` call.
+- DynamoDB: `domain/kyc/repository.go` still has a `Scan` call. Conditional updates use go-common `dynamo.Base.ConditionalUpdate`; list endpoints keep their own cursors (`{tickets|events, next_cursor}`), not go-common `Page`.
+- go-common pinned at v1.29.1 (check `go.mod`; the family target is a single shared minor).
 - CI (`.github/workflows/ci.yml`) runs `go vet`, arm64 build and `go test ./... -count=1` without `-race`,
   staticcheck or govulncheck. Run `go test -race ./...` locally.
 
