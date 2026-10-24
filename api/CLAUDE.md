@@ -14,7 +14,7 @@ and do not "fix" one of them as a side effect of unrelated work (propose it as i
 - Errors: local `internal/apierror` instead of go-common `problem`. Rules below describe today's code.
 - Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
 - Guards: internal-scope, client-id and step-up are go-common `authguard` (`RequireScope` stays local: account's insufficient-scope problem type).
-- Idempotency: no inbound `Idempotency-Key` middleware (only `internal/billingclient` sends one).
+- Idempotency: go-common `idempotency` is wired, optional key, on `POST /organizations` and `POST /organizations/:id/companies` only (table `{env}_account_idempotency`). Routes whose answer holds a secret (API keys, OAuth client secrets, invitation tokens, backup codes) must never be guarded: the answer is stored for 24 h. Other creating routes are not covered yet.
 - DynamoDB: `domain/kyc/repository.go` still has a `Scan` call. Conditional updates use go-common `dynamo.Base.ConditionalUpdate`; list endpoints keep their own cursors (`{tickets|events, next_cursor}`), not go-common `Page`.
 - go-common pinned at v1.29.1 (check `go.mod`; the family target is a single shared minor).
 - CI (`.github/workflows/ci.yml`) runs `go vet`, arm64 build and `go test ./... -count=1` without `-race`,

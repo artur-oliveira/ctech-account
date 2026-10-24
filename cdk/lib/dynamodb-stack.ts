@@ -441,6 +441,23 @@ export class DynamoDBStack extends cdk.Stack {
     });
     this.tables.set('account_companies', companiesTable);
 
+    // Idempotency-Key claims and replayable answers (go-common idempotency).
+    // Ephemeral: every row expires through `ttl` (claim lease 2 min, answer 24 h), so
+    // no point-in-time recovery. Created new; no existing table is touched.
+    //   pk=IDEM#{scope}  sk=KEY#{key}
+    const idempotencyTable = new dynamodb.TableV2(this, 'IdempotencyTableV2', {
+      tableName: `${environment}_account_idempotency`,
+      partitionKey: {name: 'pk', type: dynamodb.AttributeType.STRING},
+      sortKey: {name: 'sk', type: dynamodb.AttributeType.STRING},
+      billing: dynamodb.Billing.onDemand({
+        maxReadRequestUnits: 1000,
+        maxWriteRequestUnits: 1000,
+      }),
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: 'ttl',
+    });
+    this.tables.set('account_idempotency', idempotencyTable);
+
     for (const [name, table] of this.tables) {
       new cdk.CfnOutput(this, `${name}_TableName`, {
         value: table.tableName,

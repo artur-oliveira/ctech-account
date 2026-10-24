@@ -127,6 +127,7 @@ prod**; `DESTROY` otherwise (`dynamodb-stack.ts:17`). Table name prefix = `{env}
 | `account_memberships` | `{env}_account_memberships` | `pk` (`ORG#{id}`) / `sk` (`MEMBER#{user}`) | — | `lookup-index` (pk=`lookup_pk`=`USER#{user}` — "which orgs may I act in") |
 | `account_invitations` | `{env}_account_invitations` | `pk` (`ORG#{id}`) / `sk` (`INVITE#{email}`) | `expires_at` | `lookup-index` (pk=`lookup_pk`=SHA-256 of the invite token, never the raw token) |
 | `account_companies` | `{env}_account_companies` | `pk` (`ORG#{id}`) / `sk` (`COMPANY#`/`TAXID#`/`ACTOR#` rows) | — | `lookup-index` (pk=`lookup_pk`; `USER#{id}` or `SOURCE#{system}#{ref}`, sparse) |
+| `account_idempotency` | `{env}_account_idempotency` | `pk` (`IDEM#{scope}`) / `sk` (`KEY#{key}`) | `ttl` | — (Idempotency-Key claims and replayable answers; DESTROY everywhere, rows expire by TTL) |
 
 Notes:
 - `account_users` uses `email-index` for login lookup and `kyc-level-index` for the manager review queue. The KYC

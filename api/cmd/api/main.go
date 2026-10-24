@@ -58,6 +58,7 @@ import (
 	"gopkg.aoctech.app/api-commons/awsconfig"
 	commoncache "gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/health"
+	"gopkg.aoctech.app/api-commons/idempotency"
 	"gopkg.aoctech.app/api-commons/lock"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	"gopkg.aoctech.app/api-commons/supervisor"
@@ -409,8 +410,8 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
-		ExposeHeaders:    []string{"X-Request-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID", "Idempotency-Key"},
+		ExposeHeaders:    []string{"X-Request-ID", "Idempotent-Replay"},
 		AllowCredentials: true,
 		MaxAge:           3600,
 	}))
@@ -637,6 +638,12 @@ func main() {
 	// sit behind one RequireAuth + RequireClientID rather than two groups that
 	// could drift apart.
 	orgsGroup := v1.Group("/organizations", adminAuth[0], adminAuth[1])
+	// Optional Idempotency-Key on the create routes whose answer holds no secret
+	// (the invitation answer carries a token and is deliberately not stored). Run
+	// before the real handlers by registration order; Next() falls through to them.
+	idemStore := idempotency.NewDynamoStore(database.NewBase(db, cfg.TablePrefix, middleware.IdempotencyTable))
+	orgsGroup.Post("/", middleware.Idempotency(idemStore, nil))
+	orgsGroup.Post("/:id/companies", middleware.Idempotency(idemStore, func(c fiber.Ctx) string { return c.Params("id") }))
 	// Registered FIRST, before the organization handler's /:id: Fiber matches in
 	// registration order, so a literal segment mounted after a parameter is
 	// captured by it and never reached.
