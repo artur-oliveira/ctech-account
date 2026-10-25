@@ -11,8 +11,7 @@ import {formatDate} from '@/lib/format'
 import {isAxiosError} from '@/lib/axios'
 import {QueryError} from '@/components/query-error'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
-import {Button, Skeleton, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Skeleton, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {
   Dialog,
   DialogContent,
@@ -22,7 +21,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {Alert, AlertDescription} from '@/components/ui/alert'
 import {TAX_ID_FORMATTED_MAX_LENGTH} from '@/lib/constants'
 import {assignableRoles, type Company, formatTaxID, formatTaxIDInput, type Organization} from '@/lib/types'
 
@@ -180,7 +178,7 @@ function RegisterCompanyDialog({organizationID}: { organizationID: string }) {
           </DialogHeader>
           <div className="space-y-4 py-4">
             {errorMsg && (
-              <Alert variant="destructive">
+              <Alert tone="danger">
                 <AlertDescription>{errorMsg}</AlertDescription>
               </Alert>
             )}

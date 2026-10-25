@@ -5,9 +5,9 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { verifyEmailAPI } from '@/lib/mutations'
 import { reportClientError } from '@/lib/client-logging'
+import {Alert, AlertDescription} from '@aoctech/ui'
 
 function VerifyEmailInner() {
   const { t } = useTranslation()
@@ -41,7 +41,7 @@ function VerifyEmailInner() {
           <AlertDescription>{t('verifyEmail.success')}</AlertDescription>
         </Alert>
       ) : (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('verifyEmail.error')}</AlertDescription>
         </Alert>
       )}

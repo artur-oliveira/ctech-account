@@ -10,13 +10,12 @@ import { fetchHandoff, fetchOrganization } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
 import { isPersonal } from '@/lib/types'
 import { QueryError } from '@/components/query-error'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import { MembersTab } from '@/app/account/organizations/detail/members-tab'
 import { InvitationsTab } from '@/app/account/organizations/detail/invitations-tab'
 import { SettingsTab } from '@/app/account/organizations/detail/settings-tab'
-import { Skeleton } from '@aoctech/ui'
+import {Skeleton, Alert, AlertDescription} from '@aoctech/ui'
 
 /**
  * The people of one space: roster, invitations, access levels, transfer.

@@ -11,9 +11,7 @@ import {createOrganizationAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
 import {planProblemOf, planURL} from '@/lib/plan-problem'
 import {cn} from '@/lib/utils'
-import {Button, buttonVariants, Skeleton, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
-import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Button, buttonVariants, Skeleton, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 
 /** Matches the server's `validate:"required,max=120"`. */
 const MAX_NAME = 120
@@ -164,7 +162,7 @@ function NewSpace() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {errorMsg && (
-          <Alert variant="destructive">
+          <Alert tone="danger">
             <AlertDescription>{errorMsg}</AlertDescription>
           </Alert>
         )}

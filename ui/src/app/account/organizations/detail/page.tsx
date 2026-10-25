@@ -9,7 +9,6 @@ import { ArrowLeft } from 'lucide-react'
 import { fetchOrganization } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
 import { QueryError } from '@/components/query-error'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
 import { isPersonal } from '@/lib/types'
@@ -17,7 +16,7 @@ import { MembersTab } from './members-tab'
 import { CompaniesTab } from './companies-tab'
 import { InvitationsTab } from './invitations-tab'
 import { SettingsTab } from './settings-tab'
-import { Skeleton } from '@aoctech/ui'
+import {Skeleton, Alert, AlertDescription} from '@aoctech/ui'
 
 /**
  * The id travels as a query parameter because production is a static export

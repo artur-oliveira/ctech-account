@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
-import { Label } from '@/components/ui/label'
 import type { TermsPending } from '@/lib/types'
+import {Label} from '@aoctech/ui'
 
 type LegalConsentProps = {
   /** Documents the server says this account still owes. */

@@ -3,8 +3,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { isAxiosError } from '@/lib/axios'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@aoctech/ui'
+import {Button, Alert, AlertDescription} from '@aoctech/ui'
 
 type QueryErrorProps = {
   error: unknown
@@ -25,7 +24,7 @@ export function QueryError({ error, onRetry, className }: QueryErrorProps) {
     : t('errors.loadFailed')
 
   return (
-    <Alert variant="destructive" className={className}>
+    <Alert tone="danger" className={className}>
       <AlertDescription className="flex items-center gap-3">
         <AlertTriangle className="size-4 shrink-0" />
         <span className="flex-1 min-w-0">{message}</span>

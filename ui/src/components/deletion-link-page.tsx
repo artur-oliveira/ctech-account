@@ -3,8 +3,7 @@
 import Link from 'next/link'
 import {useMutation} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Button} from '@aoctech/ui'
+import {Button, Alert, AlertDescription} from '@aoctech/ui'
 import {Card, CardContent} from '@/components/ui/card'
 import {useProductName} from '@/components/leave-products-card'
 import {isAxiosError} from '@/lib/axios'
@@ -65,7 +64,7 @@ export function DeletionLinkPage({kind, requestID, token, service, action}: Prop
         <Card>
           <CardContent className="space-y-4">
             {message && (
-              <Alert variant={run.isSuccess ? 'default' : 'destructive'}>
+              <Alert tone={run.isSuccess ? 'info' : 'danger'}>
                 <AlertDescription>{message}</AlertDescription>
               </Alert>
             )}

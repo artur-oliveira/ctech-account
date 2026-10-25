@@ -6,8 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import {Button, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createOrganizationAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
 
@@ -80,7 +78,7 @@ export function CreateOrganizationDialog() {
           </DialogHeader>
 
           {errorMsg && (
-            <Alert variant="destructive">
+            <Alert tone="danger">
               <AlertDescription>{errorMsg}</AlertDescription>
             </Alert>
           )}

@@ -6,7 +6,7 @@ Next.js 16 + React 19 + ShadCN 4 + Tailwind v4 — accounts.aoctech.app frontend
 
 **Family standard:** the `ctech-dev-standards` skill (`references/frontend.md`) wins over this file. Known divergences
 today (verified 2026-10-19): `@aoctech/ui` provides Button/Input/Select/UserMenu/etc. (the rest are local ShadCN copies in
-`src/components/ui`; local `alert.tsx` stays until `@aoctech/ui` Alert takes a title-less body, see its `standards:allow`); `npm run lint` is plain `eslint` with no `--max-warnings 0`, so CI does not fail on warnings
+`src/components/ui`; Alert and Label come from `@aoctech/ui` since 0.11); `npm run lint` is plain `eslint` with no `--max-warnings 0`, so CI does not fail on warnings
 (the standard requires zero warnings, check locally). New generic components belong upstream in ctech-ui.
 
 ---
@@ -183,7 +183,7 @@ Writes use TanStack Query's `useMutation` — there are no Server Actions in thi
 ### Error Handling
 
 - Parse RFC 7807 `ProblemDetail` after checking `res.ok` / `isAxiosError(error)`.
-- `<Alert variant="destructive">` for form errors; `toast.error(message)` for transient errors.
+- `<Alert tone="danger">` for form errors; `toast.error(message)` for transient errors.
 
 ### Security
 

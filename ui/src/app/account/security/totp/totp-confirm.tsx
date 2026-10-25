@@ -5,11 +5,9 @@ import Link from 'next/link'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
-import { Button } from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { OTPInput } from '@/components/ui/otp-input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { confirmTOTPAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
 import { toast } from 'sonner'
@@ -105,7 +103,7 @@ export function TOTPConfirmForm({ provisioningURI }: { provisioningURI: string }
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {errorMsg && (
-              <Alert variant="destructive">
+              <Alert tone="danger">
                 <AlertDescription>{errorMsg}</AlertDescription>
               </Alert>
             )}

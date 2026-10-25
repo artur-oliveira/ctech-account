@@ -10,9 +10,7 @@ import {fetchHandoff, lookupTaxID} from '@/lib/queries'
 import {createOrganizationAPI, registerCompanyAPI} from '@/lib/mutations'
 import {isAxiosError} from '@/lib/axios'
 import {cn} from '@/lib/utils'
-import {Button, buttonVariants, Skeleton, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
-import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Button, buttonVariants, Skeleton, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {TAX_ID_FORMATTED_MAX_LENGTH} from '@/lib/constants'
 import {formatTaxIDInput} from '@/lib/types'
 
@@ -179,7 +177,7 @@ function NewOrganization() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {errorMsg && (
-          <Alert variant="destructive">
+          <Alert tone="danger">
             <AlertDescription>
               {createdOrganizationID
                 ? `${t('organizations.new.organizationCreatedCompanyFailed')} ${errorMsg}`

@@ -4,10 +4,8 @@ import {Suspense, SyntheticEvent, useCallback, useEffect, useRef, useState} from
 import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
-import {Button, Skeleton, Separator, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Skeleton, Separator, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {Card, CardContent} from '@/components/ui/card'
-import {Alert, AlertDescription} from '@/components/ui/alert'
 import {toast} from 'sonner'
 import {api, isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
@@ -44,7 +42,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState('')
-  const [errorVariant, setErrorVariant] = useState<'default' | 'destructive'>('destructive')
+  const [errorVariant, setErrorVariant] = useState<'info' | 'danger'>('danger')
   // Set when the API rejects a valid password because the address is unverified,
   // so we can offer to resend the link instead of just showing an error.
   const [unverifiedEmail, setUnverifiedEmail] = useState('')
@@ -145,7 +143,7 @@ function LoginForm() {
     e.preventDefault()
     conditionalAbortRef.current?.abort()
     setError('')
-    setErrorVariant('destructive')
+    setErrorVariant('danger')
     setUnverifiedEmail('')
     setLoading(true)
 
@@ -173,7 +171,7 @@ function LoginForm() {
   async function handlePasskeyLogin() {
     conditionalAbortRef.current?.abort()
     setError('')
-    setErrorVariant('destructive')
+    setErrorVariant('danger')
     setPasskeyLoading(true)
     try {
       const {session_token, options} = await beginPasskeyAuthAPI()
@@ -182,7 +180,7 @@ function LoginForm() {
       await continueAfterAuthentication(result)
     } catch (passkeyError) {
       if (isPasskeyCancellation(passkeyError)) {
-        setErrorVariant('default')
+        setErrorVariant('info')
         setError(t('login.passkeyCancelled'))
       } else if (isAxiosError(passkeyError)) {
         reportClientError('passkey-login', passkeyError)
@@ -202,7 +200,7 @@ function LoginForm() {
   return (
     <div className="space-y-4">
       {displayError && (
-        <Alert variant={error ? errorVariant : 'destructive'}>
+        <Alert tone={error ? errorVariant : 'danger'}>
           <AlertDescription className="space-y-2">
             <span className="block">{displayError}</span>
             {unverifiedEmail && (

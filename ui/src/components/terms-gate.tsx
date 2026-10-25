@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@aoctech/ui'
+import {Button, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { LegalConsent, NOTHING_ACCEPTED, isConsentComplete } from '@/components/legal-consent'
 import { acceptPendingTermsAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
@@ -43,7 +42,7 @@ export function TermsGate({ pending }: { pending: TermsPending }) {
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
-            <Alert variant="destructive">
+            <Alert tone="danger">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}

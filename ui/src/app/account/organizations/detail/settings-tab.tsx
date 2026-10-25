@@ -12,9 +12,7 @@ import {useTranslation} from 'react-i18next'
 import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
-import {Button, Input, Select} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
-import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Button, Input, Select, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {canTransferTo, isPersonal, type Organization} from '@/lib/types'
 
 export function SettingsTab({organization}: { organization: Organization }) {
@@ -85,7 +83,7 @@ function RenameSection({organization}: { organization: Organization }) {
       </div>
 
       {errorMsg && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}

@@ -3,10 +3,8 @@
 import {SyntheticEvent} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import {Button, Separator, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Separator, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { updateProfileAPI, changePasswordAPI } from '@/lib/mutations'
 import { fetchProfile } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
@@ -49,7 +47,7 @@ function ProfileForm() {
   return (
     <form key={profile?.user_id} onSubmit={handleSubmit} className="space-y-4">
       {errorMsg && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
@@ -97,7 +95,7 @@ function PasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {errorMsg && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}

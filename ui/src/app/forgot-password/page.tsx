@@ -3,10 +3,8 @@
 import { useState, SyntheticEvent } from 'react'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
-import {Button, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { forgotPasswordAPI } from '@/lib/mutations'
 import { useRedirectIfAuthenticated } from '@/hooks/use-redirect-if-authenticated'
 
@@ -50,7 +48,7 @@ export default function ForgotPasswordPage() {
             ) : (
               <>
                 {error && (
-                  <Alert variant="destructive">
+                  <Alert tone="danger">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}

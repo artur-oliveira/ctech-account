@@ -3,9 +3,8 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
-import { Button, Skeleton } from '@aoctech/ui'
+import {Button, Skeleton, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { LegalConsent, NOTHING_ACCEPTED, isConsentComplete } from '@/components/legal-consent'
 import { isAxiosError } from '@/lib/axios'
 import { acceptTermsAPI } from '@/lib/mutations'
@@ -62,7 +61,7 @@ function AcceptTermsForm() {
   if (!token) {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('acceptTerms.missingToken')}</AlertDescription>
         </Alert>
         <Button type="button" className="w-full" onClick={() => (window.location.href = restartURL)}>
@@ -75,7 +74,7 @@ function AcceptTermsForm() {
   return (
     <div className="space-y-4">
       {error && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}

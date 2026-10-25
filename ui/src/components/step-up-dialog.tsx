@@ -17,9 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@aoctech/ui'
+import {Button, Alert, AlertDescription} from '@aoctech/ui'
 import { OTPInput } from '@/components/ui/otp-input'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Fingerprint } from 'lucide-react'
 
 const OTP_LENGTH = 6
@@ -136,7 +135,7 @@ export function StepUpDialog() {
           <div className="space-y-4">
             <OTPInput value={code} onChange={onCodeChange} disabled={busy} />
             {error && (
-              <Alert variant="destructive">
+              <Alert tone="danger">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
