@@ -1,6 +1,6 @@
 import { api, cnpjaApi, isAxiosError } from './axios'
 import {TAX_ID_CNPJ_LENGTH} from '@/lib/constants'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest, LeavableService, DataExport } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, ActivityEvent, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest, LeavableService, DataExport } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -58,7 +58,7 @@ const ACTIVITY_PAGE_SIZE = 25
 export async function fetchActivity(cursor: string): Promise<ActivityPage> {
   const params = new URLSearchParams({ limit: String(ACTIVITY_PAGE_SIZE) })
   if (cursor) params.set('cursor', cursor)
-  const { data } = await api.get<ActivityPage>(`/v1.0/account/activity?${params}`)
+  const { data } = await api.get<{ data: ActivityEvent[]; next_cursor: string | null }>(`/v1.0/account/activity?${params}`)
   return { events: data.data ?? [], next_cursor: data.next_cursor ?? '' }
 }
 
