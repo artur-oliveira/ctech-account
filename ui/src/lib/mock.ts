@@ -616,15 +616,15 @@ const routes: Route[] = [
       return { provisioning_uri: 'otpauth://totp/CTech%20Account:mock.user@aoctech.app?secret=MOCKSECRET&issuer=CTech%20Account' }
     },
   },
-  { method: 'get', pattern: /^\/v1\.0\/account\/activity/, handle: () => ({ events: state.activity, next_cursor: '' }) },
+  { method: 'get', pattern: /^\/v1\.0\/account\/activity/, handle: () => ({ data: state.activity, next_cursor: null }) },
   { method: 'get', pattern: /^\/v1\.0\/account\/kyc$/, handle: () => state.kyc },
-  { method: 'get', pattern: /^\/v1\.0\/account\/support\/tickets$/, handle: () => ({ tickets: state.supportTickets.filter((t) => t.user_id === state.user.user_id), next_cursor: '' }) },
+  { method: 'get', pattern: /^\/v1\.0\/account\/support\/tickets$/, handle: () => ({ data: state.supportTickets.filter((t) => t.user_id === state.user.user_id), next_cursor: null }) },
   {
     method: 'get',
     pattern: /^\/v1\.0\/admin\/support\/tickets$/,
     handle: (_m, _b, config) => {
       const status = new URL(config.url ?? '', 'http://mock').searchParams.get('status') || 'open'
-      return { tickets: state.supportTickets.filter((t) => t.status === status), next_cursor: '' }
+      return { data: state.supportTickets.filter((t) => t.status === status), next_cursor: null }
     },
   },
   {

@@ -1,6 +1,6 @@
 import { api, cnpjaApi, isAxiosError } from './axios'
 import {TAX_ID_CNPJ_LENGTH} from '@/lib/constants'
-import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest, LeavableService, DataExport } from './types'
+import type { User, Session, APIKey, Passkey, OAuthClient, ConsentGrant, ScopeService, ActivityPage, ActivityEvent, KYCStatus, SupportInternalNote, SupportMessage, SupportMetricBucket, SupportTicket, AdminKYCReview, AdminKYCReviewSummary, AdminKYCAuditEvent, KYCReviewQueue, Organization, OrganizationMember, OrganizationInvitation, Company, CompanyActor, SpaceUsage, DeletionRequest, LeavableService, DataExport } from './types'
 
 export async function fetchProfile(): Promise<User> {
   const { data } = await api.get<User>('/v1.0/account/profile')
@@ -58,8 +58,8 @@ const ACTIVITY_PAGE_SIZE = 25
 export async function fetchActivity(cursor: string): Promise<ActivityPage> {
   const params = new URLSearchParams({ limit: String(ACTIVITY_PAGE_SIZE) })
   if (cursor) params.set('cursor', cursor)
-  const { data } = await api.get<ActivityPage>(`/v1.0/account/activity?${params}`)
-  return { events: data.events ?? [], next_cursor: data.next_cursor ?? '' }
+  const { data } = await api.get<{ data: ActivityEvent[]; next_cursor: string | null }>(`/v1.0/account/activity?${params}`)
+  return { events: data.data ?? [], next_cursor: data.next_cursor ?? '' }
 }
 
 export async function fetchKYC(): Promise<KYCStatus> {
@@ -74,12 +74,12 @@ export async function fetchSupportTicket(id: string, token = ''): Promise<{ tick
 
 export async function fetchMySupportTickets(cursor = ''): Promise<{ tickets: SupportTicket[]; next_cursor: string }> {
   const { data } = await api.get(`/v1.0/account/support/tickets${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`)
-  return { tickets: data.tickets ?? [], next_cursor: data.next_cursor ?? '' }
+  return { tickets: data.data ?? [], next_cursor: data.next_cursor ?? '' }
 }
 
 export async function fetchAdminSupportTickets(status = 'open'): Promise<{ tickets: SupportTicket[]; next_cursor: string }> {
   const { data } = await api.get(`/v1.0/admin/support/tickets?status=${encodeURIComponent(status)}`)
-  return { tickets: data.tickets ?? [], next_cursor: data.next_cursor ?? '' }
+  return { tickets: data.data ?? [], next_cursor: data.next_cursor ?? '' }
 }
 
 export async function fetchAdminSupportTicket(id: string): Promise<{ ticket: SupportTicket; messages: SupportMessage[]; internal_notes: SupportInternalNote[] }> {

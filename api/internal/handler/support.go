@@ -130,7 +130,7 @@ func (h *SupportHandler) listMine(c fiber.Ctx) error {
 	if e != nil {
 		return problem.ServerError(c.Path()).WithCause(e).Send(c)
 	}
-	return c.JSON(fiber.Map{"tickets": t, "next_cursor": n})
+	return c.JSON(listPage(t, n))
 }
 
 // ticketLink builds the user-facing thread URL, including the anonymous

@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/account/api/internal/email"
 	"gopkg.aoctech.app/account/api/internal/problem"
 	"gopkg.aoctech.app/account/api/internal/utils"
+	"gopkg.aoctech.app/api-commons/dynamo"
 	"gopkg.aoctech.app/api-commons/observability"
 	"gopkg.aoctech.app/api-commons/validation"
 )
@@ -173,4 +174,17 @@ func parseBody[T any](c fiber.Ctx, dst *T) error {
 		return problem.ValidationFailed(strings.Join(parts, "; "), c.Path())
 	}
 	return nil
+}
+
+// listPage is the go-common list envelope {"data": [...], "next_cursor": "..."|null}
+// around the repositories' own opaque cursor ("" = last page).
+func listPage[T any](items []T, next string) dynamo.Page[T] {
+	if items == nil {
+		items = []T{}
+	}
+	p := dynamo.Page[T]{Data: items}
+	if next != "" {
+		p.NextCursor = &next
+	}
+	return p
 }

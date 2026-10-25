@@ -316,8 +316,8 @@ KYC and MFA → their respective `read|write`; terms acceptance →
 
 ### Activity (audit log)
 - `GET /v1.0/account/activity` → query `limit` (1–100, default 25), `cursor`.
-  Returns `{ events:[{ event_type, ip, user_agent, metadata (allowlisted keys only),
-  created_at }], next_cursor }` (`activity.go:36`). Metadata is filtered to
+  Returns `{ data:[{ event_type, ip, user_agent, metadata (allowlisted keys only),
+  created_at }], next_cursor }` (go-common `Page`) (`activity.go:36`). Metadata is filtered to
   `client_id, client_name, key_id, session_id, method, device_name`.
 
 ### KYC (identity verification)  *(all writes stepUp-gated)*
