@@ -8,11 +8,9 @@ import {createSupportTicketAPI} from '@/lib/mutations'
 import {useAuthStore} from '@/store/auth'
 import {buildSupportSubject, findSupportCategory, SUPPORT_CATEGORIES} from '@/lib/support-catalog'
 import {TurnstileWidget} from '@/components/turnstile-widget'
-import { Button, Skeleton } from '@aoctech/ui'
-import {Input} from '@/components/ui/input'
+import {Button, Skeleton, Input, Select} from '@aoctech/ui'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 
 const PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent', 'critical'] as const
 
@@ -81,25 +79,15 @@ export default function SupportPage() {
         <div>
           <Label htmlFor="category">{t('support.categoryLabel')}</Label>
           <Select
+            id="category"
+            className="mt-1"
             value={category}
             onValueChange={(value) => {
-              setCategory((value ?? 'account') as string)
+              setCategory(value)
               setSubcategory('')
             }}
-          >
-            <SelectTrigger id="category" className="mt-1 w-full">
-              <SelectValue>
-                {category ? t(`support.categories.${category}`) : category}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {SUPPORT_CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {t(`support.categories.${c.value}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={SUPPORT_CATEGORIES.map((c) => ({value: c.value, label: t(`support.categories.${c.value}`)}))}
+          />
         </div>
 
         {isOtherCategory ? (
@@ -118,20 +106,14 @@ export default function SupportPage() {
         ) : (
           <div>
             <Label htmlFor="subcategory">{t('support.subcategoryLabel')}</Label>
-            <Select value={subcategory} onValueChange={(value) => setSubcategory((value ?? '') as string)}>
-              <SelectTrigger id="subcategory" className="mt-1 w-full">
-                <SelectValue placeholder={t('support.subcategoryPlaceholder')}>
-                  {subcategory ? t(`support.subcategories.${subcategory}`) : subcategory}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {selectedCategory?.subcategories.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {t(`support.subcategories.${s.value}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Select
+              id="subcategory"
+              className="mt-1"
+              value={subcategory}
+              onValueChange={setSubcategory}
+              placeholder={t('support.subcategoryPlaceholder')}
+              options={(selectedCategory?.subcategories ?? []).map((s) => ({value: s.value, label: t(`support.subcategories.${s.value}`)}))}
+            />
           </div>
         )}
 
@@ -144,20 +126,13 @@ export default function SupportPage() {
 
         <div>
           <Label htmlFor="priority">{t('support.priorityLabel')}</Label>
-          <Select value={priority} onValueChange={(value) => setPriority((value ?? 'low') as string)}>
-            <SelectTrigger id="priority" className="mt-1 w-full">
-              <SelectValue>
-                {priority ? t(`support.priority.${priority}`) : priority}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {PRIORITY_VALUES.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {t(`support.priority.${p}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Select
+            id="priority"
+            className="mt-1"
+            value={priority}
+            onValueChange={setPriority}
+            options={PRIORITY_VALUES.map((p) => ({value: p, label: t(`support.priority.${p}`)}))}
+          />
         </div>
 
         <div>

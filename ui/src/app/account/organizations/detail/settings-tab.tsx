@@ -12,11 +12,9 @@ import {useTranslation} from 'react-i18next'
 import {useWorkspaceT, workspaceDetail} from '@/lib/workspace-copy'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {QueryError} from '@/components/query-error'
-import {Button} from '@aoctech/ui'
-import {Input} from '@/components/ui/input'
+import {Button, Input, Select} from '@aoctech/ui'
 import {Label} from '@/components/ui/label'
 import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import {canTransferTo, isPersonal, type Organization} from '@/lib/types'
 
 export function SettingsTab({organization}: { organization: Organization }) {
@@ -185,20 +183,14 @@ function TransferSection({organization}: { organization: Organization }) {
         <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1 space-y-1.5 sm:flex-none">
             <Label htmlFor="transfer-target">{t('organizations.settings.transferSelect')}</Label>
-            <Select value={target} onValueChange={(v) => setTarget(v ?? '')}>
-              <SelectTrigger id="transfer-target" className="w-full max-sm:h-11 sm:w-72">
-                <SelectValue placeholder={t('organizations.settings.transferSelect')}>
-                  {candidates.find(it => it.user_id === target)?.name || target}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((m) => (
-                  <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.name || m.user_id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Select
+              id="transfer-target"
+              className="w-full sm:w-72"
+              value={target}
+              onValueChange={setTarget}
+              placeholder={t('organizations.settings.transferSelect')}
+              options={candidates.map((m) => ({value: m.user_id, label: m.name || m.user_id}))}
+            />
           </div>
           <ConfirmDialog
             trigger={

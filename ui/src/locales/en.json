@@ -368,8 +368,7 @@
   "menu": {
     "settings": "Settings",
     "admin": "Admin workspace",
-    "signOut": "Sign out",
-    "signingOut": "Signing out…"
+    "signOut": "Sign out"
   },
   "toast": {
     "profileUpdated": "Profile updated.",

@@ -12,8 +12,7 @@ import {QueryError} from '@/components/query-error'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
 import {OrganizationRoleBadge} from '@/components/organization-role-badge'
-import { Button, Skeleton } from '@aoctech/ui'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import {Button, Skeleton, Select} from '@aoctech/ui'
 import {
   assignableRoles,
   canManageMember,
@@ -113,25 +112,15 @@ export function MembersTab({organization}: { organization: Organization }) {
         // no control.
         canActOn(m) && options.length > 0 ? (
           <Select
+            className="w-36"
+            aria-label={t('organizations.members.changeRole')}
             value={m.role}
             onValueChange={(role) =>
               roleMutation.mutate({userId: m.user_id, role: role as OrganizationRole})
             }
             disabled={roleMutation.isPending}
-          >
-            <SelectTrigger className="w-36 max-sm:h-11" aria-label={t('organizations.members.changeRole')}>
-              <SelectValue>
-                {m.role ? t(`organizations.roles.${m.role}`) : m.role}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((role) => (
-                <SelectItem key={role} value={role}>
-                  {t(`organizations.roles.${role}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={options.map((role) => ({value: role, label: t(`organizations.roles.${role}`)}))}
+          />
         ) : (
           <OrganizationRoleBadge role={m.role} kind={organization.kind}/>
         ),

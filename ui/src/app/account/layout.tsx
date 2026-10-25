@@ -12,7 +12,7 @@ import { AccountNav } from '@/components/account-nav'
 import { AccountMobileNav } from '@/components/account-mobile-nav'
 import { StepUpDialog } from '@/components/step-up-dialog'
 import { TermsGate } from '@/components/terms-gate'
-import { UserMenu } from '@/components/user-menu'
+import { AccountMenu } from '@/components/account-menu'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { Separator } from '@aoctech/ui'
 import { QueryError } from '@/components/query-error'
@@ -76,7 +76,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
           </div>
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitcher />
-            <UserMenu user={user} />
+            <AccountMenu user={user} />
           </div>
         </div>
       </header>

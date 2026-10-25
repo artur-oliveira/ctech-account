@@ -102,7 +102,7 @@ Top-level:
 - `components/terms-gate.tsx` — blocks the account area until ToS/Privacy accepted.
 - `components/google-sign-in-button.tsx` — kicks off `GET /v1.0/auth/google`.
 - `components/account-nav.tsx`, `components/account-mobile-nav.tsx`,
-  `components/user-menu.tsx`, `components/language-switcher.tsx`.
+  `components/account-menu.tsx` (wraps `@aoctech/ui` UserMenu), `components/language-switcher.tsx`.
 
 ---
 

@@ -16,8 +16,7 @@ import { QueryError } from '@/components/query-error'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
-import { Button, Skeleton } from '@aoctech/ui'
-import { Input } from '@/components/ui/input'
+import {Button, Skeleton, Input, Select} from '@aoctech/ui'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -29,7 +28,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   assignableRoles,
   formatTaxID,
@@ -307,20 +305,13 @@ function InviteDialog({ organization }: { organization: Organization }) {
               {/* Owner is absent, and so is the caller's own rank: the API
                   rejects both, and offering a choice that always fails is
                   asking a question with a wrong answer on it. */}
-              <Select value={role} onValueChange={(v) => setRole(v as OrganizationRole)}>
-                <SelectTrigger id="invite-role" aria-describedby="invite-role-description" className="max-sm:h-11">
-                  <SelectValue>
-                    {role ? t(`organizations.roles.${role}`) : role}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {t(`organizations.roles.${r}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Select
+                id="invite-role"
+                aria-describedby="invite-role-description"
+                value={role}
+                onValueChange={(v) => setRole(v as OrganizationRole)}
+                options={options.map((r) => ({value: r, label: t(`organizations.roles.${r}`)}))}
+              />
               <p id="invite-role-description" className="text-xs text-muted-foreground">
                 {t(`organizations.roleDescriptions.${role}`)}
               </p>

@@ -1,3 +1,4 @@
+// standards:allow app wrapper over @aoctech/ui NetworkProvider (router/query wiring), not a copy of it
 'use client'
 
 import {usePathname, useRouter} from 'next/navigation'

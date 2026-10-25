@@ -368,8 +368,7 @@
   "menu": {
     "settings": "Configurações",
     "admin": "Área administrativa",
-    "signOut": "Sair",
-    "signingOut": "Saindo…"
+    "signOut": "Sair"
   },
   "toast": {
     "profileUpdated": "Perfil atualizado.",

@@ -1,3 +1,4 @@
+// standards:allow @aoctech/ui Alert requires a `title` and has no body-only/AlertDescription form (about 35 call sites show one error line); gap to implement in ctech-ui
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 

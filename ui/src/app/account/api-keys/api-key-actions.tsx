@@ -3,8 +3,7 @@
 import {SyntheticEvent, useState} from 'react'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Button} from '@aoctech/ui'
-import {Input} from '@/components/ui/input'
+import {Button, Input, Select} from '@aoctech/ui'
 import {Label} from '@/components/ui/label'
 import {
   Dialog,
@@ -15,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {Alert, AlertDescription} from '@/components/ui/alert'
 import {createAPIKeyAPI, revokeAPIKeyAPI} from '@/lib/mutations'
@@ -125,20 +123,15 @@ export function CreateAPIKeyDialog() {
             </Alert>
             <div className="space-y-1.5">
               <Label>{t('apiKeys.dialog.expiry')}</Label>
-              <Select value={expiry} onValueChange={(v) => setExpiry(v ?? '90')}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {expiry === "0" ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', {days: expiry})}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPIRY_OPTIONS.map((days) => (
-                    <SelectItem key={days} value={String(days)}>
-                      {days === 0 ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', {days})}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Select
+                aria-label={t('apiKeys.dialog.expiry')}
+                value={expiry}
+                onValueChange={setExpiry}
+                options={EXPIRY_OPTIONS.map((days) => ({
+                  value: String(days),
+                  label: days === 0 ? t('apiKeys.dialog.expiryNever') : t('apiKeys.dialog.expiryDays', {days}),
+                }))}
+              />
             </div>
             <DialogFooter showCloseButton>
               <Button type="submit" disabled={isPending}>
