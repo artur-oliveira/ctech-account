@@ -6,8 +6,7 @@ import {useRouter, useSearchParams} from 'next/navigation'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
-import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
-import {Badge, Skeleton, Button, Select} from '@aoctech/ui'
+import {Badge, Skeleton, Button, Select, Alert, AlertDescription, AlertTitle} from '@aoctech/ui'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -107,8 +106,7 @@ function ReviewPageContent() {
           ))}
         </dl>
         {review.risk_signals?.length > 0 && (
-          <Alert>
-            <ShieldAlert className="size-4"/>
+          <Alert icon={<ShieldAlert className="size-4" />}>
             <AlertTitle>{t('adminKyc.riskSignals')}</AlertTitle>
             <AlertDescription>{review.risk_signals.join(' · ')}</AlertDescription>
           </Alert>

@@ -3,8 +3,7 @@
 import {SyntheticEvent, useState} from 'react'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Button, Input, Select} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Input, Select, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +14,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {ConfirmDialog} from '@/components/confirm-dialog'
-import {Alert, AlertDescription} from '@/components/ui/alert'
 import {createAPIKeyAPI, revokeAPIKeyAPI} from '@/lib/mutations'
 import {ScopePicker} from '@/components/scope-picker'
 import {isAxiosError} from '@/lib/axios'

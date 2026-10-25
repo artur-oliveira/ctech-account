@@ -4,9 +4,8 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Skeleton } from '@aoctech/ui'
+import {Button, Skeleton, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { consentDecisionAPI } from '@/lib/mutations'
 import { isAxiosError } from '@/lib/axios'
 import { describeScope } from '@/lib/scope-description'
@@ -55,7 +54,7 @@ function ConsentForm() {
   if (!req || scopes.length === 0) {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('consent.invalidRequest')}</AlertDescription>
         </Alert>
         <Button type="button" className="w-full" onClick={() => (window.location.href = DEFAULT_REDIRECT)}>
@@ -76,13 +75,12 @@ function ConsentForm() {
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
-          <Alert variant="destructive">
+          <Alert tone="danger">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        <Alert>
-          <ShieldCheck className="size-4" />
+        <Alert icon={<ShieldCheck className="size-4" />}>
           <AlertDescription>{t('consent.reviewNotice', { app: clientName })}</AlertDescription>
         </Alert>
 

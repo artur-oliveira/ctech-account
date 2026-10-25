@@ -206,7 +206,7 @@ try {
 
 Surface errors in UI via:
 
-1. Inline `<Alert variant="destructive">` for form validation errors
+1. Inline `<Alert tone="danger">` for form validation errors
 2. `toast.error(message)` from `sonner` for transient errors
 
 ---

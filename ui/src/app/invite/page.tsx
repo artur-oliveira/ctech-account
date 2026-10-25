@@ -11,9 +11,8 @@ import { useAuthStore } from '@/store/auth'
 import { acceptInvitationAPI, resendVerificationAPI } from '@/lib/mutations'
 import { fetchProfile } from '@/lib/queries'
 import { isAxiosError } from '@/lib/axios'
-import { Button, buttonVariants, Skeleton } from '@aoctech/ui'
+import {Button, buttonVariants, Skeleton, Alert, AlertDescription} from '@aoctech/ui'
 import { cn } from '@/lib/utils'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 
 /**
  * Invitation acceptance.
@@ -84,7 +83,7 @@ function Invite() {
   if (!token) {
     return (
       <Card>
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('organizations.invite.missingToken')}</AlertDescription>
         </Alert>
       </Card>
@@ -148,7 +147,7 @@ function Invite() {
       )}
 
       {failure === 'invalid' && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('organizations.invite.invalid')}</AlertDescription>
         </Alert>
       )}

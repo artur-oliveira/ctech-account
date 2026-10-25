@@ -4,10 +4,8 @@ import { Suspense, useState, SyntheticEvent } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslation } from 'react-i18next'
-import {Button, Skeleton, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Skeleton, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { Card, CardContent } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { resetPasswordAPI } from '@/lib/mutations'
 import { reportClientError } from '@/lib/client-logging'
 
@@ -21,7 +19,7 @@ function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <Alert variant="destructive">
+      <Alert tone="danger">
         <AlertDescription>{t('resetPassword.invalidLink')}</AlertDescription>
       </Alert>
     )
@@ -52,7 +50,7 @@ function ResetPasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}

@@ -16,9 +16,7 @@ import { QueryError } from '@/components/query-error'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import { OrganizationRoleBadge } from '@/components/organization-role-badge'
-import {Button, Skeleton, Input, Select} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import {Button, Skeleton, Input, Select, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {
   Dialog,
   DialogContent,
@@ -280,7 +278,7 @@ function InviteDialog({ organization }: { organization: Organization }) {
             </DialogHeader>
 
             {errorMsg && (
-              <Alert variant="destructive">
+              <Alert tone="danger">
                 <AlertDescription>
                   {errorMsg}
                   {plan?.kind === 'limit' && plansHref && (

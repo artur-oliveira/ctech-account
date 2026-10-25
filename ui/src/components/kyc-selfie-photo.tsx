@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button } from '@aoctech/ui'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import {Button, Alert, AlertDescription} from '@aoctech/ui'
 import { uploadKYCDocumentAPI } from '@/lib/mutations'
 import { Camera, ShieldCheck, XCircle } from 'lucide-react'
 import { reportClientError } from '@/lib/client-logging'
@@ -116,8 +115,7 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
 
   if (!consented) {
     return (
-      <Alert>
-        <ShieldCheck className="size-4" />
+      <Alert icon={<ShieldCheck className="size-4" />}>
         <AlertDescription className="space-y-3">
           <p className="text-foreground font-medium">{t('identity.selfieConsentTitle')}</p>
           <p>{t('identity.selfieWithDocumentConsentBody')}</p>
@@ -164,8 +162,7 @@ export function KYCSelfiePhoto({ uploaded }: { uploaded: boolean }) {
       <p className="text-sm font-medium">{t('identity.selfieWithDocumentInstruction')}</p>
 
       {cameraError ? (
-        <Alert variant="destructive">
-          <XCircle className="size-4" />
+        <Alert tone="danger" icon={<XCircle className="size-4" />}>
           <AlertDescription>{cameraErrorMessage}</AlertDescription>
         </Alert>
       ) : (

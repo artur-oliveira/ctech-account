@@ -1,4 +1,4 @@
-// standards:allow app wrapper over @aoctech/ui NetworkProvider (router/query wiring), not a copy of it
+// standards:allow app wrapper over @aoctech/ui NetworkProvider (Next router, react-query refetch, mock fetch and i18n wiring); the shared provider is framework-free, so 0.11 liveness/start do not replace it
 'use client'
 
 import {usePathname, useRouter} from 'next/navigation'

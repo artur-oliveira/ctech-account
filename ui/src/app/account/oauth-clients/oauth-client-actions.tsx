@@ -3,8 +3,7 @@
 import { useState, SyntheticEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import {Button, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
+import {Button, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -15,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   createOAuthClientAPI,
   updateOAuthClientAPI,
@@ -211,7 +209,7 @@ export function CreateOAuthClientDialog({ prefill, onClosed }: { prefill?: Clien
               </Alert>
             )}
             <ClientFormFields scopes={scopes} onScopesChange={setScopes} />
-            {validationError && <Alert variant="destructive"><AlertDescription>{validationError}</AlertDescription></Alert>}
+            {validationError && <Alert tone="danger"><AlertDescription>{validationError}</AlertDescription></Alert>}
             <fieldset className="space-y-2 border-0">
               <legend className="text-sm leading-none font-medium select-none">
                 {t('oauthClients.dialog.clientType')}
@@ -287,7 +285,7 @@ export function EditOAuthClientDialog({ client }: { client: OAuthClient }) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <ClientFormFields client={client} scopes={scopes} onScopesChange={setScopes} />
-          {validationError && <Alert variant="destructive"><AlertDescription>{validationError}</AlertDescription></Alert>}
+          {validationError && <Alert tone="danger"><AlertDescription>{validationError}</AlertDescription></Alert>}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isPending}>
               {isPending ? t('oauthClients.dialog.saving') : t('oauthClients.dialog.save')}

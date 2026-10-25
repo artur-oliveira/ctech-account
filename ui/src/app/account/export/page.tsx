@@ -3,10 +3,8 @@
 import {type SyntheticEvent} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Button, Input} from '@aoctech/ui'
+import {Button, Input, Alert, AlertDescription, Label} from '@aoctech/ui'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
-import {Label} from '@/components/ui/label'
 import {isAxiosError} from '@/lib/axios'
 import {formatDate} from '@/lib/format'
 import {discardDataExportAPI, requestDataExportAPI} from '@/lib/mutations'
@@ -72,9 +70,9 @@ export default function DataExportPage() {
       </Card>
 
       {data?.state === 'building' && <Alert><AlertDescription>{t('dataExport.building')}</AlertDescription></Alert>}
-      {data?.state === 'failed' && <Alert variant="destructive"><AlertDescription>{t('dataExport.failed')}</AlertDescription></Alert>}
+      {data?.state === 'failed' && <Alert tone="danger"><AlertDescription>{t('dataExport.failed')}</AlertDescription></Alert>}
       {data?.state === 'expired' && <Alert><AlertDescription>{t('dataExport.expired')}</AlertDescription></Alert>}
-      {errorText && <Alert variant="destructive"><AlertDescription>{errorText}</AlertDescription></Alert>}
+      {errorText && <Alert tone="danger"><AlertDescription>{errorText}</AlertDescription></Alert>}
 
       {data?.state === 'ready' && (
         <Card>

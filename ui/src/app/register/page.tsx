@@ -4,10 +4,8 @@ import {SyntheticEvent, useState} from 'react'
 import {useRouter} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
-import {Button, Separator, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Separator, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {Card, CardContent} from '@/components/ui/card'
-import {Alert, AlertDescription} from '@/components/ui/alert'
 import {api, isAxiosError} from '@/lib/axios'
 import {useRedirectIfAuthenticated} from '@/hooks/use-redirect-if-authenticated'
 import {GoogleSignInButton} from '@/components/google-sign-in-button'
@@ -78,7 +76,7 @@ export default function RegisterPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <Alert variant="destructive">
+                <Alert tone="danger">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}

@@ -5,11 +5,9 @@ import {useRouter, useSearchParams} from 'next/navigation'
 import Link from 'next/link'
 import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
-import { Button, Skeleton } from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Skeleton, Label, Alert, AlertDescription} from '@aoctech/ui'
 import {OTPInput} from '@/components/ui/otp-input'
 import {Card, CardContent} from '@/components/ui/card'
-import {Alert, AlertDescription} from '@/components/ui/alert'
 import {isAxiosError} from '@/lib/axios'
 import {startOAuthFlow} from '@/lib/auth-flow'
 import {mfaChallengeAPI} from '@/lib/mutations'
@@ -94,7 +92,7 @@ function MFAForm() {
   if (!hasTOTP) {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('errors.sessionExpired')}</AlertDescription>
         </Alert>
         <Button className="w-full" render={<Link href="/login"/>}>{t('mfa.backToLogin')}</Button>
@@ -105,7 +103,7 @@ function MFAForm() {
   return (
     <div className="space-y-4">
       {error && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}

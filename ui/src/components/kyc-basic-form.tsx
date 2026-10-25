@@ -4,9 +4,7 @@ import { type ComponentProps, SyntheticEvent, useMemo, useRef, useState } from '
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AsYouType, getCountries, getCountryCallingCode, isValidPhoneNumber, validatePhoneNumberLength, type CountryCode } from 'libphonenumber-js/min'
-import {Button, Input} from '@aoctech/ui'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import {Button, Input, Label, Alert, AlertDescription} from '@aoctech/ui'
 import { Combobox } from '@base-ui/react/combobox'
 import { ChevronDown } from 'lucide-react'
 import { submitBasicKYCAPI } from '@/lib/mutations'
@@ -174,7 +172,7 @@ export function KYCBasicForm({ status }: { status: KYCStatus }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {errorMsg && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}

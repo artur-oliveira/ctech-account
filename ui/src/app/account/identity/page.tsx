@@ -3,10 +3,8 @@
 import Link from 'next/link'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Button, Badge, Separator, Input} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
+import {Button, Badge, Separator, Input, Label, Alert, AlertDescription, AlertTitle} from '@aoctech/ui'
 import {Card, CardContent, CardDescription, CardHeader} from '@/components/ui/card'
-import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
 import {cn} from '@/lib/utils'
 import {KYCBasicForm} from '@/components/kyc-basic-form'
 import {KYCSelfiePhoto} from '@/components/kyc-selfie-photo'
@@ -85,8 +83,7 @@ function DocumentList({status}: { status: KYCStatus }) {
 function MFARequired() {
   const {t} = useTranslation()
   return (
-    <Alert>
-      <Info className="size-4"/>
+    <Alert icon={<Info className="size-4" />}>
       <AlertTitle>{t('identity.mfaRequiredTitle')}</AlertTitle>
       <AlertDescription className="space-y-3">
         <p>{t('identity.mfaRequired')}</p>
@@ -114,8 +111,7 @@ function EnhancedSection({status}: { status: KYCStatus }) {
   return (
     <div className="space-y-4">
       {status.state === 'rejected' && (
-        <Alert variant="destructive">
-          <XCircle className="size-4"/>
+        <Alert tone="danger" icon={<XCircle className="size-4" />}>
           <AlertDescription className="space-y-2">
             {(status.rejection_code || status.rejection_reason) && (
               <p>{t('identity.rejectionReason', {
@@ -130,13 +126,12 @@ function EnhancedSection({status}: { status: KYCStatus }) {
       )}
 
       {error && (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertDescription>{t('identity.submitFailed')}</AlertDescription>
         </Alert>
       )}
 
-      <Alert>
-        <Info className="size-4"/>
+      <Alert icon={<Info className="size-4" />}>
         <AlertDescription>{t('identity.documentsPrivacyNote')}</AlertDescription>
       </Alert>
 
@@ -226,8 +221,7 @@ export default function IdentityPage() {
         <CardContent className="space-y-4">
           {status?.state === 'verified' && (
             <>
-              <Alert>
-                <CheckCircle2 className="size-4"/>
+              <Alert icon={<CheckCircle2 className="size-4" />}>
                 <AlertDescription>
                   {t('identity.verifiedOn', {date: formatDate(status.verified_at ?? null)})} • {t('identity.lockedNote')}
                 </AlertDescription>

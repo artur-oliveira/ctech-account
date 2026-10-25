@@ -8,9 +8,7 @@ import {createSupportTicketAPI} from '@/lib/mutations'
 import {useAuthStore} from '@/store/auth'
 import {buildSupportSubject, findSupportCategory, SUPPORT_CATEGORIES} from '@/lib/support-catalog'
 import {TurnstileWidget} from '@/components/turnstile-widget'
-import {Button, Skeleton, Input, Select} from '@aoctech/ui'
-import {Label} from '@/components/ui/label'
-import {Alert, AlertDescription} from '@/components/ui/alert'
+import {Button, Skeleton, Input, Select, Label, Alert, AlertDescription} from '@aoctech/ui'
 
 const PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent', 'critical'] as const
 
@@ -155,7 +153,7 @@ export default function SupportPage() {
         />
 
         {error && (
-          <Alert variant="destructive">
+          <Alert tone="danger">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}

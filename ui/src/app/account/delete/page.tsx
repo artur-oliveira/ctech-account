@@ -3,10 +3,8 @@
 import {useState, type SyntheticEvent} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
-import {Alert, AlertDescription} from '@/components/ui/alert'
-import {Button, Input} from '@aoctech/ui'
+import {Button, Input, Alert, AlertDescription, Label} from '@aoctech/ui'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
-import {Label} from '@/components/ui/label'
 import {isAxiosError} from '@/lib/axios'
 import {DELETION_BLOCKED_PROBLEM, DELETION_PHRASE} from '@/lib/constants'
 import {formatDate} from '@/lib/format'
@@ -25,7 +23,7 @@ function statusOf(err: unknown): number | undefined {
 function BlockerList({blockers}: {blockers: DeletionBlocker[]}) {
   const {t} = useTranslation()
   return (
-    <Alert variant="destructive">
+    <Alert tone="danger">
       <AlertDescription className="space-y-2">
         <p className="font-medium">{t('deletion.blockedTitle')}</p>
         <ul className="list-disc pl-5 space-y-1">
@@ -115,7 +113,7 @@ export default function DeleteAccountPage() {
       </Card>
 
       {blockers.length > 0 && <BlockerList blockers={blockers}/>}
-      {errorText && <Alert variant="destructive"><AlertDescription>{errorText}</AlertDescription></Alert>}
+      {errorText && <Alert tone="danger"><AlertDescription>{errorText}</AlertDescription></Alert>}
 
       {!request.isSuccess && (
         <form onSubmit={handleSubmit} className="space-y-4">
