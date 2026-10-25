@@ -13,7 +13,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.3
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.75.1
 	github.com/fasthttp/websocket v1.5.12
-	github.com/go-playground/validator/v10 v10.30.5
 	github.com/go-webauthn/webauthn v0.18.0
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -22,6 +21,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/valkey-io/valkey-go v1.0.78
 	github.com/valyala/fasthttp v1.74.0
+	go.uber.org/fx v1.24.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	google.golang.org/protobuf v1.36.12
@@ -51,6 +51,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-playground/validator/v10 v10.30.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.3.0 // indirect
 	github.com/gofiber/schema v1.8.7 // indirect
@@ -67,6 +68,9 @@ require (
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	go.uber.org/dig v1.19.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )

@@ -913,7 +913,7 @@ and the hostname parsed from the deployment's `APP_URL` both match. Failed submi
 widget before the user can retry, because Turnstile tokens are single-use.
 
 Because the call is now cross-origin, `APP_URL` below is not only WebAuthn's RPID source — it is also
-prepended to the API's CORS allowlist (`api/cmd/api/main.go:278`). If it does not match the SPA's real
+prepended to the API's CORS allowlist (`api/internal/app/http.go`). If it does not match the SPA's real
 origin, every API call fails preflight. `/.well-known/*` is served on the API host only; external OIDC
 clients must discover at `https://accounts-api.aoctech.app/.well-known/openid-configuration`.
 
