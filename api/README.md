@@ -1,7 +1,7 @@
 # api/ — ctech-account Go backend (OAuth 2.0 + OIDC)
 
 The identity-provider API for the aoctech.app platform. **Go 1.27, Fiber v3, manual
-DI in `cmd/api/main.go`, layered `handler → service → repository`, DynamoDB, Valkey, JWKS/OIDC.**
+DI in `internal/app` (uber/fx), layered `handler → service → repository`, DynamoDB, Valkey, JWKS/OIDC.**
 
 > The implementation is the source of truth. Cross-check against code before trusting
 > any doc. Endpoint-level detail (method, path, auth, request/response shapes, business
@@ -33,7 +33,7 @@ api/
 └── internal/
     ├── problem/       # RFC 7807 Problem types — ALL errors use this package
     ├── cache/          # Valkey client (disabled no-op when VALKEY_URL absent)
-    ├── config/         # Env-driven Config (cmd/api/main.go:47 loads it)
+    ├── config/         # Env-driven Config (cmd/api/main.go loads it)
     ├── crypto/         # JWTService (RS256/ES256), Argon2id, PKCE
     ├── database/       # DynamoDB wrapper + ConditionalUpdate (conditional.go)
     ├── domain/         # Business logic (services + repository interfaces)
@@ -49,7 +49,7 @@ api/
 ## Hard rules (see [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md))
 
 - **Valkey is mandatory outside `dev`/`development`** — the binary refuses to boot
-  without `VALKEY_URL` (`cmd/api/main.go`). OAuth codes, MFA/passkey challenges,
+  without `VALKEY_URL` (`internal/app`). OAuth codes, MFA/passkey challenges,
   recovery tokens, and all rate limiting live in Valkey with no DynamoDB fallback.
 - **Sixteen DynamoDB tables** (`{env}_account_users`, `_account_sessions`,
   `_account_oauth_clients`, `_account_api_keys`, `_account_mfa`, `_account_passkeys`,

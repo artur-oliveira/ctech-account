@@ -10,7 +10,7 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`),
 
 | Path                                   | Purpose                                                                       |
 |----------------------------------------|-------------------------------------------------------------------------------|
-| `cmd/api/main.go`                      | App bootstrap — Fiber config, route registration, error handler, health check |
+| `internal/app/`                         | fx container: one module per domain + HTTP module (routes, health, listener); `cmd/api/main.go` only loads config |
 | `internal/problem/problem.go`         | RFC 7807 engine — all error constructors live here                            |
 | `internal/validate/validate.go`        | Validator singleton — use `validate.Struct()`, never instantiate your own     |
 | `internal/crypto/jwt.go`               | JWT signing/verification (RS256/ES256)                                              |
@@ -26,7 +26,6 @@ Go API — OAuth 2.0 + OpenID Connect Identity Provider. Go 1.27 (see `go.mod`),
 The skill is the target; this repo still differs in these places. Do not copy the old variant into new code,
 and do not "fix" one of them as a side effect of unrelated work (propose it as its own change).
 
-- Bootstrap: manual wiring in `cmd/api/main.go` (no uber/fx); `log.Printf` still used there next to `slog`.
 - Guards: internal-scope, client-id and step-up are go-common `authguard` (`RequireScope` stays local: account's insufficient-scope problem type).
 - Idempotency: go-common `idempotency` is wired, optional key, on `POST /organizations` and `POST /organizations/:id/companies` only (table `{env}_account_idempotency`). Routes whose answer holds a secret (API keys, OAuth client secrets, invitation tokens, backup codes) must never be guarded: the answer is stored for 24 h. Other creating routes are not covered yet.
 - DynamoDB: `domain/kyc/repository.go` still has a `Scan` call. Conditional updates use go-common `dynamo.Base.ConditionalUpdate`; list endpoints keep their own cursors (`{tickets|events, next_cursor}`), not go-common `Page`.
