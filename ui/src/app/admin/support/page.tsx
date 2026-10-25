@@ -7,8 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchAdminSupportMetrics, fetchAdminSupportTickets } from '@/lib/queries'
 import { formatDistanceToNow } from '@/lib/format'
 import { QueryError } from '@/components/query-error'
-import { Badge, Skeleton } from '@aoctech/ui'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {Badge, Skeleton, Select} from '@aoctech/ui'
 import { ResponsiveDataList, type Column } from '@/components/responsive-data-list'
 import type { SupportTicket } from '@/lib/types'
 
@@ -79,20 +78,13 @@ export default function AdminSupportPage() {
           <h1 className="text-2xl font-semibold">{t('support.admin.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('support.admin.subtitle')}</p>
         </div>
-        <Select value={status} onValueChange={(value) => setStatus((value ?? 'open') as (typeof STATUS_VALUES)[number])}>
-          <SelectTrigger aria-label={t('support.admin.statusFilter')} className="w-40">
-            <SelectValue>
-              {status ? t(`support.ticket.status.${status}`) : status}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_VALUES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {t(`support.ticket.status.${s}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Select
+          aria-label={t('support.admin.statusFilter')}
+          className="w-40"
+          value={status}
+          onValueChange={(value) => setStatus(value as (typeof STATUS_VALUES)[number])}
+          options={STATUS_VALUES.map((s) => ({value: s, label: t(`support.ticket.status.${s}`)}))}
+        />
       </div>
 
       {metrics.data?.buckets?.length ? (

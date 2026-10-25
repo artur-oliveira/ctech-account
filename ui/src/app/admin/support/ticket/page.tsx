@@ -10,8 +10,7 @@ import {fetchAdminSupportTicket} from '@/lib/queries'
 import {addAdminSupportInternalNoteAPI, replyAdminSupportTicketAPI, setAdminSupportEscalationAPI, setAdminSupportTicketStatusAPI} from '@/lib/mutations'
 import {formatDate} from '@/lib/format'
 import {QueryError} from '@/components/query-error'
-import { Button, Badge } from '@aoctech/ui'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import {Button, Badge, Select} from '@aoctech/ui'
 import type {SupportMessage} from '@/lib/types'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {useSupportRealtime} from '@/lib/hooks/use-support-realtime'
@@ -103,20 +102,13 @@ function AdminTicketThread() {
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={STATUS_TONE[ticket.status]}>{t(`support.ticket.status.${ticket.status}`)}</Badge>
-          {!isClosed && <Select value={ticket.status} onValueChange={(value) => value && setStatus.mutate(value)}>
-            <SelectTrigger aria-label={t('support.admin.statusLabel')} className="w-40">
-              <SelectValue>
-                {ticket.status ? t(`support.ticket.status.${ticket.status}`) : ticket.status}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {ACTIVE_STATUS_VALUES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {t(`support.ticket.status.${s}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>}
+          {!isClosed && <Select
+            aria-label={t('support.admin.statusLabel')}
+            className="w-40"
+            value={ticket.status}
+            onValueChange={(value) => value && setStatus.mutate(value)}
+            options={ACTIVE_STATUS_VALUES.map((s) => ({value: s, label: t(`support.ticket.status.${s}`)}))}
+          />}
           {!isClosed && <ConfirmDialog
             trigger={<Button variant="danger">{t('support.admin.close')}</Button>}
             title={t('support.admin.closeTitle')}
@@ -159,10 +151,12 @@ function AdminTicketThread() {
       <aside className="space-y-4 rounded-xl bg-muted/60 p-4" aria-label={t('support.admin.internalTools')}>
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="ticket-escalation">{t('support.admin.escalationLabel')}</label>
-          <Select value={ticket.escalation_level || 'none'} onValueChange={(value) => value && setEscalation.mutate(value)}>
-            <SelectTrigger id="ticket-escalation"><SelectValue>{t(`support.admin.escalation.${ticket.escalation_level || 'none'}`)}</SelectValue></SelectTrigger>
-            <SelectContent>{ESCALATION_VALUES.map((level) => <SelectItem key={level} value={level}>{t(`support.admin.escalation.${level}`)}</SelectItem>)}</SelectContent>
-          </Select>
+          <Select
+            id="ticket-escalation"
+            value={ticket.escalation_level || 'none'}
+            onValueChange={(value) => value && setEscalation.mutate(value)}
+            options={ESCALATION_VALUES.map((level) => ({value: level, label: t(`support.admin.escalation.${level}`)}))}
+          />
         </div>
         <form onSubmit={submitNote} className="space-y-2">
           <label className="flex items-center gap-2 text-sm font-medium" htmlFor="internal-note"><LockKeyhole className="size-4"/>{t('support.admin.internalNote')}</label>

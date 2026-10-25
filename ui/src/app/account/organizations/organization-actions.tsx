@@ -6,8 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@aoctech/ui'
-import { Input } from '@/components/ui/input'
+import {Button, Input} from '@aoctech/ui'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,

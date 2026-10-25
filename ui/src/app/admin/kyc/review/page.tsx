@@ -7,7 +7,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {toast} from 'sonner'
 import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert'
-import { Badge, Skeleton, Button } from '@aoctech/ui'
+import {Badge, Skeleton, Button, Select} from '@aoctech/ui'
 import {ConfirmDialog} from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -19,7 +19,6 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import {QueryError} from '@/components/query-error'
 import {accessAdminKYCDocumentsAPI, decideAdminKYCReviewAPI} from '@/lib/mutations'
 import {fetchAdminKYCReview, fetchProfile} from '@/lib/queries'
@@ -234,17 +233,14 @@ function RejectReviewButton({pending, onReject}: {
         </DialogHeader>
         <div className="space-y-1.5">
           <label htmlFor="kyc-rejection-code" className="text-sm font-medium">{t('adminKyc.rejectionReason')}</label>
-          <Select value={reasonCode} onValueChange={(value) => setReasonCode(value as KYCRejectionCode)}>
-            <SelectTrigger id="kyc-rejection-code" className="w-full" aria-invalid={!!error && !reasonCode}>
-              <SelectValue placeholder={t('adminKyc.rejectionReasonPlaceholder')}>
-                {reasonCode ? t(`adminKyc.rejectionReasons.${reasonCode}`) : reasonCode}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start">
-              {REJECTION_CODES.map((code) => <SelectItem key={code}
-                                                         value={code}>{t(`adminKyc.rejectionReasons.${code}`)}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Select
+            id="kyc-rejection-code"
+            value={reasonCode ?? ""}
+            onValueChange={(value) => setReasonCode(value as KYCRejectionCode)}
+            aria-invalid={!!error && !reasonCode}
+            placeholder={t('adminKyc.rejectionReasonPlaceholder')}
+            options={REJECTION_CODES.map((code) => ({value: code, label: t(`adminKyc.rejectionReasons.${code}`)}))}
+          />
           <label htmlFor="kyc-rejection-details"
                  className="text-sm font-medium">{t('adminKyc.rejectionDetails')}</label>
           <textarea

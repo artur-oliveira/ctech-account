@@ -5,9 +5,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import Image from 'next/image'
-import { Button } from '@aoctech/ui'
+import {Button, Select} from '@aoctech/ui'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { uploadKYCDocumentAPI } from '@/lib/mutations'
 import { ID_DOCUMENT_ACCEPTED_TYPES, ID_DOCUMENT_PREVIEWABLE_TYPES, MAX_DOCUMENT_BYTES } from '@/lib/constants'
 import type { KYCDocumentType } from '@/lib/types'
@@ -93,20 +92,14 @@ export function KYCDocumentUpload({ uploadedTypes }: { uploadedTypes: KYCDocumen
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label htmlFor="document_type">{t('identity.documentType')}</Label>
-        <Select value={docType} onValueChange={(value) => setDocType(value as KYCDocumentType)} disabled={!!preview}>
-          <SelectTrigger id="document_type" className="w-full min-h-11">
-            <SelectValue>
-              {docType ? t(TYPE_LABEL_KEY[docType]) : t('identity.documentType')}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {DOCUMENT_TYPES.map((type) => (
-              <SelectItem key={type} value={type}>
-                {t(TYPE_LABEL_KEY[type])}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Select
+          id="document_type"
+          value={docType}
+          onValueChange={(value) => setDocType(value as KYCDocumentType)}
+          disabled={!!preview}
+          placeholder={t('identity.documentType')}
+          options={DOCUMENT_TYPES.map((type) => ({value: type, label: t(TYPE_LABEL_KEY[type])}))}
+        />
       </div>
 
       {preview ? (

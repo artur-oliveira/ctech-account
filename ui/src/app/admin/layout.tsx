@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/auth'
 import { fetchProfile } from '@/lib/queries'
-import { UserMenu } from '@/components/user-menu'
+import { AccountMenu } from '@/components/account-menu'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { QueryError } from '@/components/query-error'
 import { hasSupportRole } from '@/lib/support-role'
@@ -94,7 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
-            <UserMenu user={user} />
+            <AccountMenu user={user} />
           </div>
         </div>
       </header>

@@ -11,8 +11,7 @@ import {formatDate} from '@/lib/format'
 import {isAxiosError} from '@/lib/axios'
 import {QueryError} from '@/components/query-error'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
-import { Button, Skeleton } from '@aoctech/ui'
-import {Input} from '@/components/ui/input'
+import {Button, Skeleton, Input} from '@aoctech/ui'
 import {Label} from '@/components/ui/label'
 import {
   Dialog,

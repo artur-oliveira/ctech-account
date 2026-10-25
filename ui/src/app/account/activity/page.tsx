@@ -5,11 +5,10 @@ import {useState} from 'react'
 import {useTranslation} from 'react-i18next'
 import {fetchActivity} from '@/lib/queries'
 import {formatDistanceToNow} from '@/lib/format'
-import { Button, Skeleton } from '@aoctech/ui'
+import {Button, Skeleton, Select} from '@aoctech/ui'
 import {type Column, ResponsiveDataList} from '@/components/responsive-data-list'
 import type {ActivityEvent} from '@/lib/types'
 import {QueryError} from '@/components/query-error'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select'
 
 type ActivityFilter = 'all' | 'sign-in' | 'security' | 'developer'
 
@@ -87,19 +86,17 @@ export default function ActivityPage() {
       </div>
 
       <div className="w-full sm:w-56">
-        <Select value={filter} onValueChange={(value) => setFilter((value ?? 'all') as ActivityFilter)}>
-          <SelectTrigger aria-label={t('activity.filterLabel')}>
-            <SelectValue>
-              {filter ? t(`activity.filters.${filter}`) : filter}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('activity.filters.all')}</SelectItem>
-            <SelectItem value="sign-in">{t('activity.filters.signIn')}</SelectItem>
-            <SelectItem value="security">{t('activity.filters.security')}</SelectItem>
-            <SelectItem value="developer">{t('activity.filters.developer')}</SelectItem>
-          </SelectContent>
-        </Select>
+        <Select
+          aria-label={t('activity.filterLabel')}
+          value={filter}
+          onValueChange={(value) => setFilter(value as ActivityFilter)}
+          options={[
+            {value: 'all', label: t('activity.filters.all')},
+            {value: 'sign-in', label: t('activity.filters.signIn')},
+            {value: 'security', label: t('activity.filters.security')},
+            {value: 'developer', label: t('activity.filters.developer')},
+          ]}
+        />
       </div>
 
       <ResponsiveDataList
