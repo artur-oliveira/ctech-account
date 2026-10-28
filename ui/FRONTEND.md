@@ -223,3 +223,14 @@ The API startup reconciles this system-owned public OAuth client automatically,
 including `${APP_URL}/login/callback` and the full scope set. If a deployment
 overrides `NEXT_PUBLIC_OAUTH_CLIENT_ID`, it must set the same `SELF_CLIENT_ID` in
 the API; otherwise step-up calls return `403`.
+
+## Locale and UI conventions
+
+- Initial language: `localStorage['i18nextLng']` if set, else the browser language (`i18next-browser-languagedetector`),
+  mapped to `en` or `pt-BR`; anything else keeps the `pt-BR` default (`lib/i18n.ts`). The header switcher shows the
+  language it will switch TO (`PT` while the UI is English). This is by design.
+- Dates go through `lib/format.ts`, which uses the active `i18n.language`; never hard-code a locale.
+- Identity page: locked (verified/basic) fields are `Input readOnly surface="surface"` with a `Lock` icon; the
+  verified state shows no card description (badge and banner already say it).
+- Security page: destructive triggers (Remove TOTP, Unlink Google) use `Button variant="outline"` with `text-danger`;
+  the solid `danger` variant is reserved for the confirm button inside `ConfirmDialog`.

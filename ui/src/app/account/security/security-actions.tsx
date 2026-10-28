@@ -27,7 +27,7 @@ export function RemoveTOTPButton() {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="danger" size="sm">
+        <Button variant="outline" size="sm" className="text-danger">
           {t('security.totp.remove')}
         </Button>
       }
@@ -62,7 +62,7 @@ export function UnlinkGoogleButton() {
     <ConfirmDialog
       variant="destructive"
       trigger={
-        <Button variant="danger" size="sm">
+        <Button variant="outline" size="sm" className="text-danger">
           {t('security.google.unlink')}
         </Button>
       }
