@@ -5,11 +5,10 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useTranslation} from 'react-i18next'
 import {Button, Badge, Separator, Input, Label, Alert, AlertDescription, AlertTitle} from '@aoctech/ui'
 import {Card, CardContent, CardDescription, CardHeader} from '@/components/ui/card'
-import {cn} from '@/lib/utils'
 import {KYCBasicForm} from '@/components/kyc-basic-form'
 import {KYCSelfiePhoto} from '@/components/kyc-selfie-photo'
 import {KYCDocumentUpload} from '@/components/kyc-document-upload'
-import {CheckCircle2, FileSearch, Info, XCircle} from 'lucide-react'
+import {CheckCircle2, FileSearch, Info, Lock, XCircle} from 'lucide-react'
 import {fetchKYC, fetchPasskeys, fetchTOTPStatus} from '@/lib/queries'
 import {submitEnhancedKYCAPI} from '@/lib/mutations'
 import {formatDate} from '@/lib/format'
@@ -17,8 +16,6 @@ import {REQUIRED_DOC_TYPES, SUPPORT_EMAIL} from '@/lib/constants'
 import type {KYCDocumentType, KYCStatus} from '@/lib/types'
 import {toast} from 'sonner'
 import {QueryError} from '@/components/query-error'
-
-const READ_ONLY_LOCK_CLASS = 'read-only:bg-muted read-only:cursor-default'
 
 const DOCUMENT_LABEL_KEY: Record<KYCDocumentType, string> = {
   id_front: 'identity.documentIdFront',
@@ -46,7 +43,11 @@ function ReadOnlyField({id, label, value}: { id: string; label: string; value: s
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} readOnly className={cn('min-h-11', READ_ONLY_LOCK_CLASS)}/>
+      <div className="relative">
+        <Input id={id} value={value} readOnly surface="surface"
+               className="min-h-11 cursor-default pr-9 text-muted-foreground"/>
+        <Lock aria-hidden className="text-muted-foreground pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2"/>
+      </div>
     </div>
   )
 }
@@ -156,7 +157,8 @@ function EnhancedSection({status}: { status: KYCStatus }) {
   )
 }
 
-function cardDescriptionKey(state: KYCStatus['state']): string {
+/** Verified has no description: the badge and the banner already say it. */
+function cardDescriptionKey(state: KYCStatus['state']): string | null {
   switch (state) {
     case 'basic_verified':
       return 'identity.basicVerifiedCta'
@@ -165,7 +167,7 @@ function cardDescriptionKey(state: KYCStatus['state']): string {
     case 'rejected':
       return 'identity.rejected'
     case 'verified':
-      return 'identity.levelVerified'
+      return null
     default:
       return 'identity.notVerifiedCta'
   }
@@ -216,7 +218,7 @@ export default function IdentityPage() {
 
       <Card>
         <CardHeader>
-          <CardDescription>{status ? t(cardDescriptionKey(status.state)) : null}</CardDescription>
+          <CardDescription>{status && cardDescriptionKey(status.state) ? t(cardDescriptionKey(status.state) as string) : null}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {status?.state === 'verified' && (

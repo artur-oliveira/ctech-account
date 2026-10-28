@@ -171,3 +171,17 @@ describe('IdentityPage — Basic step', () => {
     expect(screen.getByText('Address details filled from the postal code. Review them before submitting.')).toBeInTheDocument()
   })
 })
+
+describe('IdentityPage — verified state', () => {
+  it('shows "Verified" only in the badge and the banner, with the locked fields read-only', async () => {
+    vi.mocked(fetchKYC).mockResolvedValue({
+      state: 'verified', level: 'enhanced', cpf_masked: '***.456.789-**', verified_at: '2026-08-29T00:00:00Z',
+    })
+    vi.mocked(fetchTOTPStatus).mockResolvedValue({ enabled: true })
+    vi.mocked(fetchPasskeys).mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByLabelText('CPF')).toHaveAttribute('readonly')
+    expect(screen.getAllByText(/^Verified/)).toHaveLength(2)
+  })
+})
