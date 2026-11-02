@@ -1,6 +1,6 @@
 module gopkg.aoctech.app/account/api
 
-go 1.27
+go 1.27.3
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.1
@@ -22,8 +22,8 @@ require (
 	github.com/valkey-io/valkey-go v1.0.78
 	github.com/valyala/fasthttp v1.74.0
 	go.uber.org/fx v1.24.0
-	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.59.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.aoctech.app/api-commons v1.39.0
 )
@@ -71,6 +71,6 @@ require (
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
