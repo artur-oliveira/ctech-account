@@ -13,12 +13,14 @@ import (
 // fakeSSM is a map-backed SSMAPI that records write order.
 type fakeSSM struct {
 	params   map[string]string
+	versions map[string]int64
 	putOrder []string
 	getErr   error
+	decrypts int
 }
 
 func newFakeSSM() *fakeSSM {
-	return &fakeSSM{params: map[string]string{}}
+	return &fakeSSM{params: map[string]string{}, versions: map[string]int64{}}
 }
 
 func (f *fakeSSM) GetParameter(_ context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
@@ -29,7 +31,12 @@ func (f *fakeSSM) GetParameter(_ context.Context, in *ssm.GetParameterInput, _ .
 	if !ok {
 		return nil, &types.ParameterNotFound{}
 	}
-	return &ssm.GetParameterOutput{Parameter: &types.Parameter{Value: aws.String(v)}}, nil
+	if aws.ToBool(in.WithDecryption) {
+		f.decrypts++
+	} else {
+		v = "ciphertext" // what SSM returns for a SecureString without decryption
+	}
+	return &ssm.GetParameterOutput{Parameter: &types.Parameter{Value: aws.String(v), Version: f.versions[aws.ToString(in.Name)]}}, nil
 }
 
 func (f *fakeSSM) PutParameter(_ context.Context, in *ssm.PutParameterInput, _ ...func(*ssm.Options)) (*ssm.PutParameterOutput, error) {
@@ -38,6 +45,7 @@ func (f *fakeSSM) PutParameter(_ context.Context, in *ssm.PutParameterInput, _ .
 		panic("keys must be SecureString")
 	}
 	f.params[name] = aws.ToString(in.Value)
+	f.versions[name]++
 	f.putOrder = append(f.putOrder, name)
 	return &ssm.PutParameterOutput{}, nil
 }
@@ -168,5 +176,33 @@ func TestInitFromLegacyWrapsPEMPreservingKID(t *testing.T) {
 	wantKID, _ := DeriveKID(legacy.Private.Public())
 	if active.KID != wantKID {
 		t.Errorf("KID changed on wrap: %s != %s", active.KID, wantKID)
+	}
+}
+
+// KMS policy: reloading every CheckInterval must not decrypt every time.
+func TestStoreLoadDecryptsOnlyWhenVersionChanges(t *testing.T) {
+	fake := newFakeSSM()
+	store := NewStore(fake, "test")
+	active, _ := Generate(time.Now(), AlgRS256)
+	previous, _ := Generate(time.Now().Add(-time.Hour), AlgRS256)
+	if err := store.Save(context.Background(), active, previous); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		a, p, err := store.Load(context.Background())
+		if err != nil || a.KID != active.KID || p.KID != previous.KID {
+			t.Fatalf("load %d: %v", i, err)
+		}
+	}
+	if fake.decrypts != 2 {
+		t.Fatalf("decrypts = %d after 5 loads, want 2 (one per parameter)", fake.decrypts)
+	}
+	rotated, err := Rotate(context.Background(), store, time.Now(), AlgRS256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, p, err := store.Load(context.Background())
+	if err != nil || a.KID != rotated.KID || p.KID != active.KID {
+		t.Fatalf("rotation not picked up: %v", err)
 	}
 }

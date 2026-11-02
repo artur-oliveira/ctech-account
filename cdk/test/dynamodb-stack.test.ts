@@ -77,3 +77,18 @@ test('idempotency table is on-demand with pk/sk and TTL on ttl', () => {
     TimeToLiveSpecification: {AttributeName: 'ttl', Enabled: true},
   })
 })
+
+// KMS policy: tables stay on the AWS-owned key (free, no KMS requests). Setting
+// `encryption: awsManagedKey()` or a customer key would bill every table request.
+test('no table opts into KMS encryption', () => {
+  const stack = new DynamoDBStack(new cdk.App(), 'KmsPolicyStack', {
+    env: {account: '868899309401', region: 'us-east-1'},
+    environment: 'prod',
+  })
+  const tables = Object.values(Template.fromStack(stack).findResources('AWS::DynamoDB::GlobalTable')) as any[]
+  expect(tables.length).toBeGreaterThan(0)
+  for (const t of tables) {
+    expect(t.Properties.SSESpecification?.SSEEnabled ?? false).toBe(false)
+    expect(t.Properties.SSESpecification?.SSEType).toBeUndefined()
+  }
+})

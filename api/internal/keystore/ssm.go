@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,19 +28,42 @@ type SSMAPI interface {
 }
 
 // Store reads and writes the versioned signing keys in SSM.
+//
+// KMS policy: the rotator reloads every CheckInterval, and an SSM SecureString read
+// with decryption is a billed KMS Decrypt. getKey therefore reads WITHOUT
+// decryption first (ciphertext + Version, no KMS call) and decrypts only when the
+// Version differs from the cached one, so steady state costs no KMS requests and a
+// rotation still propagates within one CheckInterval.
 type Store struct {
 	client SSMAPI
 	env    string
+
+	mu    sync.Mutex
+	cache map[string]cachedKey
+}
+
+type cachedKey struct {
+	version int64
+	key     *Key
 }
 
 func NewStore(client SSMAPI, environment string) *Store {
-	return &Store{client: client, env: environment}
+	return &Store{client: client, env: environment, cache: map[string]cachedKey{}}
 }
 
 func (s *Store) activePath() string   { return fmt.Sprintf(activeParamFmt, s.env) }
 func (s *Store) previousPath() string { return fmt.Sprintf(previousParamFmt, s.env) }
 
 func (s *Store) getKey(ctx context.Context, name string) (*Key, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	head, err := s.client.GetParameter(ctx, &ssm.GetParameterInput{Name: aws.String(name), WithDecryption: aws.Bool(false)})
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := s.cache[name]; ok && c.version == head.Parameter.Version {
+		return c.key, nil
+	}
 	out, err := s.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           aws.String(name),
 		WithDecryption: aws.Bool(true),
@@ -51,7 +75,12 @@ func (s *Store) getKey(ctx context.Context, name string) (*Key, error) {
 	if err := json.Unmarshal([]byte(aws.ToString(out.Parameter.Value)), &j); err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", name, err)
 	}
-	return ParseKey(j)
+	k, err := ParseKey(j)
+	if err != nil {
+		return nil, err
+	}
+	s.cache[name] = cachedKey{version: out.Parameter.Version, key: k}
+	return k, nil
 }
 
 // Load reads the active and previous keys. A missing previous parameter is
