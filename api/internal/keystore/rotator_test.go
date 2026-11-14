@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 type reloadRecorder struct {
@@ -101,5 +103,37 @@ func TestTickSurvivesSSMError(t *testing.T) {
 	}
 	if rec.calls != 0 {
 		t.Error("reload must not run on load failure (keep last good keys)")
+	}
+}
+
+// blockingSSM never answers a read until its context ends, like a half-open
+// connection with no deadline of its own.
+type blockingSSM struct{ SSMAPI }
+
+func (blockingSSM) GetParameter(ctx context.Context, _ *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestTickDeadlineUnblocksHungSSM(t *testing.T) {
+	old := tickTimeout
+	tickTimeout = 50 * time.Millisecond
+	defer func() { tickTimeout = old }()
+
+	rec := &reloadRecorder{}
+	cfg := RotatorConfig{Store: NewStore(blockingSSM{}, "test"), Reload: rec.reload, MaxAge: KeyMaxAge, Now: time.Now}
+
+	done := make(chan error, 1)
+	go func() { done <- tickWithDeadline(context.Background(), cfg) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("err = %v, want deadline exceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("tick still blocked: a hung SSM read freezes the rotator")
+	}
+	if rec.calls != 0 {
+		t.Error("reload must not run when the load failed")
 	}
 }

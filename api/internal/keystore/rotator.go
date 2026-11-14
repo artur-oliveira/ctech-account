@@ -22,6 +22,16 @@ const (
 	LockTTL = time.Hour
 )
 
+// tickTimeout bounds one reload-and-maybe-rotate cycle. RunRotator runs ticks
+// serially on one goroutine and its ctx lives as long as the process, so an SSM
+// or Valkey call that never answers (a half-open connection has no deadline of
+// its own) used to freeze the loop silently: no error, no later reload. One
+// process then kept serving and signing from a pre-rotation key set while its
+// sibling had the new one (prod 2026-11-13: JWKS alternated between two key
+// sets for ~21h and verifiers answered 401 for tokens signed by the new key).
+// A variable so tests need not wait.
+var tickTimeout = 30 * time.Second
+
 // lockKeyFor returns the env-namespaced rotation lock key.
 func lockKeyFor(env string) string {
 	return fmt.Sprintf("rotate_jwk_lock:%s", env)
@@ -89,9 +99,17 @@ func RunRotator(ctx context.Context, cfg RotatorConfig) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if err := tick(ctx, cfg); err != nil {
+			if err := tickWithDeadline(ctx, cfg); err != nil {
 				slog.Error("keystore: rotation tick failed", "error", err)
 			}
 		}
 	}
+}
+
+// tickWithDeadline is tick under tickTimeout, so a hung dependency becomes a
+// logged error and the next interval retries instead of blocking the loop.
+func tickWithDeadline(ctx context.Context, cfg RotatorConfig) error {
+	ctx, cancel := context.WithTimeout(ctx, tickTimeout)
+	defer cancel()
+	return tick(ctx, cfg)
 }
